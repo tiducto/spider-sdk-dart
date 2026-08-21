@@ -35,3 +35,19 @@ Future<void> reuseHit(SpiderClient client) async {
   }
   // [END reuseHit]
 }
+
+/// Constrain a text search to a single administrative area — here the city of
+/// Brno. The admin fields on [StopFilter] narrow the free-text query.
+Future<void> stopsByCity(SpiderClient client) async {
+  // [START stopsByCity]
+  final result = await client.stops.search(
+    const StopFilter(name: 'nádraží', city: 'Brno'),
+  );
+
+  if (result case Success(:final value)) {
+    for (final stop in value) {
+      print('${stop.name} (${stop.gtfsId}) — ${stop.city}');
+    }
+  }
+  // [END stopsByCity]
+}
