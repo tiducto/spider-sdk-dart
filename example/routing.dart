@@ -55,6 +55,35 @@ Future<void> planForTime(SpiderClient client) async {
   // [END planForTime]
 }
 
+/// Page forward: fetch the itineraries after the first page.
+Future<void> laterItineraries(SpiderClient client) async {
+  // [START laterItineraries]
+  final result = await client.routing.plan(PlanOptions(
+    origin: Location.coordinate(49.1951, 16.6068),
+    destination: Location.coordinate(49.2246, 16.5747),
+    first: 3,
+  ));
+
+  switch (result) {
+    case Success(:final value):
+      // planNext returns null when there is no next page.
+      final nextPage = await client.routing.planNext(value);
+      switch (nextPage) {
+        case null:
+          print('No later itineraries — that was the last page');
+        case Success(value: final later):
+          for (final edge in later.edges) {
+            print('${edge.itinerary.start} → ${edge.itinerary.end}');
+          }
+        case Failure(:final error):
+          print('plan failed: ${error.code.name} — ${error.message}');
+      }
+    case Failure(:final error):
+      print('plan failed: ${error.code.name} — ${error.message}');
+  }
+  // [END laterItineraries]
+}
+
 /// List the next departures from a stop.
 Future<void> departures(SpiderClient client) async {
   // [START departures]
