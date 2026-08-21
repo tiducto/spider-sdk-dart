@@ -39,12 +39,18 @@ Future<void> handleResult(SpiderClient client) async {
   // [END handleResult]
 }
 
-/// The same client reaches the stops and realtime surfaces too.
+/// The same client reaches the stops, routes, and realtime surfaces too.
 Future<void> otherSurfaces(SpiderClient client, String tripId) async {
   // [START otherSurfaces]
   final stops = await client.stops.search(const StopFilter(name: 'central'));
   if (stops case Success(:final value)) {
     print('found ${value.length} stops');
+  }
+
+  final routes =
+      await client.routes.search(const RouteFilter(mode: RouteMode.tram));
+  if (routes case Success(:final value)) {
+    print('found ${value.length} tram routes');
   }
 
   final vehicle = await client.realtime.vehicleForTrip(tripId);

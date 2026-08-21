@@ -1,5 +1,6 @@
 import 'contract/contract_version.dart' as c;
 import 'realtime.dart';
+import 'routes.dart';
 import 'routing.dart';
 import 'stops.dart';
 import 'transport.dart';
@@ -27,18 +28,25 @@ class SpiderClientOptions {
 
   final FeatureOptions? routing;
   final FeatureOptions? stops;
+  final FeatureOptions? routes;
   final FeatureOptions? realtime;
 
   const SpiderClientOptions(
-      {this.httpClient, this.timeout, this.routing, this.stops, this.realtime});
+      {this.httpClient,
+      this.timeout,
+      this.routing,
+      this.stops,
+      this.routes,
+      this.realtime});
 }
 
 /// The Spider API client. Construct once with your environment base URL and API key, then reach a surface:
-/// [routing], [stops], [realtime]. Each surface gets its own transport (own retry config) sharing the same
-/// base URL, key, HTTP client and timeout.
+/// [routing], [stops], [routes], [realtime]. Each surface gets its own transport (own retry config) sharing
+/// the same base URL, key, HTTP client and timeout.
 class SpiderClient {
   final SpiderRouting routing;
   final SpiderStops stops;
+  final SpiderRoutes routes;
   final SpiderRealtime realtime;
 
   factory SpiderClient(String baseUrl, String apiKey,
@@ -61,11 +69,12 @@ class SpiderClient {
     return SpiderClient._(
       SpiderRouting(transportFor(options.routing)),
       SpiderStops(transportFor(options.stops)),
+      SpiderRoutes(transportFor(options.routes)),
       SpiderRealtime(transportFor(options.realtime)),
     );
   }
 
-  SpiderClient._(this.routing, this.stops, this.realtime);
+  SpiderClient._(this.routing, this.stops, this.routes, this.realtime);
 
   /// The contract (major.minor) version this SDK speaks.
   String get contractVersion => c.contractVersion;
