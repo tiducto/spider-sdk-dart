@@ -43,7 +43,10 @@ class RealTimeEstimate {
   final String time;
   final String delay;
 
-  const RealTimeEstimate({required this.time, required this.delay});
+  const RealTimeEstimate({
+    required this.time,
+    required this.delay,
+  });
 
   factory RealTimeEstimate.fromJson(Map<String, dynamic> json) =>
       RealTimeEstimate(
@@ -51,14 +54,20 @@ class RealTimeEstimate {
         delay: json['delay'] as String,
       );
 
-  Map<String, dynamic> toJson() => {'time': time, 'delay': delay};
+  Map<String, dynamic> toJson() => {
+        'time': time,
+        'delay': delay,
+      };
 }
 
 class LegTime {
   final String scheduledTime;
   final RealTimeEstimate? estimated;
 
-  const LegTime({required this.scheduledTime, this.estimated});
+  const LegTime({
+    required this.scheduledTime,
+    this.estimated,
+  });
 
   factory LegTime.fromJson(Map<String, dynamic> json) => LegTime(
         scheduledTime: json['scheduledTime'] as String,
@@ -120,7 +129,10 @@ class Stop {
   final String gtfsId;
   final WheelchairBoarding? wheelchairBoarding;
 
-  const Stop({required this.gtfsId, this.wheelchairBoarding});
+  const Stop({
+    required this.gtfsId,
+    this.wheelchairBoarding,
+  });
 
   factory Stop.fromJson(Map<String, dynamic> json) => Stop(
         gtfsId: json['gtfsId'] as String,
@@ -140,7 +152,10 @@ class Place {
   final String? name;
   final Stop? stop;
 
-  const Place({this.name, this.stop});
+  const Place({
+    this.name,
+    this.stop,
+  });
 
   factory Place.fromJson(Map<String, dynamic> json) => Place(
         name: json['name'] as String?,
@@ -159,7 +174,10 @@ class Route {
   final String? shortName;
   final String? longName;
 
-  const Route({this.shortName, this.longName});
+  const Route({
+    this.shortName,
+    this.longName,
+  });
 
   factory Route.fromJson(Map<String, dynamic> json) => Route(
         shortName: json['shortName'] as String?,
@@ -196,7 +214,10 @@ class Trip {
   final String gtfsId;
   final BikesAllowed? bikesAllowed;
 
-  const Trip({required this.gtfsId, this.bikesAllowed});
+  const Trip({
+    required this.gtfsId,
+    this.bikesAllowed,
+  });
 
   factory Trip.fromJson(Map<String, dynamic> json) => Trip(
         gtfsId: json['gtfsId'] as String,
@@ -214,12 +235,17 @@ class Trip {
 class Geometry {
   final String? points;
 
-  const Geometry({this.points});
+  const Geometry({
+    this.points,
+  });
 
-  factory Geometry.fromJson(Map<String, dynamic> json) =>
-      Geometry(points: json['points'] as String?);
+  factory Geometry.fromJson(Map<String, dynamic> json) => Geometry(
+        points: json['points'] as String?,
+      );
 
-  Map<String, dynamic> toJson() => {if (points != null) 'points': points!};
+  Map<String, dynamic> toJson() => {
+        if (points != null) 'points': points!,
+      };
 }
 
 class Leg {
@@ -347,14 +373,20 @@ class PlanEdge {
   final String cursor;
   final Itinerary node;
 
-  const PlanEdge({required this.cursor, required this.node});
+  const PlanEdge({
+    required this.cursor,
+    required this.node,
+  });
 
   factory PlanEdge.fromJson(Map<String, dynamic> json) => PlanEdge(
         cursor: json['cursor'] as String,
         node: Itinerary.fromJson(json['node'] as Map<String, dynamic>),
       );
 
-  Map<String, dynamic> toJson() => {'cursor': cursor, 'node': node.toJson()};
+  Map<String, dynamic> toJson() => {
+        'cursor': cursor,
+        'node': node.toJson(),
+      };
 }
 
 class PlanPageInfo {
@@ -496,15 +528,16 @@ class PlanConnection {
 class PlanConnectionData {
   final PlanConnection? planConnection;
 
-  const PlanConnectionData({this.planConnection});
+  const PlanConnectionData({
+    this.planConnection,
+  });
 
   factory PlanConnectionData.fromJson(Map<String, dynamic> json) =>
       PlanConnectionData(
         planConnection: json['planConnection'] == null
             ? null
             : PlanConnection.fromJson(
-                json['planConnection'] as Map<String, dynamic>,
-              ),
+                json['planConnection'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
@@ -516,7 +549,10 @@ class GraphQLError {
   final String message;
   final List<String>? path;
 
-  const GraphQLError({required this.message, this.path});
+  const GraphQLError({
+    required this.message,
+    this.path,
+  });
 
   factory GraphQLError.fromJson(Map<String, dynamic> json) => GraphQLError(
         message: json['message'] as String,
@@ -534,7 +570,10 @@ class PlanConnectionResponse {
   final PlanConnectionData? data;
   final List<GraphQLError>? errors;
 
-  const PlanConnectionResponse({this.data, this.errors});
+  const PlanConnectionResponse({
+    this.data,
+    this.errors,
+  });
 
   factory PlanConnectionResponse.fromJson(Map<String, dynamic> json) =>
       PlanConnectionResponse(
@@ -556,7 +595,10 @@ class PlanDateTimeInput {
   final String? earliestDeparture;
   final String? latestArrival;
 
-  const PlanDateTimeInput({this.earliestDeparture, this.latestArrival});
+  const PlanDateTimeInput({
+    this.earliestDeparture,
+    this.latestArrival,
+  });
 
   factory PlanDateTimeInput.fromJson(Map<String, dynamic> json) =>
       PlanDateTimeInput(
@@ -574,13 +616,15 @@ class PlanLabeledLocationInput {
   final PlanLocationInput location;
   final String? label;
 
-  const PlanLabeledLocationInput({required this.location, this.label});
+  const PlanLabeledLocationInput({
+    required this.location,
+    this.label,
+  });
 
   factory PlanLabeledLocationInput.fromJson(Map<String, dynamic> json) =>
       PlanLabeledLocationInput(
         location: PlanLocationInput.fromJson(
-          json['location'] as Map<String, dynamic>,
-        ),
+            json['location'] as Map<String, dynamic>),
         label: json['label'] as String?,
       );
 
@@ -594,20 +638,21 @@ class PlanLocationInput {
   final PlanCoordinateInput? coordinate;
   final PlanStopLocationInput? stopLocation;
 
-  const PlanLocationInput({this.coordinate, this.stopLocation});
+  const PlanLocationInput({
+    this.coordinate,
+    this.stopLocation,
+  });
 
   factory PlanLocationInput.fromJson(Map<String, dynamic> json) =>
       PlanLocationInput(
         coordinate: json['coordinate'] == null
             ? null
             : PlanCoordinateInput.fromJson(
-                json['coordinate'] as Map<String, dynamic>,
-              ),
+                json['coordinate'] as Map<String, dynamic>),
         stopLocation: json['stopLocation'] == null
             ? null
             : PlanStopLocationInput.fromJson(
-                json['stopLocation'] as Map<String, dynamic>,
-              ),
+                json['stopLocation'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
@@ -620,7 +665,10 @@ class PlanCoordinateInput {
   final double latitude;
   final double longitude;
 
-  const PlanCoordinateInput({required this.latitude, required this.longitude});
+  const PlanCoordinateInput({
+    required this.latitude,
+    required this.longitude,
+  });
 
   factory PlanCoordinateInput.fromJson(Map<String, dynamic> json) =>
       PlanCoordinateInput(
@@ -637,32 +685,39 @@ class PlanCoordinateInput {
 class PlanStopLocationInput {
   final String stopLocationId;
 
-  const PlanStopLocationInput({required this.stopLocationId});
+  const PlanStopLocationInput({
+    required this.stopLocationId,
+  });
 
   factory PlanStopLocationInput.fromJson(Map<String, dynamic> json) =>
-      PlanStopLocationInput(stopLocationId: json['stopLocationId'] as String);
+      PlanStopLocationInput(
+        stopLocationId: json['stopLocationId'] as String,
+      );
 
-  Map<String, dynamic> toJson() => {'stopLocationId': stopLocationId};
+  Map<String, dynamic> toJson() => {
+        'stopLocationId': stopLocationId,
+      };
 }
 
 class PlanViaLocationInput {
   final PlanPassThroughViaLocationInput? passThrough;
   final PlanVisitViaLocationInput? visit;
 
-  const PlanViaLocationInput({this.passThrough, this.visit});
+  const PlanViaLocationInput({
+    this.passThrough,
+    this.visit,
+  });
 
   factory PlanViaLocationInput.fromJson(Map<String, dynamic> json) =>
       PlanViaLocationInput(
         passThrough: json['passThrough'] == null
             ? null
             : PlanPassThroughViaLocationInput.fromJson(
-                json['passThrough'] as Map<String, dynamic>,
-              ),
+                json['passThrough'] as Map<String, dynamic>),
         visit: json['visit'] == null
             ? null
             : PlanVisitViaLocationInput.fromJson(
-                json['visit'] as Map<String, dynamic>,
-              ),
+                json['visit'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
@@ -712,8 +767,7 @@ class PlanVisitViaLocationInput {
         coordinate: json['coordinate'] == null
             ? null
             : PlanCoordinateInput.fromJson(
-                json['coordinate'] as Map<String, dynamic>,
-              ),
+                json['coordinate'] as Map<String, dynamic>),
         label: json['label'] as String?,
         minimumWaitTime: json['minimumWaitTime'] as String?,
         stopLocationIds: (json['stopLocationIds'] as List<dynamic>?)
@@ -751,8 +805,7 @@ class PlanModesInput {
         transit: json['transit'] == null
             ? null
             : PlanTransitModesInput.fromJson(
-                json['transit'] as Map<String, dynamic>,
-              ),
+                json['transit'] as Map<String, dynamic>),
         transitOnly: json['transitOnly'] as bool?,
       );
 
@@ -815,11 +868,8 @@ class PlanTransitModesInput {
             ?.map((e) => PlanTransferMode.fromWire(e as String))
             .toList(),
         transit: (json['transit'] as List<dynamic>?)
-            ?.map(
-              (e) => PlanTransitModePreferenceInput.fromJson(
-                e as Map<String, dynamic>,
-              ),
-            )
+            ?.map((e) => PlanTransitModePreferenceInput.fromJson(
+                e as Map<String, dynamic>))
             .toList(),
       );
 
@@ -909,7 +959,10 @@ class PlanTransitModePreferenceInput {
   final TransitMode mode;
   final TransitModePreferenceCostInput? cost;
 
-  const PlanTransitModePreferenceInput({required this.mode, this.cost});
+  const PlanTransitModePreferenceInput({
+    required this.mode,
+    this.cost,
+  });
 
   factory PlanTransitModePreferenceInput.fromJson(Map<String, dynamic> json) =>
       PlanTransitModePreferenceInput(
@@ -917,8 +970,7 @@ class PlanTransitModePreferenceInput {
         cost: json['cost'] == null
             ? null
             : TransitModePreferenceCostInput.fromJson(
-                json['cost'] as Map<String, dynamic>,
-              ),
+                json['cost'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
@@ -930,14 +982,18 @@ class PlanTransitModePreferenceInput {
 class TransitModePreferenceCostInput {
   final double reluctance;
 
-  const TransitModePreferenceCostInput({required this.reluctance});
+  const TransitModePreferenceCostInput({
+    required this.reluctance,
+  });
 
   factory TransitModePreferenceCostInput.fromJson(Map<String, dynamic> json) =>
       TransitModePreferenceCostInput(
         reluctance: (json['reluctance'] as num).toDouble(),
       );
 
-  Map<String, dynamic> toJson() => {'reluctance': reluctance};
+  Map<String, dynamic> toJson() => {
+        'reluctance': reluctance,
+      };
 }
 
 enum TransitMode {
@@ -977,25 +1033,26 @@ class PlanPreferencesInput {
   final PlanStreetPreferencesInput? street;
   final TransitPreferencesInput? transit;
 
-  const PlanPreferencesInput({this.accessibility, this.street, this.transit});
+  const PlanPreferencesInput({
+    this.accessibility,
+    this.street,
+    this.transit,
+  });
 
   factory PlanPreferencesInput.fromJson(Map<String, dynamic> json) =>
       PlanPreferencesInput(
         accessibility: json['accessibility'] == null
             ? null
             : AccessibilityPreferencesInput.fromJson(
-                json['accessibility'] as Map<String, dynamic>,
-              ),
+                json['accessibility'] as Map<String, dynamic>),
         street: json['street'] == null
             ? null
             : PlanStreetPreferencesInput.fromJson(
-                json['street'] as Map<String, dynamic>,
-              ),
+                json['street'] as Map<String, dynamic>),
         transit: json['transit'] == null
             ? null
             : TransitPreferencesInput.fromJson(
-                json['transit'] as Map<String, dynamic>,
-              ),
+                json['transit'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
@@ -1008,15 +1065,16 @@ class PlanPreferencesInput {
 class AccessibilityPreferencesInput {
   final WheelchairPreferencesInput? wheelchair;
 
-  const AccessibilityPreferencesInput({this.wheelchair});
+  const AccessibilityPreferencesInput({
+    this.wheelchair,
+  });
 
   factory AccessibilityPreferencesInput.fromJson(Map<String, dynamic> json) =>
       AccessibilityPreferencesInput(
         wheelchair: json['wheelchair'] == null
             ? null
             : WheelchairPreferencesInput.fromJson(
-                json['wheelchair'] as Map<String, dynamic>,
-              ),
+                json['wheelchair'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
@@ -1027,12 +1085,18 @@ class AccessibilityPreferencesInput {
 class WheelchairPreferencesInput {
   final bool? enabled;
 
-  const WheelchairPreferencesInput({this.enabled});
+  const WheelchairPreferencesInput({
+    this.enabled,
+  });
 
   factory WheelchairPreferencesInput.fromJson(Map<String, dynamic> json) =>
-      WheelchairPreferencesInput(enabled: json['enabled'] as bool?);
+      WheelchairPreferencesInput(
+        enabled: json['enabled'] as bool?,
+      );
 
-  Map<String, dynamic> toJson() => {if (enabled != null) 'enabled': enabled!};
+  Map<String, dynamic> toJson() => {
+        if (enabled != null) 'enabled': enabled!,
+      };
 }
 
 class PlanStreetPreferencesInput {
@@ -1053,21 +1117,18 @@ class PlanStreetPreferencesInput {
         bicycle: json['bicycle'] == null
             ? null
             : BicyclePreferencesInput.fromJson(
-                json['bicycle'] as Map<String, dynamic>,
-              ),
+                json['bicycle'] as Map<String, dynamic>),
         car: json['car'] == null
             ? null
             : CarPreferencesInput.fromJson(json['car'] as Map<String, dynamic>),
         scooter: json['scooter'] == null
             ? null
             : ScooterPreferencesInput.fromJson(
-                json['scooter'] as Map<String, dynamic>,
-              ),
+                json['scooter'] as Map<String, dynamic>),
         walk: json['walk'] == null
             ? null
             : WalkPreferencesInput.fromJson(
-                json['walk'] as Map<String, dynamic>,
-              ),
+                json['walk'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
@@ -1103,25 +1164,21 @@ class BicyclePreferencesInput {
         optimization: json['optimization'] == null
             ? null
             : CyclingOptimizationInput.fromJson(
-                json['optimization'] as Map<String, dynamic>,
-              ),
+                json['optimization'] as Map<String, dynamic>),
         parking: json['parking'] == null
             ? null
             : BicycleParkingPreferencesInput.fromJson(
-                json['parking'] as Map<String, dynamic>,
-              ),
+                json['parking'] as Map<String, dynamic>),
         reluctance: (json['reluctance'] as num?)?.toDouble(),
         rental: json['rental'] == null
             ? null
             : BicycleRentalPreferencesInput.fromJson(
-                json['rental'] as Map<String, dynamic>,
-              ),
+                json['rental'] as Map<String, dynamic>),
         speed: (json['speed'] as num?)?.toDouble(),
         walk: json['walk'] == null
             ? null
             : BicycleWalkPreferencesInput.fromJson(
-                json['walk'] as Map<String, dynamic>,
-              ),
+                json['walk'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
@@ -1139,15 +1196,17 @@ class CyclingOptimizationInput {
   final TriangleCyclingFactorsInput? triangle;
   final CyclingOptimizationType? type;
 
-  const CyclingOptimizationInput({this.triangle, this.type});
+  const CyclingOptimizationInput({
+    this.triangle,
+    this.type,
+  });
 
   factory CyclingOptimizationInput.fromJson(Map<String, dynamic> json) =>
       CyclingOptimizationInput(
         triangle: json['triangle'] == null
             ? null
             : TriangleCyclingFactorsInput.fromJson(
-                json['triangle'] as Map<String, dynamic>,
-              ),
+                json['triangle'] as Map<String, dynamic>),
         type: json['type'] == null
             ? null
             : CyclingOptimizationType.fromWire(json['type'] as String),
@@ -1240,7 +1299,10 @@ class ParkingFilter {
   final List<ParkingFilterOperation>? not;
   final List<ParkingFilterOperation>? select;
 
-  const ParkingFilter({this.not, this.select});
+  const ParkingFilter({
+    this.not,
+    this.select,
+  });
 
   factory ParkingFilter.fromJson(Map<String, dynamic> json) => ParkingFilter(
         not: (json['not'] as List<dynamic>?)
@@ -1262,7 +1324,9 @@ class ParkingFilter {
 class ParkingFilterOperation {
   final List<String>? tags;
 
-  const ParkingFilterOperation({this.tags});
+  const ParkingFilterOperation({
+    this.tags,
+  });
 
   factory ParkingFilterOperation.fromJson(Map<String, dynamic> json) =>
       ParkingFilterOperation(
@@ -1297,8 +1361,7 @@ class BicycleRentalPreferencesInput {
         destinationBicyclePolicy: json['destinationBicyclePolicy'] == null
             ? null
             : DestinationBicyclePolicyInput.fromJson(
-                json['destinationBicyclePolicy'] as Map<String, dynamic>,
-              ),
+                json['destinationBicyclePolicy'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
@@ -1315,7 +1378,10 @@ class DestinationBicyclePolicyInput {
   final bool? allowKeeping;
   final int? keepingCost;
 
-  const DestinationBicyclePolicyInput({this.allowKeeping, this.keepingCost});
+  const DestinationBicyclePolicyInput({
+    this.allowKeeping,
+    this.keepingCost,
+  });
 
   factory DestinationBicyclePolicyInput.fromJson(Map<String, dynamic> json) =>
       DestinationBicyclePolicyInput(
@@ -1345,8 +1411,7 @@ class BicycleWalkPreferencesInput {
         cost: json['cost'] == null
             ? null
             : BicycleWalkPreferencesCostInput.fromJson(
-                json['cost'] as Map<String, dynamic>,
-              ),
+                json['cost'] as Map<String, dynamic>),
         mountDismountTime: json['mountDismountTime'] as String?,
         speed: (json['speed'] as num?)?.toDouble(),
       );
@@ -1398,14 +1463,12 @@ class CarPreferencesInput {
         parking: json['parking'] == null
             ? null
             : CarParkingPreferencesInput.fromJson(
-                json['parking'] as Map<String, dynamic>,
-              ),
+                json['parking'] as Map<String, dynamic>),
         reluctance: (json['reluctance'] as num?)?.toDouble(),
         rental: json['rental'] == null
             ? null
             : CarRentalPreferencesInput.fromJson(
-                json['rental'] as Map<String, dynamic>,
-              ),
+                json['rental'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
@@ -1496,14 +1559,12 @@ class ScooterPreferencesInput {
         optimization: json['optimization'] == null
             ? null
             : ScooterOptimizationInput.fromJson(
-                json['optimization'] as Map<String, dynamic>,
-              ),
+                json['optimization'] as Map<String, dynamic>),
         reluctance: (json['reluctance'] as num?)?.toDouble(),
         rental: json['rental'] == null
             ? null
             : ScooterRentalPreferencesInput.fromJson(
-                json['rental'] as Map<String, dynamic>,
-              ),
+                json['rental'] as Map<String, dynamic>),
         speed: (json['speed'] as num?)?.toDouble(),
       );
 
@@ -1519,15 +1580,17 @@ class ScooterOptimizationInput {
   final TriangleScooterFactorsInput? triangle;
   final ScooterOptimizationType? type;
 
-  const ScooterOptimizationInput({this.triangle, this.type});
+  const ScooterOptimizationInput({
+    this.triangle,
+    this.type,
+  });
 
   factory ScooterOptimizationInput.fromJson(Map<String, dynamic> json) =>
       ScooterOptimizationInput(
         triangle: json['triangle'] == null
             ? null
             : TriangleScooterFactorsInput.fromJson(
-                json['triangle'] as Map<String, dynamic>,
-              ),
+                json['triangle'] as Map<String, dynamic>),
         type: json['type'] == null
             ? null
             : ScooterOptimizationType.fromWire(json['type'] as String),
@@ -1607,8 +1670,7 @@ class ScooterRentalPreferencesInput {
         destinationScooterPolicy: json['destinationScooterPolicy'] == null
             ? null
             : DestinationScooterPolicyInput.fromJson(
-                json['destinationScooterPolicy'] as Map<String, dynamic>,
-              ),
+                json['destinationScooterPolicy'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
@@ -1625,7 +1687,10 @@ class DestinationScooterPolicyInput {
   final bool? allowKeeping;
   final int? keepingCost;
 
-  const DestinationScooterPolicyInput({this.allowKeeping, this.keepingCost});
+  const DestinationScooterPolicyInput({
+    this.allowKeeping,
+    this.keepingCost,
+  });
 
   factory DestinationScooterPolicyInput.fromJson(Map<String, dynamic> json) =>
       DestinationScooterPolicyInput(
@@ -1688,26 +1753,22 @@ class TransitPreferencesInput {
         alight: json['alight'] == null
             ? null
             : AlightPreferencesInput.fromJson(
-                json['alight'] as Map<String, dynamic>,
-              ),
+                json['alight'] as Map<String, dynamic>),
         board: json['board'] == null
             ? null
             : BoardPreferencesInput.fromJson(
-                json['board'] as Map<String, dynamic>,
-              ),
+                json['board'] as Map<String, dynamic>),
         filters: (json['filters'] as List<dynamic>?)
             ?.map((e) => TransitFilterInput.fromJson(e as Map<String, dynamic>))
             .toList(),
         timetable: json['timetable'] == null
             ? null
             : TimetablePreferencesInput.fromJson(
-                json['timetable'] as Map<String, dynamic>,
-              ),
+                json['timetable'] as Map<String, dynamic>),
         transfer: json['transfer'] == null
             ? null
             : TransferPreferencesInput.fromJson(
-                json['transfer'] as Map<String, dynamic>,
-              ),
+                json['transfer'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
@@ -1723,19 +1784,28 @@ class TransitPreferencesInput {
 class AlightPreferencesInput {
   final String? slack;
 
-  const AlightPreferencesInput({this.slack});
+  const AlightPreferencesInput({
+    this.slack,
+  });
 
   factory AlightPreferencesInput.fromJson(Map<String, dynamic> json) =>
-      AlightPreferencesInput(slack: json['slack'] as String?);
+      AlightPreferencesInput(
+        slack: json['slack'] as String?,
+      );
 
-  Map<String, dynamic> toJson() => {if (slack != null) 'slack': slack!};
+  Map<String, dynamic> toJson() => {
+        if (slack != null) 'slack': slack!,
+      };
 }
 
 class BoardPreferencesInput {
   final String? slack;
   final double? waitReluctance;
 
-  const BoardPreferencesInput({this.slack, this.waitReluctance});
+  const BoardPreferencesInput({
+    this.slack,
+    this.waitReluctance,
+  });
 
   factory BoardPreferencesInput.fromJson(Map<String, dynamic> json) =>
       BoardPreferencesInput(
@@ -1753,21 +1823,20 @@ class TransitFilterInput {
   final List<TransitFilterSelectInput>? exclude;
   final List<TransitFilterSelectInput>? include;
 
-  const TransitFilterInput({this.exclude, this.include});
+  const TransitFilterInput({
+    this.exclude,
+    this.include,
+  });
 
   factory TransitFilterInput.fromJson(Map<String, dynamic> json) =>
       TransitFilterInput(
         exclude: (json['exclude'] as List<dynamic>?)
-            ?.map(
-              (e) =>
-                  TransitFilterSelectInput.fromJson(e as Map<String, dynamic>),
-            )
+            ?.map((e) =>
+                TransitFilterSelectInput.fromJson(e as Map<String, dynamic>))
             .toList(),
         include: (json['include'] as List<dynamic>?)
-            ?.map(
-              (e) =>
-                  TransitFilterSelectInput.fromJson(e as Map<String, dynamic>),
-            )
+            ?.map((e) =>
+                TransitFilterSelectInput.fromJson(e as Map<String, dynamic>))
             .toList(),
       );
 
@@ -1783,7 +1852,10 @@ class TransitFilterSelectInput {
   final List<String>? agencies;
   final List<String>? routes;
 
-  const TransitFilterSelectInput({this.agencies, this.routes});
+  const TransitFilterSelectInput({
+    this.agencies,
+    this.routes,
+  });
 
   factory TransitFilterSelectInput.fromJson(Map<String, dynamic> json) =>
       TransitFilterSelectInput(
@@ -1812,9 +1884,7 @@ class TimetablePreferencesInput {
     this.includeRealTimeCancellations,
   });
 
-  factory TimetablePreferencesInput.fromJson(
-    Map<String, dynamic> json,
-  ) =>
+  factory TimetablePreferencesInput.fromJson(Map<String, dynamic> json) =>
       TimetablePreferencesInput(
         excludeRealTimeUpdates: json['excludeRealTimeUpdates'] as bool?,
         includePlannedCancellations:
@@ -1894,18 +1964,14 @@ class PlanConnectionVariables {
   factory PlanConnectionVariables.fromJson(Map<String, dynamic> json) =>
       PlanConnectionVariables(
         dateTime: PlanDateTimeInput.fromJson(
-          json['dateTime'] as Map<String, dynamic>,
-        ),
+            json['dateTime'] as Map<String, dynamic>),
         origin: PlanLabeledLocationInput.fromJson(
-          json['origin'] as Map<String, dynamic>,
-        ),
+            json['origin'] as Map<String, dynamic>),
         destination: PlanLabeledLocationInput.fromJson(
-          json['destination'] as Map<String, dynamic>,
-        ),
+            json['destination'] as Map<String, dynamic>),
         via: (json['via'] as List<dynamic>?)
             ?.map(
-              (e) => PlanViaLocationInput.fromJson(e as Map<String, dynamic>),
-            )
+                (e) => PlanViaLocationInput.fromJson(e as Map<String, dynamic>))
             .toList(),
         modes: json['modes'] == null
             ? null
@@ -1913,8 +1979,7 @@ class PlanConnectionVariables {
         preferences: json['preferences'] == null
             ? null
             : PlanPreferencesInput.fromJson(
-                json['preferences'] as Map<String, dynamic>,
-              ),
+                json['preferences'] as Map<String, dynamic>),
         searchWindow: json['searchWindow'] as String?,
         first: (json['first'] as num?)?.toInt(),
         last: (json['last'] as num?)?.toInt(),
@@ -1942,7 +2007,11 @@ class StopDeparturesRoute {
   final String? longName;
   final TransitMode? mode;
 
-  const StopDeparturesRoute({this.shortName, this.longName, this.mode});
+  const StopDeparturesRoute({
+    this.shortName,
+    this.longName,
+    this.mode,
+  });
 
   factory StopDeparturesRoute.fromJson(Map<String, dynamic> json) =>
       StopDeparturesRoute(
@@ -1974,9 +2043,8 @@ class StopDeparturesTrip {
   factory StopDeparturesTrip.fromJson(Map<String, dynamic> json) =>
       StopDeparturesTrip(
         gtfsId: json['gtfsId'] as String,
-        route: StopDeparturesRoute.fromJson(
-          json['route'] as Map<String, dynamic>,
-        ),
+        route:
+            StopDeparturesRoute.fromJson(json['route'] as Map<String, dynamic>),
         bikesAllowed: json['bikesAllowed'] == null
             ? null
             : BikesAllowed.fromWire(json['bikesAllowed'] as String),
@@ -2075,20 +2143,21 @@ class StopDeparturesData {
   final StopDeparturesStop? asStop;
   final StopDeparturesStop? asStation;
 
-  const StopDeparturesData({this.asStop, this.asStation});
+  const StopDeparturesData({
+    this.asStop,
+    this.asStation,
+  });
 
   factory StopDeparturesData.fromJson(Map<String, dynamic> json) =>
       StopDeparturesData(
         asStop: json['asStop'] == null
             ? null
             : StopDeparturesStop.fromJson(
-                json['asStop'] as Map<String, dynamic>,
-              ),
+                json['asStop'] as Map<String, dynamic>),
         asStation: json['asStation'] == null
             ? null
             : StopDeparturesStop.fromJson(
-                json['asStation'] as Map<String, dynamic>,
-              ),
+                json['asStation'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
@@ -2101,7 +2170,10 @@ class StopDeparturesResponse {
   final StopDeparturesData? data;
   final List<GraphQLError>? errors;
 
-  const StopDeparturesResponse({this.data, this.errors});
+  const StopDeparturesResponse({
+    this.data,
+    this.errors,
+  });
 
   factory StopDeparturesResponse.fromJson(Map<String, dynamic> json) =>
       StopDeparturesResponse(
@@ -2154,7 +2226,11 @@ class TripRoute {
   final String? longName;
   final TransitMode? mode;
 
-  const TripRoute({this.shortName, this.longName, this.mode});
+  const TripRoute({
+    this.shortName,
+    this.longName,
+    this.mode,
+  });
 
   factory TripRoute.fromJson(Map<String, dynamic> json) => TripRoute(
         shortName: json['shortName'] as String?,
@@ -2259,7 +2335,10 @@ class TripGeometry {
   final String? points;
   final int? length;
 
-  const TripGeometry({this.points, this.length});
+  const TripGeometry({
+    this.points,
+    this.length,
+  });
 
   factory TripGeometry.fromJson(Map<String, dynamic> json) => TripGeometry(
         points: json['points'] as String?,
@@ -2323,7 +2402,9 @@ class TripTrip {
 class TripData {
   final TripTrip? trip;
 
-  const TripData({this.trip});
+  const TripData({
+    this.trip,
+  });
 
   factory TripData.fromJson(Map<String, dynamic> json) => TripData(
         trip: json['trip'] == null
@@ -2331,14 +2412,19 @@ class TripData {
             : TripTrip.fromJson(json['trip'] as Map<String, dynamic>),
       );
 
-  Map<String, dynamic> toJson() => {if (trip != null) 'trip': trip!.toJson()};
+  Map<String, dynamic> toJson() => {
+        if (trip != null) 'trip': trip!.toJson(),
+      };
 }
 
 class TripResponse {
   final TripData? data;
   final List<GraphQLError>? errors;
 
-  const TripResponse({this.data, this.errors});
+  const TripResponse({
+    this.data,
+    this.errors,
+  });
 
   factory TripResponse.fromJson(Map<String, dynamic> json) => TripResponse(
         data: json['data'] == null
@@ -2359,7 +2445,10 @@ class TripVariables {
   final String id;
   final String? serviceDate;
 
-  const TripVariables({required this.id, this.serviceDate});
+  const TripVariables({
+    required this.id,
+    this.serviceDate,
+  });
 
   factory TripVariables.fromJson(Map<String, dynamic> json) => TripVariables(
         id: json['id'] as String,
@@ -2377,7 +2466,10 @@ class ErrorResponse {
   final String message;
   final String? code;
 
-  const ErrorResponse({required this.message, this.code});
+  const ErrorResponse({
+    required this.message,
+    this.code,
+  });
 
   factory ErrorResponse.fromJson(Map<String, dynamic> json) => ErrorResponse(
         message: json['message'] as String,
