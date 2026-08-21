@@ -12,7 +12,7 @@ semantics, adapted to Dart idioms (`Future`, `Stream`, sealed classes).
 
 ```yaml
 dependencies:
-  spider_sdk: ^5.0.0
+  spider_sdk: ^5.1.0
 ```
 
 ## Quickstart
@@ -79,7 +79,32 @@ final trip = await client.routing.trip('T-4821', serviceDate: '2026-08-21');
 ### Stop search
 
 ```dart
+// Free text, narrowed by administrative area.
 final stops = await client.stops.search(const StopFilter(name: 'Náměstí', city: 'Brno'));
+
+// Nearest stops within 500 m, closest first.
+final nearby = await client.stops.near(49.19, 16.61, radiusMeters: 500);
+
+// Stops inside a bounding box (SW corner, then NE corner).
+final inBox = await client.stops.within(49.18, 16.59, 49.21, 16.63);
+
+// A single stop by GTFS id — Success carries the stop, or null when none matches.
+final one = await client.stops.byId('U123Z1');
+```
+
+### Route search
+
+```dart
+// Trams matching a name fragment, run by one agency — busiest-first.
+final routes = await client.routes.search(const RouteFilter(
+  query: 'Hlavní',
+  mode: RouteMode.tram,
+  agency: 'DPMB',
+  limit: 20,
+));
+
+// A single route by its feed-scoped id — Success carries the route, or null when none matches.
+final route = await client.routes.byId('1:L4');
 ```
 
 ### Realtime (poll-based)
@@ -119,5 +144,5 @@ Retries (opt-in per surface) back off on `429`/`5xx` and network/timeout errors,
 
 The wire models under `lib/src/contract/` and the persisted-query ids are **generated** from the published
 contract by `scripts/generate-contract.sh` (via `tiducto/spider-codegen`) and committed — the package carries
-the types, not the spec. `client.contractVersion` reports the contract version this SDK speaks (`5.0`). Do not
+the types, not the spec. `client.contractVersion` reports the contract version this SDK speaks (`5.1`). Do not
 hand-edit generated files; re-run the script.

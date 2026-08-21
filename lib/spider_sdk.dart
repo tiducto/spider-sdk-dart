@@ -24,7 +24,10 @@ export 'src/routing.dart'
         TripStop,
         TripDetails,
         PlanOptions;
-export 'src/stops.dart' show SpiderStops, Stop, StopFilter;
+export 'src/routes.dart'
+    show SpiderRoutes, RouteFilter, RouteMode, TransitRoute;
+export 'src/stops.dart'
+    show SpiderStops, Stop, StopFilter, GeoPoint, GeoBoundingBox;
 export 'src/transport.dart'
     show
         SpiderHttpClient,

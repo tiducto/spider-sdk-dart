@@ -84,6 +84,119 @@ Future<void> laterItineraries(SpiderClient client) async {
   // [END laterItineraries]
 }
 
+/// Page backward: fetch the itineraries before the first page.
+Future<void> earlierItineraries(SpiderClient client) async {
+  // [START earlierItineraries]
+  final result = await client.routing.plan(PlanOptions(
+    origin: Location.coordinate(49.1951, 16.6068),
+    destination: Location.coordinate(49.2246, 16.5747),
+    first: 3,
+  ));
+
+  switch (result) {
+    case Success(:final value):
+      // planPrevious returns null when there is no previous page.
+      final previousPage = await client.routing.planPrevious(value);
+      switch (previousPage) {
+        case null:
+          print('No earlier itineraries — that was the first page');
+        case Success(value: final earlier):
+          for (final edge in earlier.edges) {
+            print('${edge.itinerary.start} → ${edge.itinerary.end}');
+          }
+        case Failure(:final error):
+          print('plan failed: ${error.code.name} — ${error.message}');
+      }
+    case Failure(:final error):
+      print('plan failed: ${error.code.name} — ${error.message}');
+  }
+  // [END earlierItineraries]
+}
+
+/// Restrict a plan to a set of transit modes (here: tram + subway).
+Future<void> planWithModes(SpiderClient client) async {
+  // [START planWithModes]
+  final result = await client.routing.plan(PlanOptions(
+    origin: Location.coordinate(49.1951, 16.6068),
+    destination: Location.coordinate(49.2246, 16.5747),
+    allowedTransitModes: const [TransitMode.tram, TransitMode.subway],
+    first: 3,
+  ));
+
+  if (result case Success(:final value)) {
+    for (final edge in value.edges) {
+      final modes =
+          edge.itinerary.legs.map((l) => l.mode?.name ?? 'walk').join(' → ');
+      print('${edge.itinerary.durationSeconds ~/ 60} min: $modes');
+    }
+  }
+  // [END planWithModes]
+}
+
+/// Plan to arrive by a given time instead of departing at one.
+Future<void> arriveBy(SpiderClient client) async {
+  // [START arriveBy]
+  final result = await client.routing.plan(PlanOptions(
+    origin: Location.coordinate(49.1951, 16.6068),
+    destination: Location.coordinate(49.2246, 16.5747),
+    arriveBy: DateTime(2026, 8, 21, 9, 0),
+    first: 3,
+  ));
+
+  if (result case Success(:final value)) {
+    for (final edge in value.edges) {
+      final trip = edge.itinerary;
+      print('depart ${trip.start} → arrive ${trip.end}');
+    }
+  }
+  // [END arriveBy]
+}
+
+/// Plan a trip that passes through a via point, dwelling there for a few minutes.
+Future<void> planVia(SpiderClient client) async {
+  // [START planVia]
+  final result = await client.routing.plan(PlanOptions(
+    origin: Location.coordinate(49.1951, 16.6068),
+    destination: Location.coordinate(49.2246, 16.5747),
+    via: [
+      ViaLocation.visit(
+        Location.coordinate(49.2103, 16.5993),
+        minimumWaitSeconds: 300,
+      ),
+    ],
+    first: 3,
+  ));
+
+  if (result case Success(:final value)) {
+    print('found ${value.edges.length} itineraries via the waypoint');
+  }
+  // [END planVia]
+}
+
+/// Plan a wheelchair-accessible trip and read the accessibility info.
+Future<void> wheelchairPlan(SpiderClient client) async {
+  // [START wheelchairPlan]
+  final result = await client.routing.plan(PlanOptions(
+    origin: Location.coordinate(49.1951, 16.6068),
+    destination: Location.coordinate(49.2246, 16.5747),
+    wheelchairAccessible: true,
+    first: 3,
+  ));
+
+  if (result case Success(:final value)) {
+    for (final edge in value.edges) {
+      final trip = edge.itinerary;
+      print('${trip.start} → ${trip.end} '
+          'accessibility: ${trip.accessibilityScore ?? 'n/a'}');
+      for (final leg in trip.legs) {
+        final boarding = leg.fromWheelchair?.name ?? 'unknown';
+        print('  boarding at ${leg.fromName}: $boarding');
+      }
+    }
+  }
+  // [END wheelchairPlan]
+}
+
 /// List the next departures from a stop.
 Future<void> departures(SpiderClient client) async {
   // [START departures]
