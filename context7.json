@@ -1,0 +1,27 @@
+{
+  "$schema": "https://context7.com/schema/context7.json",
+  "projectTitle": "Spider SDK for Dart",
+  "description": "A Dart/Flutter client for planning trips, fetching stop departures, and looking up individual trips over the Spider transit API.",
+  "branch": "main",
+  "folders": [
+    "README.md",
+    "lib",
+    "example"
+  ],
+  "excludeFolders": [
+    ".dart_tool",
+    "build",
+    "lib/src/contract",
+    ".github",
+    "test"
+  ],
+  "excludeFiles": [
+    "CHANGELOG.md"
+  ],
+  "rules": [
+    "Construct one client with your environment base URL and API key, then reach a surface: SpiderClient('https://your-env-slug.api.tiducto.eu', apiKey).routing / .stops / .realtime.",
+    "Plan a trip with client.routing.plan(PlanOptions(origin, destination, first)); get stop departures with client.routing.departures(stopId) and a single trip with client.routing.trip(tripId).",
+    "Search or geo-query stops through client.stops, and poll live vehicle positions, delays, and alerts through client.realtime.",
+    "Every call returns a SpiderResult<T> you branch on (Success / Failure); the only thrown error is SpiderContractMismatchError, raised on a major contract-version mismatch."
+  ]
+}
