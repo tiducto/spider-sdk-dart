@@ -1,0 +1,33 @@
+name: Pull contract updates
+
+# Fires the shared contract-sync workflow (tiducto/.github) with this repo's specifics. See that
+# workflow for the actual logic — this file only owns the triggers and the add-paths.
+#
+# Requires a CONTRACT_REPO_TOKEN secret (read access to tiducto/spider-contract + spider-codegen),
+# passed via `secrets: inherit`; the run fails without it.
+on:
+  # Manual kick — no inputs; the shared workflow resolves the next version from the marker + tags itself.
+  workflow_dispatch:
+  # Fired by the admintool when a contract version is released.
+  repository_dispatch:
+    types: [contract-released]
+  # Nightly backstop in case a dispatch is missed.
+  schedule:
+    - cron: "0 6 * * *"
+  # Auto-chain: a merged sync PR bumps version.properties; that push syncs the next version.
+  push:
+    branches: [main]
+    paths: ["version.properties"]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  generate:
+    uses: tiducto/.github/.github/workflows/generate-contract.yml@main
+    with:
+      add-paths: |
+        lib/src/contract
+        version.properties
+    secrets: inherit

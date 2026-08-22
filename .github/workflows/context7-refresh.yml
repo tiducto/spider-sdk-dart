@@ -1,12 +1,12 @@
 name: Refresh Context7 index
 
-# Re-indexes this library on Context7 after a release, so agents see the new version
-# without waiting on Context7's (slow, traffic-gated) automatic refresh cycle.
-# Skips cleanly until the CONTEXT7_API_KEY secret is set; never fails the release.
+# Re-indexes this library on Context7 so agents see the released version without waiting on
+# Context7's slow, traffic-gated auto-refresh. No longer a standalone release trigger: the release
+# pipeline calls it via workflow_call as its final stage, and workflow_dispatch keeps a manual
+# re-index button. Skips cleanly if CONTEXT7_API_KEY is unset; never fails the caller.
 on:
-  push:
-    tags: ['[0-9]+.[0-9]+.[0-9]+']
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read

@@ -1,36 +1,39 @@
-name: Publish to pub.dev
+name: Release
 
-# Automated publishing to pub.dev via OIDC — no long-lived token/secret.
-# pub.dev exchanges a short-lived GitHub OIDC token (id-token: write) for a
-# publish credential. It only trusts tag-triggered workflow runs, so this must
-# be driven by pushing a semver tag that matches the pattern configured on
-# pub.dev (Admin tab → Automated publishing → tag pattern `{{version}}`).
-# The tag version MUST equal the `version:` in pubspec.yaml. See RELEASING.md.
-
+# Release pipeline: build -> publish -> refresh-context, chained so each stage gates the next.
+# Push a semver tag X.Y.Z (must equal pubspec.yaml `version:`; pub.dev tag pattern '{{version}}').
+# pub.dev OIDC only trusts tag-triggered runs, so there is no manual dispatch.
+#
+#   build            reuses build.yml (format + analyze incl. example/ + tests) — a tag on a broken
+#                    commit never publishes.
+#   publish          needs build. OIDC publish to pub.dev via the dart-lang reusable workflow
+#                    (id-token: write, no token/secret). See RELEASING.md for the one-time setup.
+#   refresh-context  needs publish. Re-indexes Context7 only after the package is live.
 on:
   push:
     tags:
       - '[0-9]+.[0-9]+.[0-9]+' # e.g. 0.1.0 — matches pub.dev pattern '{{version}}'
 
-jobs:
-  # Gate: the tagged commit must analyze clean and pass tests before we publish.
-  verify:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dart-lang/setup-dart@v1
-      - name: Install dependencies
-        run: dart pub get
-      - name: Analyze
-        run: dart analyze --fatal-infos
-      - name: Test
-        run: dart test
+permissions:
+  contents: read
 
-  # Publish using the official reusable workflow (OIDC-based `dart pub publish`).
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+
   publish:
-    needs: verify
+    needs: build
     permissions:
       id-token: write # Required for OIDC authentication with pub.dev.
     uses: dart-lang/setup-dart/.github/workflows/publish.yml@v1
     with:
       environment: pub.dev
+
+  refresh-context:
+    needs: publish
+    uses: ./.github/workflows/context7-refresh.yml
+    secrets: inherit
