@@ -1,0 +1,25 @@
+name: spider_sdk
+description: Native Dart SDK for the Spider transit API — trip planning, stop search, and live realtime data.
+version: 0.1.0
+repository: https://github.com/tiducto/spider-sdk-dart
+issue_tracker: https://github.com/tiducto/spider-sdk-dart/issues
+documentation: https://github.com/tiducto/spider-sdk-dart#readme
+topics:
+  - transit
+  - gtfs
+  - routing
+  - transit-api
+platforms:
+  android:
+  ios:
+  linux:
+  macos:
+  web:
+  windows:
+environment:
+  sdk: ^3.5.0
+dependencies:
+  http: ^1.2.0
+dev_dependencies:
+  lints: ^4.0.0
+  test: ^1.25.0

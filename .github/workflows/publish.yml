@@ -1,0 +1,36 @@
+name: Publish to pub.dev
+
+# Automated publishing to pub.dev via OIDC — no long-lived token/secret.
+# pub.dev exchanges a short-lived GitHub OIDC token (id-token: write) for a
+# publish credential. It only trusts tag-triggered workflow runs, so this must
+# be driven by pushing a semver tag that matches the pattern configured on
+# pub.dev (Admin tab → Automated publishing → tag pattern `{{version}}`).
+# The tag version MUST equal the `version:` in pubspec.yaml. See RELEASING.md.
+
+on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+' # e.g. 0.1.0 — matches pub.dev pattern '{{version}}'
+
+jobs:
+  # Gate: the tagged commit must analyze clean and pass tests before we publish.
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+      - name: Install dependencies
+        run: dart pub get
+      - name: Analyze
+        run: dart analyze --fatal-infos
+      - name: Test
+        run: dart test
+
+  # Publish using the official reusable workflow (OIDC-based `dart pub publish`).
+  publish:
+    needs: verify
+    permissions:
+      id-token: write # Required for OIDC authentication with pub.dev.
+    uses: dart-lang/setup-dart/.github/workflows/publish.yml@v1
+    with:
+      environment: pub.dev
