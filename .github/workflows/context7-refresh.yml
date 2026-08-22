@@ -1,0 +1,33 @@
+name: Refresh Context7 index
+
+# Re-indexes this library on Context7 after a release, so agents see the new version
+# without waiting on Context7's (slow, traffic-gated) automatic refresh cycle.
+# Skips cleanly until the CONTEXT7_API_KEY secret is set; never fails the release.
+on:
+  push:
+    tags: ['[0-9]+.[0-9]+.[0-9]+']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Context7 re-index
+        env:
+          CONTEXT7_API_KEY: ${{ secrets.CONTEXT7_API_KEY }}
+        run: |
+          if [ -z "${CONTEXT7_API_KEY}" ]; then
+            echo "::warning::CONTEXT7_API_KEY not set — skipping Context7 refresh."
+            exit 0
+          fi
+          code=$(curl -sS -o /tmp/ctx7.json -w '%{http_code}' -X POST https://context7.com/api/v1/refresh \
+            -H "Authorization: Bearer ${CONTEXT7_API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d '{"libraryName":"/tiducto/spider-sdk-dart"}')
+          echo "HTTP ${code}"; cat /tmp/ctx7.json 2>/dev/null; echo
+          if [ "${code}" -ge 400 ]; then
+            echo "::warning::Context7 refresh returned ${code} — not failing the release."
+          fi
