@@ -12,7 +12,7 @@ semantics, adapted to Dart idioms (`Future`, `Stream`, sealed classes).
 
 ```yaml
 dependencies:
-  spider_sdk: ^5.1.0
+  spider_sdk: ^5.1.1
 ```
 
 ## Quickstart
@@ -90,21 +90,6 @@ final inBox = await client.stops.within(49.18, 16.59, 49.21, 16.63);
 
 // A single stop by GTFS id — Success carries the stop, or null when none matches.
 final one = await client.stops.byId('U123Z1');
-```
-
-### Route search
-
-```dart
-// Trams matching a name fragment, run by one agency — busiest-first.
-final routes = await client.routes.search(const RouteFilter(
-  query: 'Hlavní',
-  mode: RouteMode.tram,
-  agency: 'DPMB',
-  limit: 20,
-));
-
-// A single route by its feed-scoped id — Success carries the route, or null when none matches.
-final route = await client.routes.byId('1:L4');
 ```
 
 ### Realtime (poll-based)

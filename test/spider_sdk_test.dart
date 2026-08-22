@@ -80,7 +80,7 @@ void main() {
       expect(req.method, 'POST');
       expect(req.headers['apikey'], 'secret-key');
       expect(req.headers['x-spider-contract-version'], '5.1');
-      expect(req.headers['x-spider-sdk'], 'dart/5.1.0');
+      expect(req.headers['x-spider-sdk'], 'dart/5.1.1');
       expect(req.headers['content-type'], 'application/json');
       final body = bodyOf(req);
       expect(body['id'],
@@ -325,73 +325,6 @@ void main() {
         throwsA(isA<ArgumentError>()),
       );
       expect(mock.requests, isEmpty);
-    });
-  });
-
-  group('routes', () {
-    test('search composes a mode + agency filter with escaping', () async {
-      final (client, mock) = makeClient((_) => resp('{"hits":[],"query":""}'));
-      await client.routes.search(const RouteFilter(
-          query: 'Hlavní', mode: RouteMode.tram, agency: 'DP"B', limit: 20));
-      final body = bodyOf(mock.requests[0]);
-      expect(body['q'], 'Hlavní');
-      expect(body['filter'], r'mode = "TRAM" AND agencyName = "DP\"B"');
-      expect(body['limit'], 20);
-    });
-
-    test('search with only a query omits the filter', () async {
-      final (client, mock) = makeClient((_) => resp('{"hits":[],"query":"4"}'));
-      await client.routes.search(const RouteFilter(query: '4'));
-      final body = bodyOf(mock.requests[0]);
-      expect(body['q'], '4');
-      expect(body.containsKey('filter'), false);
-    });
-
-    test('byId filters on routeId, caps to 1, and maps the first hit',
-        () async {
-      const body =
-          '{"hits":[{"routeId":"1:L4","shortName":"4","longName":"Náměstí — Nová","mode":"TRAM","routeType":0,"agencyName":"DPMB","tripCount":312}],"query":""}';
-      final (client, mock) = makeClient((_) => resp(body));
-      final result = await client.routes.byId('1:L4');
-      final route = (result as Success<TransitRoute?>).value;
-      expect(route, isNotNull);
-      expect(route!.shortName, '4');
-      expect(route.mode, RouteMode.tram);
-      expect(route.tripCount, 312);
-      final sent = bodyOf(mock.requests[0]);
-      expect(sent['q'], '');
-      expect(sent['filter'], 'routeId = "1:L4"');
-      expect(sent['limit'], 1);
-    });
-
-    test('byId returns null when there are no hits', () async {
-      final (client, _) = makeClient((_) => resp('{"hits":[],"query":""}'));
-      final result = await client.routes.byId('nope');
-      expect((result as Success<TransitRoute?>).value, isNull);
-    });
-
-    test('TransitRoute round-trips from a hit and maps the mode', () async {
-      const body =
-          '{"hits":[{"routeId":"1:L4","shortName":"4","longName":"Line 4","mode":"CABLE_TRAM","routeType":5,"agencyName":"DPMB","tripCount":42}],"query":"4"}';
-      final (client, _) = makeClient((_) => resp(body));
-      final result = await client.routes.search(const RouteFilter(query: '4'));
-      final routes = (result as Success<List<TransitRoute>>).value;
-      expect(routes.length, 1);
-      final r = routes.first;
-      expect(r.routeId, '1:L4');
-      expect(r.shortName, '4');
-      expect(r.longName, 'Line 4');
-      expect(r.mode, RouteMode.cableTram);
-      expect(r.routeType, 5);
-      expect(r.agencyName, 'DPMB');
-      expect(r.tripCount, 42);
-    });
-
-    test('RouteMode.fromWire falls back to other for unknown/absent', () {
-      expect(RouteMode.fromWire('TRAM'), RouteMode.tram);
-      expect(RouteMode.fromWire('CABLE_TRAM'), RouteMode.cableTram);
-      expect(RouteMode.fromWire('SOMETHING_NEW'), RouteMode.other);
-      expect(RouteMode.fromWire(null), RouteMode.other);
     });
   });
 
