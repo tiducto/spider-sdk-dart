@@ -39,6 +39,40 @@ Future<void> handleResult(SpiderClient client) async {
   // [END handleResult]
 }
 
+/// React to a failure by branching on its typed `SpiderErrorCode`. The codes are
+/// camelCase: network, timeout, unauthorized, notFound, server, rateLimited,
+/// decoding, unknown. The switch is exhaustive — no `default` needed.
+Future<void> handleErrors(SpiderClient client) async {
+  // [START handleErrors]
+  final result = await client.routing.plan(PlanOptions(
+    origin: Location.coordinate(49.1908, 16.6128),
+    destination: Location.coordinate(49.2270, 16.5273),
+    first: 3,
+  ));
+
+  if (result case Failure(:final error)) {
+    switch (error.code) {
+      case SpiderErrorCode.unauthorized:
+        print('Check the API key for this environment');
+      case SpiderErrorCode.rateLimited:
+        print('Rate limited — back off, then retry');
+      case SpiderErrorCode.timeout:
+        print('Request timed out — retry');
+      case SpiderErrorCode.network:
+        print('Network unreachable — check connectivity');
+      case SpiderErrorCode.notFound:
+        print('Nothing matched that request');
+      case SpiderErrorCode.server:
+        print('Gateway error (HTTP ${error.httpStatus}) — retry later');
+      case SpiderErrorCode.decoding:
+        print('Could not decode the response: ${error.message}');
+      case SpiderErrorCode.unknown:
+        print('Unexpected failure: ${error.message}');
+    }
+  }
+  // [END handleErrors]
+}
+
 /// The same client reaches the stops and realtime surfaces too.
 Future<void> otherSurfaces(SpiderClient client, String tripId) async {
   // [START otherSurfaces]

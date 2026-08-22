@@ -197,6 +197,32 @@ Future<void> wheelchairPlan(SpiderClient client) async {
   // [END wheelchairPlan]
 }
 
+/// Tune a plan with the optional request options: leave at a set time, cap the
+/// number of transfers, widen the search window, restrict the modes, and ask for
+/// more itineraries per page.
+Future<void> planWithOptions(SpiderClient client) async {
+  // [START planWithOptions]
+  final result = await client.routing.plan(PlanOptions(
+    origin: Location.coordinate(49.1951, 16.6068),
+    destination: Location.coordinate(49.2246, 16.5747),
+    departAt: DateTime(2026, 8, 21, 8, 30),
+    maxTransfers: 1,
+    searchWindowMinutes: 120,
+    allowedTransitModes: const [TransitMode.tram, TransitMode.bus],
+    first: 5,
+  ));
+
+  if (result case Success(:final value)) {
+    for (final edge in value.edges) {
+      final trip = edge.itinerary;
+      print('${trip.durationSeconds ~/ 60} min, '
+          '${trip.numberOfTransfers} transfers');
+    }
+    print('search window used: ${value.pageInfo.searchWindowUsed}');
+  }
+  // [END planWithOptions]
+}
+
 /// List the next departures from a stop.
 Future<void> departures(SpiderClient client) async {
   // [START departures]
@@ -211,6 +237,35 @@ Future<void> departures(SpiderClient client) async {
     }
   }
   // [END departures]
+}
+
+/// Read the full departure record, including realtime delay info. Each
+/// `Departure` carries scheduled and (when live) realtime epoch-ms times, an
+/// `isRealtime` flag, a `realtimeState`, the route names, headsign, trip id, and mode.
+Future<void> departuresWithRealtime(SpiderClient client) async {
+  // [START departuresWithRealtime]
+  final result =
+      await client.routing.departures('U123Z1', numberOfDepartures: 5);
+
+  if (result case Success(:final value)) {
+    for (final d in value) {
+      final line = d.routeShortName ?? d.routeLongName ?? d.mode?.name ?? '?';
+      final scheduled =
+          DateTime.fromMillisecondsSinceEpoch(d.scheduledTimeEpochMs);
+
+      if (d.isRealtime && d.realtimeTimeEpochMs != null) {
+        final live = DateTime.fromMillisecondsSinceEpoch(d.realtimeTimeEpochMs!);
+        final delayMin =
+            (d.realtimeTimeEpochMs! - d.scheduledTimeEpochMs) ~/ 60000;
+        print('$line → ${d.headsign}: scheduled $scheduled, '
+            'live $live (${delayMin}m, ${d.realtimeState?.name}) '
+            '[trip ${d.tripGtfsId}]');
+      } else {
+        print('$line → ${d.headsign}: $scheduled (scheduled)');
+      }
+    }
+  }
+  // [END departuresWithRealtime]
 }
 
 /// Look up a single trip's timetable.
