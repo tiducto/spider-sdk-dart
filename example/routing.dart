@@ -254,7 +254,8 @@ Future<void> departuresWithRealtime(SpiderClient client) async {
           DateTime.fromMillisecondsSinceEpoch(d.scheduledTimeEpochMs);
 
       if (d.isRealtime && d.realtimeTimeEpochMs != null) {
-        final live = DateTime.fromMillisecondsSinceEpoch(d.realtimeTimeEpochMs!);
+        final live =
+            DateTime.fromMillisecondsSinceEpoch(d.realtimeTimeEpochMs!);
         final delayMin =
             (d.realtimeTimeEpochMs! - d.scheduledTimeEpochMs) ~/ 60000;
         print('$line → ${d.headsign}: scheduled $scheduled, '
