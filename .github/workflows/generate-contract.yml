@@ -22,7 +22,6 @@ on:
 permissions:
   contents: write
   pull-requests: write
-  actions: write # let the shared workflow start this repo's Build SDK check on the sync PR
 
 jobs:
   generate:
