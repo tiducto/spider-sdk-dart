@@ -36,7 +36,7 @@ switch (result) {
 }
 ```
 
-The recommended query pins a time and a window — a departure time (`departAt`) or an arrival deadline (`arriveBy`) together with `searchWindowMinutes` — rather than asking for _N_ results from "now". Widen the window for sparse or intercity routes, and page with `first` + `planNext`.
+The recommended query pins a time and a window — a departure time (`departAt`) or an arrival deadline (`arriveBy`) together with `searchWindowMinutes` — rather than asking for _N_ results from "now". Widen the window for sparse or intercity routes, and page through adjacent windows with `planNext` / `planPrevious`.
 
 Ordinary failures are values — every call returns a `SpiderResult<T>` (`Success` / `Failure`) you branch on. The one thrown error is `SpiderContractMismatchError`, raised when the gateway speaks a different **major** contract version than this SDK.
 
