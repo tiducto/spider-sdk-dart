@@ -62,7 +62,6 @@ void main() {
       final result = await client.routing.plan(const PlanOptions(
         origin: Location.coordinate(49.19, 16.61),
         destination: Location.coordinate(49.22, 16.52),
-        first: 3,
       ));
       expect(result, isA<Success<Route>>());
       final route = (result as Success<Route>).value;
@@ -84,9 +83,10 @@ void main() {
       expect(req.headers['content-type'], 'application/json');
       final body = bodyOf(req);
       expect(body['id'],
-          '4ce89d3209a478dd7a75d2abffd9956e79e081bfbaeeeae33fb255309c59aa80');
+          'dad4f190af803a8cb50ec99c5852544297e94db8edc0d94220c8f79d98f065a7');
       final vars = body['variables'] as Map<String, dynamic>;
-      expect(vars['first'], 3);
+      expect(vars.containsKey('first'), false);
+      expect(vars.containsKey('last'), false);
       expect(vars['searchWindow'], 'PT60M');
       expect((vars['dateTime'] as Map)['earliestDeparture'], isNotNull);
       expect((vars['dateTime'] as Map)['latestArrival'], isNull);
@@ -152,7 +152,7 @@ void main() {
       expect(dt['earliestDeparture'], isNull);
     });
 
-    test('planNext pages forward with first + after', () async {
+    test('planNext pages forward with after and no count', () async {
       const page2 =
           '{"data":{"planConnection":{"edges":[],"pageInfo":{"hasNextPage":false,"hasPreviousPage":true,"startCursor":"c2","endCursor":"c2","searchWindowUsed":"PT60M"},"routingErrors":[],"searchDateTime":null}}}';
       final (client, mock) = makeClient((req) {
@@ -167,7 +167,7 @@ void main() {
       final vars =
           bodyOf(mock.requests[1])['variables'] as Map<String, dynamic>;
       expect(vars['after'], 'c1');
-      expect(vars['first'], 5);
+      expect(vars.containsKey('first'), false);
       expect(vars.containsKey('before'), false);
       expect(vars.containsKey('last'), false);
     });
@@ -191,6 +191,21 @@ void main() {
       final error = (result as Failure<Route>).error;
       expect(error.code, SpiderErrorCode.server);
       expect(error.message, contains('bad var'));
+    });
+
+    test(
+        'a top-level BAD_REQUEST error becomes a badRequest failure '
+        'with field and message', () async {
+      const body = '{"data":null,"errors":[{'
+          '"message":"searchWindow exceeds the maximum of PT2H",'
+          '"extensions":{"code":"BAD_REQUEST","field":"searchWindow"}}]}';
+      final (client, _) = makeClient((_) => resp(body));
+      final result = await client.routing.plan(const PlanOptions(
+          origin: Location.stop('A'), destination: Location.stop('B')));
+      final error = (result as Failure<Route>).error;
+      expect(error.code, SpiderErrorCode.badRequest);
+      expect(error.field, 'searchWindow');
+      expect(error.message, 'searchWindow exceeds the maximum of PT2H');
     });
 
     test('contract mismatch throws instead of returning', () async {

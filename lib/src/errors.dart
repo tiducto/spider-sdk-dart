@@ -6,6 +6,7 @@ enum SpiderErrorCode {
   network,
   timeout,
   unauthorized,
+  badRequest,
   notFound,
   server,
   rateLimited,
@@ -19,10 +20,14 @@ class SpiderError implements Exception {
   final String message;
   final int? httpStatus;
   final String? serverCode;
+
+  /// For a [SpiderErrorCode.badRequest] (a server validation failure — over-cap `searchWindow`, malformed
+  /// `via`, or a missing required field), the offending input field when the server names one. Null otherwise.
+  final String? field;
   final Object? cause;
 
   const SpiderError(this.code, this.message,
-      {this.httpStatus, this.serverCode, this.cause});
+      {this.httpStatus, this.serverCode, this.field, this.cause});
 
   @override
   String toString() => 'SpiderError(${code.name}: $message)';
@@ -43,7 +48,7 @@ class SpiderContractMismatchError implements Exception {
 }
 
 // Internal transport errors, mapped to SpiderError by [toSpiderError].
-enum TransportErrorKind { http, noData, upstream }
+enum TransportErrorKind { http, noData, upstream, badRequest }
 
 class TransportError implements Exception {
   final TransportErrorKind kind;
@@ -51,8 +56,11 @@ class TransportError implements Exception {
   final int? httpStatus;
   final String? serverCode;
 
+  /// Set only for [TransportErrorKind.badRequest]: the offending input field the server named, if any.
+  final String? field;
+
   const TransportError(this.kind, this.message,
-      {this.httpStatus, this.serverCode});
+      {this.httpStatus, this.serverCode, this.field});
 }
 
 class SpiderDecodingError implements Exception {
@@ -87,6 +95,9 @@ SpiderError toSpiderError(Object error) {
             httpStatus: status, serverCode: error.serverCode);
       case TransportErrorKind.noData:
         return SpiderError(SpiderErrorCode.notFound, error.message);
+      case TransportErrorKind.badRequest:
+        return SpiderError(SpiderErrorCode.badRequest, error.message,
+            field: error.field);
       case TransportErrorKind.upstream:
         return SpiderError(SpiderErrorCode.server, error.message);
     }

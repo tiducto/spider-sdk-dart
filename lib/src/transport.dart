@@ -93,6 +93,16 @@ class Transport {
     final decoded = _decodeJson(resp.body, 'routing ${op.path}');
     final errors = decoded['errors'];
     if (errors is List && errors.isNotEmpty) {
+      // A BAD_REQUEST extension (over-cap searchWindow, bad via, missing required field) → typed badRequest;
+      // anything else stays a generic upstream (→ server).
+      for (final e in errors) {
+        final ext = e is Map ? e['extensions'] : null;
+        if (ext is Map && ext['code'] == 'BAD_REQUEST') {
+          throw TransportError(TransportErrorKind.badRequest,
+              (e as Map)['message']?.toString() ?? 'bad request',
+              field: ext['field'] as String?);
+        }
+      }
       final joined = errors.map((e) => (e as Map)['message']).join(', ');
       throw TransportError(
           TransportErrorKind.upstream, 'routing ${op.path} errors: $joined');

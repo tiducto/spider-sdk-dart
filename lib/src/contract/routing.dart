@@ -1941,9 +1941,7 @@ class PlanConnectionVariables {
   final List<PlanViaLocationInput>? via;
   final PlanModesInput? modes;
   final PlanPreferencesInput? preferences;
-  final String? searchWindow;
-  final int? first;
-  final int? last;
+  final String searchWindow;
   final String? before;
   final String? after;
 
@@ -1954,9 +1952,7 @@ class PlanConnectionVariables {
     this.via,
     this.modes,
     this.preferences,
-    this.searchWindow,
-    this.first,
-    this.last,
+    required this.searchWindow,
     this.before,
     this.after,
   });
@@ -1980,9 +1976,7 @@ class PlanConnectionVariables {
             ? null
             : PlanPreferencesInput.fromJson(
                 json['preferences'] as Map<String, dynamic>),
-        searchWindow: json['searchWindow'] as String?,
-        first: (json['first'] as num?)?.toInt(),
-        last: (json['last'] as num?)?.toInt(),
+        searchWindow: json['searchWindow'] as String,
         before: json['before'] as String?,
         after: json['after'] as String?,
       );
@@ -1994,9 +1988,7 @@ class PlanConnectionVariables {
         if (via != null) 'via': via!.map((e) => e.toJson()).toList(),
         if (modes != null) 'modes': modes!.toJson(),
         if (preferences != null) 'preferences': preferences!.toJson(),
-        if (searchWindow != null) 'searchWindow': searchWindow!,
-        if (first != null) 'first': first!,
-        if (last != null) 'last': last!,
+        'searchWindow': searchWindow,
         if (before != null) 'before': before!,
         if (after != null) 'after': after!,
       };

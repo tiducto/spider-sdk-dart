@@ -14,10 +14,12 @@ SpiderClient setup() {
 /// Plan a trip and walk its itineraries leg by leg.
 Future<void> planTrip(SpiderClient client) async {
   // [START planTrip]
+  // The recommended shape: a departure time plus a search window, not "N results from now".
   final result = await client.routing.plan(PlanOptions(
     origin: Location.coordinate(49.1951, 16.6068),
     destination: Location.coordinate(49.2246, 16.5747),
-    first: 3,
+    departAt: DateTime.now(),
+    searchWindowMinutes: 60,
   ));
 
   switch (result) {
@@ -46,7 +48,7 @@ Future<void> planForTime(SpiderClient client) async {
     origin: Location.coordinate(49.1951, 16.6068),
     destination: Location.coordinate(49.2246, 16.5747),
     departAt: DateTime(2026, 8, 21, 8, 30),
-    first: 3,
+    searchWindowMinutes: 30,
   ));
 
   if (result case Success(:final value)) {
@@ -61,7 +63,6 @@ Future<void> laterItineraries(SpiderClient client) async {
   final result = await client.routing.plan(PlanOptions(
     origin: Location.coordinate(49.1951, 16.6068),
     destination: Location.coordinate(49.2246, 16.5747),
-    first: 3,
   ));
 
   switch (result) {
@@ -70,7 +71,7 @@ Future<void> laterItineraries(SpiderClient client) async {
       final nextPage = await client.routing.planNext(value);
       switch (nextPage) {
         case null:
-          print('No later itineraries — that was the last page');
+          print('No later itineraries — that was the last window');
         case Success(value: final later):
           for (final edge in later.edges) {
             print('${edge.itinerary.start} → ${edge.itinerary.end}');
@@ -90,7 +91,6 @@ Future<void> earlierItineraries(SpiderClient client) async {
   final result = await client.routing.plan(PlanOptions(
     origin: Location.coordinate(49.1951, 16.6068),
     destination: Location.coordinate(49.2246, 16.5747),
-    first: 3,
   ));
 
   switch (result) {
@@ -99,7 +99,7 @@ Future<void> earlierItineraries(SpiderClient client) async {
       final previousPage = await client.routing.planPrevious(value);
       switch (previousPage) {
         case null:
-          print('No earlier itineraries — that was the first page');
+          print('No earlier itineraries — that was the first window');
         case Success(value: final earlier):
           for (final edge in earlier.edges) {
             print('${edge.itinerary.start} → ${edge.itinerary.end}');
@@ -120,7 +120,6 @@ Future<void> planWithModes(SpiderClient client) async {
     origin: Location.coordinate(49.1951, 16.6068),
     destination: Location.coordinate(49.2246, 16.5747),
     allowedTransitModes: const [TransitMode.tram, TransitMode.subway],
-    first: 3,
   ));
 
   if (result case Success(:final value)) {
@@ -140,7 +139,7 @@ Future<void> arriveBy(SpiderClient client) async {
     origin: Location.coordinate(49.1951, 16.6068),
     destination: Location.coordinate(49.2246, 16.5747),
     arriveBy: DateTime(2026, 8, 21, 9, 0),
-    first: 3,
+    searchWindowMinutes: 60,
   ));
 
   if (result case Success(:final value)) {
@@ -164,7 +163,6 @@ Future<void> planVia(SpiderClient client) async {
         minimumWaitSeconds: 300,
       ),
     ],
-    first: 3,
   ));
 
   if (result case Success(:final value)) {
@@ -180,7 +178,6 @@ Future<void> wheelchairPlan(SpiderClient client) async {
     origin: Location.coordinate(49.1951, 16.6068),
     destination: Location.coordinate(49.2246, 16.5747),
     wheelchairAccessible: true,
-    first: 3,
   ));
 
   if (result case Success(:final value)) {
@@ -198,8 +195,7 @@ Future<void> wheelchairPlan(SpiderClient client) async {
 }
 
 /// Tune a plan with the optional request options: leave at a set time, cap the
-/// number of transfers, widen the search window, restrict the modes, and ask for
-/// more itineraries per page.
+/// number of transfers, widen the search window, and restrict the modes.
 Future<void> planWithOptions(SpiderClient client) async {
   // [START planWithOptions]
   final result = await client.routing.plan(PlanOptions(
@@ -209,7 +205,6 @@ Future<void> planWithOptions(SpiderClient client) async {
     maxTransfers: 1,
     searchWindowMinutes: 120,
     allowedTransitModes: const [TransitMode.tram, TransitMode.bus],
-    first: 5,
   ));
 
   if (result case Success(:final value)) {

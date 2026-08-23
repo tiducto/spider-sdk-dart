@@ -194,7 +194,6 @@ class TripDetails {
 class PlanOptions {
   final Location origin;
   final Location destination;
-  final int? first;
   final DateTime? departAt;
   final DateTime? arriveBy;
   final List<ViaLocation> via;
@@ -205,7 +204,6 @@ class PlanOptions {
   const PlanOptions({
     required this.origin,
     required this.destination,
-    this.first,
     this.departAt,
     this.arriveBy,
     this.via = const [],
@@ -243,11 +241,9 @@ class _PlanRequest {
 
 enum _PageDirection { forward, backward }
 
-const _defaultFirst = 5;
 const _defaultSearchWindowMinutes = 60;
 const _defaultMaxTraversalMinutes = 360;
 const _defaultTargetResults = 10;
-const _maxResultsPerStep = 50;
 const _defaultTimeRangeSeconds = 24 * 60 * 60;
 const _intMax = 2147483647;
 
@@ -275,24 +271,21 @@ class SpiderRouting {
   final Transport _transport;
   SpiderRouting(this._transport);
 
-  /// Plans a trip. Returns the first page of itineraries.
+  /// Plans a trip. Returns the first window of itineraries.
   Future<SpiderResult<Route>> plan(PlanOptions options) {
-    return _page(_makeRequest(options), first: options.first ?? _defaultFirst);
+    return _page(_makeRequest(options));
   }
 
-  /// The next page after [route], or null if there is none.
-  Future<SpiderResult<Route>?> planNext(Route route,
-      {int first = _defaultFirst}) async {
+  /// The next window after [route], or null if there is none. Pages forward with `after` (no page-size count).
+  Future<SpiderResult<Route>?> planNext(Route route) async {
     if (!route.pageInfo.hasNextPage) return null;
-    return _page(route._request, first: first, after: route.pageInfo.endCursor);
+    return _page(route._request, after: route.pageInfo.endCursor);
   }
 
-  /// The previous page before [route], or null if there is none. Pages backward (last + before), Relay-correct.
-  Future<SpiderResult<Route>?> planPrevious(Route route,
-      {int last = _defaultFirst}) async {
+  /// The previous window before [route], or null if there is none. Pages backward with `before` (no page-size count).
+  Future<SpiderResult<Route>?> planPrevious(Route route) async {
     if (!route.pageInfo.hasPreviousPage) return null;
-    return _page(route._request,
-        last: last, before: route.pageInfo.startCursor);
+    return _page(route._request, before: route.pageInfo.startCursor);
   }
 
   /// Streams itineraries forward, one search window per step, until [targetResults] are collected or
@@ -308,7 +301,6 @@ class SpiderRouting {
     final first = await plan(PlanOptions(
       origin: options.origin,
       destination: options.destination,
-      first: _maxResultsPerStep,
       departAt: options.departAt,
       arriveBy: options.arriveBy,
       via: options.via,
@@ -410,10 +402,9 @@ class SpiderRouting {
   }
 
   Future<SpiderResult<Route>> _page(_PlanRequest request,
-      {int? first, int? last, String? before, String? after}) async {
+      {String? before, String? after}) async {
     try {
-      return Success(await _fetchPlan(request,
-          first: first, last: last, before: before, after: after));
+      return Success(await _fetchPlan(request, before: before, after: after));
     } on SpiderContractMismatchError {
       rethrow;
     } catch (e) {
@@ -422,7 +413,7 @@ class SpiderRouting {
   }
 
   Future<Route> _fetchPlan(_PlanRequest request,
-      {int? first, int? last, String? before, String? after}) async {
+      {String? before, String? after}) async {
     final iso = request.time.toUtc().toIso8601String();
     final dateTime = request.timeKind == _TimeKind.departAt
         ? wire.PlanDateTimeInput(earliestDeparture: iso)
@@ -436,8 +427,6 @@ class SpiderRouting {
       preferences: _preferencesInput(request),
       searchWindow:
           'PT${request.searchWindowMinutes < 1 ? 1 : request.searchWindowMinutes}M',
-      first: first,
-      last: last,
       before: before,
       after: after,
     ).toJson();
@@ -477,8 +466,8 @@ class SpiderRouting {
     var collected = collectedSoFar;
     for (var i = 0; i < (remainingSteps < 0 ? 0 : remainingSteps); i++) {
       final result = direction == _PageDirection.forward
-          ? await planNext(prev, first: _maxResultsPerStep)
-          : await planPrevious(prev, last: _maxResultsPerStep);
+          ? await planNext(prev)
+          : await planPrevious(prev);
       if (result == null) return;
       yield result;
       if (result is! Success<Route>) return;
