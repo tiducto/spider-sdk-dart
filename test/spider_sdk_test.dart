@@ -193,6 +193,21 @@ void main() {
       expect(error.message, contains('bad var'));
     });
 
+    test(
+        'a top-level BAD_REQUEST error becomes a badRequest failure '
+        'with field and message', () async {
+      const body = '{"data":null,"errors":[{'
+          '"message":"searchWindow exceeds the maximum of PT2H",'
+          '"extensions":{"code":"BAD_REQUEST","field":"searchWindow"}}]}';
+      final (client, _) = makeClient((_) => resp(body));
+      final result = await client.routing.plan(const PlanOptions(
+          origin: Location.stop('A'), destination: Location.stop('B')));
+      final error = (result as Failure<Route>).error;
+      expect(error.code, SpiderErrorCode.badRequest);
+      expect(error.field, 'searchWindow');
+      expect(error.message, 'searchWindow exceeds the maximum of PT2H');
+    });
+
     test('contract mismatch throws instead of returning', () async {
       final (client, _) =
           makeClient((_) => resp(planBody, contractVersion: '4.0'));
