@@ -11,7 +11,8 @@ Future<SpiderResult<Route>> firstCall() async {
   final result = await client.routing.plan(PlanOptions(
     origin: Location.coordinate(49.1908, 16.6128),
     destination: Location.coordinate(49.2270, 16.5273),
-    first: 3,
+    departAt: DateTime.now(),
+    searchWindowMinutes: 60,
   ));
   // [END firstCall]
   return result;
@@ -23,7 +24,8 @@ Future<void> handleResult(SpiderClient client) async {
   final result = await client.routing.plan(PlanOptions(
     origin: Location.coordinate(49.1908, 16.6128),
     destination: Location.coordinate(49.2270, 16.5273),
-    first: 3,
+    departAt: DateTime.now(),
+    searchWindowMinutes: 60,
   ));
 
   switch (result) {
@@ -47,7 +49,8 @@ Future<void> handleErrors(SpiderClient client) async {
   final result = await client.routing.plan(PlanOptions(
     origin: Location.coordinate(49.1908, 16.6128),
     destination: Location.coordinate(49.2270, 16.5273),
-    first: 3,
+    departAt: DateTime.now(),
+    searchWindowMinutes: 60,
   ));
 
   if (result case Failure(:final error)) {

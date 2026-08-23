@@ -14,10 +14,12 @@ SpiderClient setup() {
 /// Plan a trip and walk its itineraries leg by leg.
 Future<void> planTrip(SpiderClient client) async {
   // [START planTrip]
+  // The recommended shape: a departure time plus a search window, not "N results from now".
   final result = await client.routing.plan(PlanOptions(
     origin: Location.coordinate(49.1951, 16.6068),
     destination: Location.coordinate(49.2246, 16.5747),
-    first: 3,
+    departAt: DateTime.now(),
+    searchWindowMinutes: 60,
   ));
 
   switch (result) {
@@ -46,7 +48,7 @@ Future<void> planForTime(SpiderClient client) async {
     origin: Location.coordinate(49.1951, 16.6068),
     destination: Location.coordinate(49.2246, 16.5747),
     departAt: DateTime(2026, 8, 21, 8, 30),
-    first: 3,
+    searchWindowMinutes: 30,
   ));
 
   if (result case Success(:final value)) {
@@ -140,7 +142,7 @@ Future<void> arriveBy(SpiderClient client) async {
     origin: Location.coordinate(49.1951, 16.6068),
     destination: Location.coordinate(49.2246, 16.5747),
     arriveBy: DateTime(2026, 8, 21, 9, 0),
-    first: 3,
+    searchWindowMinutes: 60,
   ));
 
   if (result case Success(:final value)) {
