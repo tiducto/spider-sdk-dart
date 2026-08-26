@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:spider_sdk/spider_sdk.dart';
 import 'package:spider_sdk/src/polyline.dart' show decodePolyline;
+import 'package:spider_sdk/src/version.dart' show sdkVersion;
 import 'package:test/test.dart';
 
 class MockHttpClient implements SpiderHttpClient {
@@ -79,7 +80,7 @@ void main() {
       expect(req.method, 'POST');
       expect(req.headers['apikey'], 'secret-key');
       expect(req.headers['x-spider-contract-version'], '0.1');
-      expect(req.headers['x-spider-sdk'], 'dart/0.1.0');
+      expect(req.headers['x-spider-sdk'], 'dart/$sdkVersion');
       expect(req.headers['content-type'], 'application/json');
       final body = bodyOf(req);
       expect(body['id'],
