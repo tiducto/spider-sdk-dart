@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.1 - 2026-08-26
+
+**Breaking:** `searchWindow` is now required on plan requests (the gateway enforces the
+updated contract, and older persisted-query ids are rejected with 403).
+
+- Persisted queries updated to the current published contract.
+- Server-side validation failures now surface as `SpiderErrorCode.badRequest`.
+
 ## 0.1.0 - 2026-08-22
 
 Initial public pre-release; targets Spider API contract `0.1`.
