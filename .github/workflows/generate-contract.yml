@@ -8,10 +8,8 @@ name: Pull contract updates
 on:
   # Manual kick — no inputs; the shared workflow resolves the next version from the marker + tags itself.
   workflow_dispatch:
-  # Fired by the admintool when a contract version is released.
-  repository_dispatch:
-    types: [contract-released]
-  # Nightly backstop in case a dispatch is missed.
+  # Nightly timed pull — the sole automated trigger; sync is pull-only (enumerates the contract
+  # repo's released v<x.y> tags), nothing pushes to this repo.
   schedule:
     - cron: "0 6 * * *"
   # Auto-chain: a merged sync PR bumps version.properties; that push syncs the next version.
