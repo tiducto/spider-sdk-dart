@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- `maxTransfers` now maps to the router's boarding count (`maximumTransfers = transfers + 1`). The
+  router indexes legs with leg 0 as the initial access (walk, or nothing), so passing the caller's
+  transfer count verbatim made `maxTransfers` 0 and 1 behave identically. Now `0` means direct,
+  `1` allows one transfer, and so on.
+
 ## 0.1.1 - 2026-08-26
 
 **Breaking:** `searchWindow` is now required on plan requests (the gateway enforces the

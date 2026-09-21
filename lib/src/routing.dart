@@ -528,10 +528,13 @@ wire.PlanModesInput? _modesInput(List<TransitMode> modes) {
 
 wire.PlanPreferencesInput? _preferencesInput(_PlanRequest request) {
   final maxTransfers = request.maxTransfers;
+  // The router indexes legs with leg 0 = the initial access (walk, or nothing), so its wire
+  // `maximumTransfers` counts boardings = transfers + 1 (wire 0 = walk-only, not exposed here).
+  // `maxTransfers` is a transfer count, so map it to boardings: 0 transfers = 1 boarding (direct).
   final transit = maxTransfers != null
       ? wire.TransitPreferencesInput(
           transfer:
-              wire.TransferPreferencesInput(maximumTransfers: maxTransfers))
+              wire.TransferPreferencesInput(maximumTransfers: maxTransfers + 1))
       : null;
   final accessibility = request.wheelchairAccessible
       ? wire.AccessibilityPreferencesInput(
