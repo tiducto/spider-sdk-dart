@@ -62,11 +62,38 @@ class SpiderClient {
       SpiderRouting(transportFor(options.routing)),
       SpiderStops(transportFor(options.stops)),
       SpiderRealtime(transportFor(options.realtime)),
+      // A retry-free transport over the same shared HTTP client the three surfaces use, so the connection
+      // warmup() opens is the one their calls reuse.
+      transportFor(null),
     );
   }
 
-  SpiderClient._(this.routing, this.stops, this.realtime);
+  SpiderClient._(this.routing, this.stops, this.realtime, this._warmup);
+
+  final Transport _warmup;
 
   /// The contract (major.minor) version this SDK speaks.
   String get contractVersion => c.contractVersion;
+
+  /// Pre-warms the connection to the environment's API host so the first real call doesn't pay for cold
+  /// TLS/connection setup (~0.6s on mobile, otherwise nearly doubling the first trip-planning call). Fires ONE
+  /// keyless `GET {baseUrl}/ping` through the SDK's shared HTTP client, so the connection it opens is the one
+  /// [routing]/[stops]/[realtime] calls then reuse.
+  ///
+  /// Best-effort and never throws: any failure — transport error, timeout, or a non-2xx (e.g. a `404` before
+  /// the gateway `/ping` route is deployed) — still warmed the connection, so the measured round-trip
+  /// [Duration] is returned regardless. Safe to fire-and-forget.
+  ///
+  /// Call it once at app start, and again when the app returns to the foreground, to keep the first
+  /// trip-planning request fast.
+  Future<Duration> warmup() async {
+    final sw = Stopwatch()..start();
+    try {
+      await _warmup.ping();
+    } catch (_) {
+      // Best-effort: the connection is opened by the attempt itself, even when the response never lands.
+    }
+    sw.stop();
+    return sw.elapsed;
+  }
 }

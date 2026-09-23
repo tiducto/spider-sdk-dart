@@ -154,6 +154,17 @@ class Transport {
     return fromJson(_decodeJson(resp.body, 'GET $path'));
   }
 
+  /// Keyless connection warm-up: one bare `GET {baseUrl}/ping` straight through the shared HTTP client, so it
+  /// opens (or reuses) the TLS connection real calls travel over. Sends NO apikey/identity headers and runs no
+  /// retry or contract check — `/ping` is public gateway infrastructure, not a contract operation. The response
+  /// (any status) is ignored; the round trip is the point. Bounded by [timeout].
+  Future<void> ping() async {
+    await httpClient
+        .send(SpiderHttpRequest(
+            'GET', Uri.parse('$baseUrl/ping'), const {}, null))
+        .timeout(timeout);
+  }
+
   Future<SpiderHttpResponse> _send(SpiderHttpRequest request) async {
     final maxAttempts = retry?.maxAttempts ?? 1;
     var attempt = 1;

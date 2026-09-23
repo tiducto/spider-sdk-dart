@@ -373,6 +373,36 @@ void main() {
     });
   });
 
+  group('warmup', () {
+    test('issues one keyless GET to /ping and returns the elapsed duration',
+        () async {
+      final (client, mock) = makeClient((_) => resp('pong'));
+      final elapsed = await client.warmup();
+      expect(elapsed, isA<Duration>());
+      expect(mock.requests.length, 1);
+      final req = mock.requests[0];
+      expect(req.method, 'GET');
+      expect(req.uri.path, '/ping');
+      expect(req.headers.containsKey('apikey'), false);
+      expect(req.body, isNull);
+    });
+
+    test(
+        'treats a non-2xx (404 before the route deploys) as a warmed '
+        'connection, not a failure', () async {
+      final (client, mock) = makeClient((_) => resp('not found', status: 404));
+      final elapsed = await client.warmup();
+      expect(elapsed, isA<Duration>());
+      expect(mock.requests.length, 1);
+    });
+
+    test('never throws when the request fails outright', () async {
+      final (client, _) = makeClient((_) => throw Exception('connection down'));
+      final elapsed = await client.warmup();
+      expect(elapsed, isA<Duration>());
+    });
+  });
+
   group('enums and polyline', () {
     test('open and closed enum mapping', () {
       expect(TransitMode.fromWire('BUS'), TransitMode.bus);
