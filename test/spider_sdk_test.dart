@@ -374,7 +374,7 @@ void main() {
   });
 
   group('warmup', () {
-    test('issues one keyless GET to /ping and returns the elapsed duration',
+    test('issues one apikey-authenticated GET to /ping and returns the elapsed duration',
         () async {
       final (client, mock) = makeClient((_) => resp('pong'));
       final elapsed = await client.warmup();
@@ -383,7 +383,7 @@ void main() {
       final req = mock.requests[0];
       expect(req.method, 'GET');
       expect(req.uri.path, '/ping');
-      expect(req.headers.containsKey('apikey'), false);
+      expect(req.headers['apikey'], 'secret-key');
       expect(req.body, isNull);
     });
 

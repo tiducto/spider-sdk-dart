@@ -77,8 +77,8 @@ class SpiderClient {
 
   /// Pre-warms the connection to the environment's API host so the first real call doesn't pay for cold
   /// TLS/connection setup (~0.6s on mobile, otherwise nearly doubling the first trip-planning call). Fires ONE
-  /// keyless `GET {baseUrl}/ping` through the SDK's shared HTTP client, so the connection it opens is the one
-  /// [routing]/[stops]/[realtime] calls then reuse.
+  /// `GET {baseUrl}/ping` — authenticated with the client apikey — through the SDK's shared HTTP client, so the
+  /// connection it opens is the one [routing]/[stops]/[realtime] calls then reuse.
   ///
   /// Best-effort and never throws: any failure — transport error, timeout, or a non-2xx (e.g. a `404` before
   /// the gateway `/ping` route is deployed) — still warmed the connection, so the measured round-trip
