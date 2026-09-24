@@ -119,6 +119,7 @@ void main() {
           TransitMode.walk,
           TransitMode.tram
         ],
+        // 2 transfers ⇒ wire maximumTransfers = 3 (the router counts boardings = transfers + 1).
         maxTransfers: 2,
         searchWindowMinutes: 30,
         wheelchairAccessible: true,
@@ -133,7 +134,7 @@ void main() {
       final prefs = vars['preferences'] as Map;
       expect(
           (((prefs['transit'] as Map)['transfer']) as Map)['maximumTransfers'],
-          2);
+          3);
       expect(
           (((prefs['accessibility'] as Map)['wheelchair']) as Map)['enabled'],
           true);
