@@ -11,8 +11,16 @@ class PersistedOp {
 }
 
 class PersistedQueries {
-  static const departures = PersistedOp('70a644fe3c6b2cbf5b2d70cef8230c1428bea6357ae1766772162d86469563d0', 'departures');
-  static const plan = PersistedOp('dad4f190af803a8cb50ec99c5852544297e94db8edc0d94220c8f79d98f065a7', 'plan');
-  static const planstream = PersistedOp('5a92b2943c4bdce61190cf8399277dacc8a5fb20e1caf9e760d3681598fe49b6', 'plan-stream');
-  static const trip = PersistedOp('e8959a8d47a8e8437ee3ec740cd9c3e28bd401efdd236dde0502559daea53920', 'trip');
+  static const departures = PersistedOp(
+      '70a644fe3c6b2cbf5b2d70cef8230c1428bea6357ae1766772162d86469563d0',
+      'departures');
+  static const plan = PersistedOp(
+      'dad4f190af803a8cb50ec99c5852544297e94db8edc0d94220c8f79d98f065a7',
+      'plan');
+  static const planstream = PersistedOp(
+      '5a92b2943c4bdce61190cf8399277dacc8a5fb20e1caf9e760d3681598fe49b6',
+      'plan-stream');
+  static const trip = PersistedOp(
+      'e8959a8d47a8e8437ee3ec740cd9c3e28bd401efdd236dde0502559daea53920',
+      'trip');
 }
