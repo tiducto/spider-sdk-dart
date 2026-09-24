@@ -263,12 +263,9 @@ class _PlanRequest {
   });
 }
 
-enum _PageDirection { forward, backward }
-
 const _defaultSearchWindowMinutes = 60;
-const _defaultMaxTraversalMinutes = 360;
-const _defaultTargetResults = 10;
 const _defaultStreamTargetResults = 5;
+const _defaultStreamMaxWindowMinutes = 360;
 const _defaultTimeRangeSeconds = 24 * 60 * 60;
 const _intMax = 2147483647;
 
@@ -311,51 +308,6 @@ class SpiderRouting {
   Future<SpiderResult<Route>?> planPrevious(Route route) async {
     if (!route.pageInfo.hasPreviousPage) return null;
     return _page(route._request, before: route.pageInfo.startCursor);
-  }
-
-  /// Streams itineraries forward, one search window per step, until [targetResults] are collected or
-  /// [maxTraversalMinutes] of time is traversed. Lazy: stop listening to skip the remaining searches.
-  Stream<SpiderResult<Route>> planUntil(
-    PlanOptions options, {
-    int targetResults = _defaultTargetResults,
-    int maxTraversalMinutes = _defaultMaxTraversalMinutes,
-  }) async* {
-    final windowMin =
-        options.searchWindowMinutes ?? _defaultSearchWindowMinutes;
-    final steps = _stepCount(maxTraversalMinutes, windowMin);
-    final first = await plan(PlanOptions(
-      origin: options.origin,
-      destination: options.destination,
-      departAt: options.departAt,
-      arriveBy: options.arriveBy,
-      via: options.via,
-      allowedTransitModes: options.allowedTransitModes,
-      maxTransfers: options.maxTransfers,
-      searchWindowMinutes: options.searchWindowMinutes,
-      wheelchairAccessible: options.wheelchairAccessible,
-    ));
-    yield first;
-    if (first is! Success<Route>) return;
-    yield* _stepStream(first.value, _PageDirection.forward, steps - 1,
-        targetResults, first.value.edges.length);
-  }
-
-  /// Streaming form of planNext: steps forward from [prev].
-  Stream<SpiderResult<Route>> planNextUntil(Route prev,
-      {int targetResults = _defaultTargetResults,
-      int maxTraversalMinutes = _defaultMaxTraversalMinutes}) {
-    final steps =
-        _stepCount(maxTraversalMinutes, prev._request.searchWindowMinutes);
-    return _stepStream(prev, _PageDirection.forward, steps, targetResults, 0);
-  }
-
-  /// Streaming form of planPrevious: steps backward from [prev].
-  Stream<SpiderResult<Route>> planPreviousUntil(Route prev,
-      {int targetResults = _defaultTargetResults,
-      int maxTraversalMinutes = _defaultMaxTraversalMinutes}) {
-    final steps =
-        _stepCount(maxTraversalMinutes, prev._request.searchWindowMinutes);
-    return _stepStream(prev, _PageDirection.backward, steps, targetResults, 0);
   }
 
   /// Departures from a stop, soonest first. [numberOfDepartures] caps the count; [startTime] defaults to now.
@@ -408,24 +360,56 @@ class SpiderRouting {
     }
   }
 
-  /// Streams itineraries over Server-Sent Events as the router sweeps the search window forward, emitting them
-  /// as they finalize instead of one batched page. Cold and cancellable: listening starts the request,
-  /// cancelling the subscription stops the sweep. Each [PlanStreamChunk] carries itineraries with realtime
-  /// delays already applied to their legs; a [PlanStreamPage] then carries the continuation cursors and a
-  /// [PlanStreamDone] closes the stream (or a terminal [PlanStreamFailure]).
+  /// Streams the first window of itineraries over Server-Sent Events as the router sweeps the search window
+  /// forward, emitting them as they finalize instead of one batched page. Cold and cancellable: listening
+  /// starts the request, cancelling the subscription stops the sweep. Each [PlanStreamResult] carries
+  /// itineraries with realtime delays already applied to their legs; a terminal [PlanStreamDone] then carries
+  /// the continuation paging info (or a terminal [PlanStreamFailure]).
   ///
   /// [targetResults] is a soft floor the sweep aims to reach; [maxWindowMinutes] caps how far forward it
-  /// searches. To continue, re-call with the same [options] plus [after] = the last [RoutePageInfo.endCursor]
-  /// (or [before] = [RoutePageInfo.startCursor] to walk earlier). For a single batched page instead, use
-  /// [plan]. [PlanOptions.searchWindowMinutes] is ignored here — the stream paces itself with
-  /// [targetResults]/[maxWindowMinutes].
+  /// searches. To continue, read [PlanStreamDone.pageInfo] and call [planStreamNext] with its
+  /// [RoutePageInfo.endCursor] (or [planStreamPrevious] with its [RoutePageInfo.startCursor]). For a single
+  /// batched page instead, use [plan]. [PlanOptions.searchWindowMinutes] is ignored here — the stream paces
+  /// itself with [targetResults]/[maxWindowMinutes].
   Stream<PlanStreamEvent> planStream(
     PlanOptions options, {
     int targetResults = _defaultStreamTargetResults,
-    int maxWindowMinutes = _defaultMaxTraversalMinutes,
-    String? after,
+    int maxWindowMinutes = _defaultStreamMaxWindowMinutes,
+  }) {
+    return _planStream(options, targetResults, maxWindowMinutes, null, null);
+  }
+
+  /// Continues [planStream] forward from a [PlanStreamDone.pageInfo] whose [RoutePageInfo.hasNextPage] is set,
+  /// passing its [RoutePageInfo.endCursor] as [after]. Repeats [planStream]'s parameters so the sweep can be
+  /// re-paced per continuation.
+  Stream<PlanStreamEvent> planStreamNext(
+    PlanOptions options, {
+    int targetResults = _defaultStreamTargetResults,
+    int maxWindowMinutes = _defaultStreamMaxWindowMinutes,
+    required String after,
+  }) {
+    return _planStream(options, targetResults, maxWindowMinutes, null, after);
+  }
+
+  /// Continues [planStream] backward from a [PlanStreamDone.pageInfo] whose [RoutePageInfo.hasPreviousPage] is
+  /// set, passing its [RoutePageInfo.startCursor] as [before]. Repeats [planStream]'s parameters so the sweep
+  /// can be re-paced per continuation.
+  Stream<PlanStreamEvent> planStreamPrevious(
+    PlanOptions options, {
+    int targetResults = _defaultStreamTargetResults,
+    int maxWindowMinutes = _defaultStreamMaxWindowMinutes,
+    required String before,
+  }) {
+    return _planStream(options, targetResults, maxWindowMinutes, before, null);
+  }
+
+  Stream<PlanStreamEvent> _planStream(
+    PlanOptions options,
+    int targetResults,
+    int maxWindowMinutes,
     String? before,
-  }) async* {
+    String? after,
+  ) async* {
     final request = _makeRequest(options);
     final iso = request.time.toUtc().toIso8601String();
     final dateTime = request.timeKind == _TimeKind.departAt
@@ -529,24 +513,6 @@ class SpiderRouting {
         searchDateTime: plan.searchDateTime,
         request: request);
   }
-
-  Stream<SpiderResult<Route>> _stepStream(Route start, _PageDirection direction,
-      int remainingSteps, int targetResults, int collectedSoFar) async* {
-    if (collectedSoFar >= targetResults) return;
-    var prev = start;
-    var collected = collectedSoFar;
-    for (var i = 0; i < (remainingSteps < 0 ? 0 : remainingSteps); i++) {
-      final result = direction == _PageDirection.forward
-          ? await planNext(prev)
-          : await planPrevious(prev);
-      if (result == null) return;
-      yield result;
-      if (result is! Success<Route>) return;
-      collected += result.value.edges.length;
-      if (collected >= targetResults) return;
-      prev = result.value;
-    }
-  }
 }
 
 // MARK: request builders
@@ -619,9 +585,9 @@ wire.PlanPreferencesInput? _preferencesInput(_PlanRequest request) {
 // MARK: plan-stream record parsing
 
 /// Parses one finished SSE record (its `event` name + accumulated `data`) into a [PlanStreamEvent]; returns
-/// null for records the SDK doesn't surface (heartbeats, blank data, unknown events). A malformed payload
-/// becomes a terminal [PlanStreamFailure] rather than throwing. Public so the wire-contract test exercises it
-/// directly, matching the batch plan's wire→domain mapping.
+/// null for records the SDK doesn't surface (the terminal `done` telemetry, heartbeats, blank data, unknown
+/// events). A malformed payload becomes a terminal [PlanStreamFailure] rather than throwing. Public so the
+/// wire-contract test exercises it directly, matching the batch plan's wire→domain mapping.
 PlanStreamEvent? parsePlanStreamRecord(String event, String data) {
   if (data.trim().isEmpty) return null;
   switch (event) {
@@ -632,19 +598,14 @@ PlanStreamEvent? parsePlanStreamRecord(String event, String data) {
             .map((e) => _mapItinerary(
                 wire.Itinerary.fromJson(e as Map<String, dynamic>)))
             .toList();
-        return PlanStreamChunk(
-          frontierSeconds: (json['frontier'] as num?)?.toInt() ?? 0,
-          found: (json['found'] as num?)?.toInt() ?? 0,
-          finalized: (json['finalized'] as num?)?.toInt() ?? 0,
-          itineraries: itineraries,
-        );
+        return PlanStreamResult(itineraries);
       } catch (e) {
         return PlanStreamFailure(_streamDecodingError('chunk', e));
       }
     case 'pageInfo':
       try {
         final json = jsonDecode(data) as Map<String, dynamic>;
-        return PlanStreamPage(RoutePageInfo(
+        return PlanStreamDone(RoutePageInfo(
           startCursor: json['startCursor'] as String?,
           endCursor: json['endCursor'] as String?,
           hasNextPage: json['hasNextPage'] as bool? ?? false,
@@ -654,21 +615,10 @@ PlanStreamEvent? parsePlanStreamRecord(String event, String data) {
       } catch (e) {
         return PlanStreamFailure(_streamDecodingError('pageInfo', e));
       }
-    case 'done':
-      try {
-        final json = jsonDecode(data) as Map<String, dynamic>;
-        return PlanStreamDone(
-          iterations: (json['iterations'] as num?)?.toInt() ?? 0,
-          windowSeconds: (json['windowSeconds'] as num?)?.toInt() ?? 0,
-          resultCount: (json['resultCount'] as num?)?.toInt() ?? 0,
-          stoppedBy: json['stoppedBy'] as String? ?? 'unknown',
-        );
-      } catch (e) {
-        return PlanStreamFailure(_streamDecodingError('done', e));
-      }
     case 'error':
       return PlanStreamFailure(_streamErrorToSpiderError(data));
     default:
+      // The `done` telemetry frame and any heartbeat/unknown record just end the stream.
       return null;
   }
 }
@@ -849,9 +799,3 @@ TripDetails _mapTrip(wire.TripTrip w) {
 
 int _clampSeconds(int seconds) =>
     seconds < 0 ? 0 : (seconds > _intMax ? _intMax : seconds);
-
-int _stepCount(int maxTraversalMinutes, int stepMinutes) {
-  final step = stepMinutes < 1 ? 1 : stepMinutes;
-  final n = maxTraversalMinutes ~/ step;
-  return n < 1 ? 1 : n;
-}

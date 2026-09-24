@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.7.1 - 2026-09-25
+
+Targets Spider API contract `0.7`.
+
+### Changed
+
+- **`SpiderRouting.planStream(...)` streams the initial window only** and emits a three-variant
+  `Stream<PlanStreamEvent>`: `PlanStreamResult(itineraries)` for each batch of finalized itineraries, a
+  terminal `PlanStreamDone(pageInfo)` carrying the continuation `RoutePageInfo`
+  (`endCursor`/`startCursor`/`hasNextPage`/`hasPreviousPage`), or a terminal `PlanStreamFailure(error)`.
+- **Continue a stream with `planStreamNext(options, after:)` / `planStreamPrevious(options, before:)`** — each
+  repeats `planStream`'s parameters plus a raw cursor `String` read off `PlanStreamDone.pageInfo`. `planStream`
+  no longer takes `after`/`before`.
+
+### Removed
+
+- **`planUntil` / `planNextUntil` / `planPreviousUntil`** — the client-side window-walkers. Drive continuation
+  from `PlanStreamDone.pageInfo` (stream) or `planNext` / `planPrevious` (batch) instead.
+- **`PlanStreamChunk` and `PlanStreamPage`**, folded into `PlanStreamResult` and `PlanStreamDone`; the internal
+  sweep telemetry (`frontierSeconds`/`found`/`finalized`, `iterations`/`windowSeconds`/`resultCount`/
+  `stoppedBy`) is no longer surfaced.
+
 ## 0.7.0 - 2026-09-24
 
 Targets Spider API contract `0.7`. Brings the Dart SDK to parity with the reference SDK.

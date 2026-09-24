@@ -42,7 +42,7 @@ Ordinary failures are values — every call returns a `SpiderResult<T>` (`Succes
 
 ## What's in it
 
-- **`client.routing`** — trip planning (with paging and a streaming `planUntil`), departures, and single-trip lookups.
+- **`client.routing`** — trip planning (with paging and a streaming `planStream`), departures, and single-trip lookups.
 - **`client.stops`** — text search, geo queries (nearest / bounding box), and lookup by GTFS id.
 - **`client.realtime`** — poll-based live vehicle positions, delays, and alerts, plus change-detecting `poll…` streams (no push connections).
 

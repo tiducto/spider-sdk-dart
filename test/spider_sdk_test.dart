@@ -486,7 +486,6 @@ void main() {
     test('chunk maps itineraries with realtime delays', () {
       const data = '''
         {
-          "frontier": 1800, "found": 3, "finalized": 1,
           "results": [
             {
               "numberOfTransfers": 1,
@@ -507,13 +506,10 @@ void main() {
         }
       ''';
       final event = parsePlanStreamRecord('chunk', data);
-      expect(event, isA<PlanStreamChunk>());
-      final chunk = event as PlanStreamChunk;
-      expect(chunk.frontierSeconds, 1800);
-      expect(chunk.found, 3);
-      expect(chunk.finalized, 1);
+      expect(event, isA<PlanStreamResult>());
+      final result = event as PlanStreamResult;
 
-      final itinerary = chunk.itineraries.single;
+      final itinerary = result.itineraries.single;
       expect(itinerary.numberOfTransfers, 1);
       expect(itinerary.durationSeconds, 1800);
 
@@ -529,12 +525,13 @@ void main() {
       expect(leg.toGtfsId, '1:B');
     });
 
-    test('pageInfo maps to continuation cursors', () {
+    // The `pageInfo` frame is the terminal event: it maps to PlanStreamDone carrying the continuation cursors.
+    test('pageInfo maps to a terminal Done with continuation cursors', () {
       const data =
           '{ "startCursor": "c-prev", "endCursor": "c-next", "hasNextPage": true, "hasPreviousPage": false, "searchWindowUsed": "PT1H" }';
       final event = parsePlanStreamRecord('pageInfo', data);
-      expect(event, isA<PlanStreamPage>());
-      final page = (event as PlanStreamPage).pageInfo;
+      expect(event, isA<PlanStreamDone>());
+      final page = (event as PlanStreamDone).pageInfo;
       expect(page.startCursor, 'c-prev');
       expect(page.endCursor, 'c-next');
       expect(page.hasNextPage, true);
@@ -542,16 +539,11 @@ void main() {
       expect(page.searchWindowUsed, 'PT1H');
     });
 
-    test('done maps to the terminal summary', () {
+    // The old `done` telemetry frame is no longer surfaced — it just ends the stream.
+    test('done telemetry is ignored', () {
       const data =
           '{ "iterations": 3, "windowSeconds": 3600, "resultCount": 5, "stoppedBy": "targetResults" }';
-      final event = parsePlanStreamRecord('done', data);
-      expect(event, isA<PlanStreamDone>());
-      final done = event as PlanStreamDone;
-      expect(done.iterations, 3);
-      expect(done.windowSeconds, 3600);
-      expect(done.resultCount, 5);
-      expect(done.stoppedBy, 'targetResults');
+      expect(parsePlanStreamRecord('done', data), isNull);
     });
 
     // A stream `error` record is the GraphQL error envelope; a top-level BAD_REQUEST becomes a typed badRequest.
@@ -617,8 +609,9 @@ void main() {
       });
     });
 
-    test('planStream emits chunk/page/done over SSE and sends the id + apikey',
-        () async {
+    test(
+        'planStream emits Result then a terminal Done over SSE (dropping the '
+        'done telemetry) and sends the id + apikey, no cursors', () async {
       const frames = 'event: chunk\n'
           'data: {"frontier":1800,"found":1,"finalized":1,"results":[{"numberOfTransfers":0,"duration":600,"legs":[{"mode":"BUS","start":{"scheduledTime":"2026-07-15T08:00:00Z"},"end":{"scheduledTime":"2026-07-15T08:10:00Z"},"from":{"name":"A"},"to":{"name":"B"}}]}]}\n'
           '\n'
@@ -643,19 +636,84 @@ void main() {
               origin: Location.stop('A'), destination: Location.stop('B')))
           .toList();
 
-      expect(events.length, 3);
-      expect(events[0], isA<PlanStreamChunk>());
-      expect((events[0] as PlanStreamChunk).itineraries.single.legs.single.mode,
+      expect(events.length, 2);
+      expect(events[0], isA<PlanStreamResult>());
+      expect(
+          (events[0] as PlanStreamResult).itineraries.single.legs.single.mode,
           TransitMode.bus);
-      expect((events[1] as PlanStreamPage).pageInfo.endCursor, 'c-next');
-      expect((events[2] as PlanStreamDone).stoppedBy, 'targetResults');
+      final done = events[1] as PlanStreamDone;
+      expect(done.pageInfo.endCursor, 'c-next');
+      expect(done.pageInfo.hasNextPage, true);
 
       final req = mock.requests.single;
       expect(req.method, 'POST');
       expect(req.uri.path, '/routing/plan-stream');
       expect(req.headers['apikey'], 'secret-key');
       expect(req.headers['accept'], 'text/event-stream');
-      expect(bodyOf(req)['id'], PersistedQueries.planstream.id);
+      final body = bodyOf(req);
+      expect(body['id'], PersistedQueries.planstream.id);
+      final vars = body['variables'] as Map<String, dynamic>;
+      expect(vars.containsKey('after'), false);
+      expect(vars.containsKey('before'), false);
+    });
+
+    test('planStreamNext continues forward with after and repeats the request',
+        () async {
+      const frames = 'event: pageInfo\n'
+          'data: {"startCursor":"c-prev","endCursor":"c-next2","hasNextPage":true,"hasPreviousPage":true}\n'
+          '\n';
+      final mock = MockHttpClient((_) => resp('{}'),
+          streamHandler: (_) => SpiderHttpStreamedResponse(
+              200,
+              {'content-type': 'text/event-stream'},
+              Stream.value(utf8.encode(frames))));
+      final client = SpiderClient('https://env.api.example.com', 'secret-key',
+          SpiderClientOptions(httpClient: mock));
+
+      final events = await client.routing
+          .planStreamNext(
+              const PlanOptions(
+                  origin: Location.stop('A'), destination: Location.stop('B')),
+              after: 'c-next')
+          .toList();
+
+      expect(events.single, isA<PlanStreamDone>());
+      expect((events.single as PlanStreamDone).pageInfo.hasPreviousPage, true);
+
+      final vars =
+          bodyOf(mock.requests.single)['variables'] as Map<String, dynamic>;
+      expect(vars['after'], 'c-next');
+      expect(vars.containsKey('before'), false);
+      expect(vars['targetResults'], isNotNull);
+      expect(vars['maxWindow'], isNotNull);
+    });
+
+    test('planStreamPrevious continues backward with before', () async {
+      const frames = 'event: pageInfo\n'
+          'data: {"startCursor":"c-prev2","endCursor":"c-next","hasNextPage":true,"hasPreviousPage":false}\n'
+          '\n';
+      final mock = MockHttpClient((_) => resp('{}'),
+          streamHandler: (_) => SpiderHttpStreamedResponse(
+              200,
+              {'content-type': 'text/event-stream'},
+              Stream.value(utf8.encode(frames))));
+      final client = SpiderClient('https://env.api.example.com', 'secret-key',
+          SpiderClientOptions(httpClient: mock));
+
+      final events = await client.routing
+          .planStreamPrevious(
+              const PlanOptions(
+                  origin: Location.stop('A'), destination: Location.stop('B')),
+              before: 'c-prev')
+          .toList();
+
+      expect(events.single, isA<PlanStreamDone>());
+      expect((events.single as PlanStreamDone).pageInfo.hasNextPage, true);
+
+      final vars =
+          bodyOf(mock.requests.single)['variables'] as Map<String, dynamic>;
+      expect(vars['before'], 'c-prev');
+      expect(vars.containsKey('after'), false);
     });
 
     test('planStream surfaces a non-2xx as a terminal failure', () async {

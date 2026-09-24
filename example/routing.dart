@@ -218,6 +218,41 @@ Future<void> planWithOptions(SpiderClient client) async {
   // [END planWithOptions]
 }
 
+/// Stream itineraries as the router finalizes them, then continue past the
+/// first window using the cursor the terminal event carries.
+Future<void> streamTrip(SpiderClient client) async {
+  // [START streamTrip]
+  final options = PlanOptions(
+    origin: Location.coordinate(49.1951, 16.6068),
+    destination: Location.coordinate(49.2246, 16.5747),
+    departAt: DateTime.now(),
+  );
+
+  await for (final event in client.routing.planStream(options)) {
+    switch (event) {
+      case PlanStreamResult(:final itineraries):
+        for (final itinerary in itineraries) {
+          print('${itinerary.start} → ${itinerary.end} '
+              '(${itinerary.numberOfTransfers} transfers)');
+        }
+      case PlanStreamDone(:final pageInfo):
+        // Terminal event: continue forward from here if there is more to fetch.
+        final cursor = pageInfo.endCursor;
+        if (pageInfo.hasNextPage && cursor != null) {
+          await for (final more
+              in client.routing.planStreamNext(options, after: cursor)) {
+            if (more case PlanStreamResult(:final itineraries)) {
+              print('+${itineraries.length} more');
+            }
+          }
+        }
+      case PlanStreamFailure(:final error):
+        print('stream failed: ${error.code.name} — ${error.message}');
+    }
+  }
+  // [END streamTrip]
+}
+
 /// List the next departures from a stop.
 Future<void> departures(SpiderClient client) async {
   // [START departures]
