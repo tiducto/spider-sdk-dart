@@ -525,15 +525,15 @@ class PlanConnection {
       };
 }
 
-class PlanConnectionData {
+class PlanConnectionStreamData {
   final PlanConnection? planConnection;
 
-  const PlanConnectionData({
+  const PlanConnectionStreamData({
     this.planConnection,
   });
 
-  factory PlanConnectionData.fromJson(Map<String, dynamic> json) =>
-      PlanConnectionData(
+  factory PlanConnectionStreamData.fromJson(Map<String, dynamic> json) =>
+      PlanConnectionStreamData(
         planConnection: json['planConnection'] == null
             ? null
             : PlanConnection.fromJson(
@@ -566,20 +566,21 @@ class GraphQLError {
       };
 }
 
-class PlanConnectionResponse {
-  final PlanConnectionData? data;
+class PlanConnectionStreamResponse {
+  final PlanConnectionStreamData? data;
   final List<GraphQLError>? errors;
 
-  const PlanConnectionResponse({
+  const PlanConnectionStreamResponse({
     this.data,
     this.errors,
   });
 
-  factory PlanConnectionResponse.fromJson(Map<String, dynamic> json) =>
-      PlanConnectionResponse(
+  factory PlanConnectionStreamResponse.fromJson(Map<String, dynamic> json) =>
+      PlanConnectionStreamResponse(
         data: json['data'] == null
             ? null
-            : PlanConnectionData.fromJson(json['data'] as Map<String, dynamic>),
+            : PlanConnectionStreamData.fromJson(
+                json['data'] as Map<String, dynamic>),
         errors: (json['errors'] as List<dynamic>?)
             ?.map((e) => GraphQLError.fromJson(e as Map<String, dynamic>))
             .toList(),
@@ -1934,31 +1935,33 @@ class TransferPreferencesInput {
       };
 }
 
-class PlanConnectionVariables {
+class PlanConnectionStreamVariables {
   final PlanDateTimeInput dateTime;
   final PlanLabeledLocationInput origin;
   final PlanLabeledLocationInput destination;
   final List<PlanViaLocationInput>? via;
   final PlanModesInput? modes;
   final PlanPreferencesInput? preferences;
-  final String searchWindow;
+  final int? targetResults;
+  final String? maxWindow;
   final String? before;
   final String? after;
 
-  const PlanConnectionVariables({
+  const PlanConnectionStreamVariables({
     required this.dateTime,
     required this.origin,
     required this.destination,
     this.via,
     this.modes,
     this.preferences,
-    required this.searchWindow,
+    this.targetResults,
+    this.maxWindow,
     this.before,
     this.after,
   });
 
-  factory PlanConnectionVariables.fromJson(Map<String, dynamic> json) =>
-      PlanConnectionVariables(
+  factory PlanConnectionStreamVariables.fromJson(Map<String, dynamic> json) =>
+      PlanConnectionStreamVariables(
         dateTime: PlanDateTimeInput.fromJson(
             json['dateTime'] as Map<String, dynamic>),
         origin: PlanLabeledLocationInput.fromJson(
@@ -1976,7 +1979,8 @@ class PlanConnectionVariables {
             ? null
             : PlanPreferencesInput.fromJson(
                 json['preferences'] as Map<String, dynamic>),
-        searchWindow: json['searchWindow'] as String,
+        targetResults: (json['targetResults'] as num?)?.toInt(),
+        maxWindow: json['maxWindow'] as String?,
         before: json['before'] as String?,
         after: json['after'] as String?,
       );
@@ -1988,7 +1992,8 @@ class PlanConnectionVariables {
         if (via != null) 'via': via!.map((e) => e.toJson()).toList(),
         if (modes != null) 'modes': modes!.toJson(),
         if (preferences != null) 'preferences': preferences!.toJson(),
-        'searchWindow': searchWindow,
+        if (targetResults != null) 'targetResults': targetResults!,
+        if (maxWindow != null) 'maxWindow': maxWindow!,
         if (before != null) 'before': before!,
         if (after != null) 'after': after!,
       };
@@ -2210,6 +2215,111 @@ class StopDeparturesVariables {
           'numberOfDepartures': numberOfDepartures!,
         if (startTime != null) 'startTime': startTime!,
         if (timeRange != null) 'timeRange': timeRange!,
+      };
+}
+
+class PlanConnectionData {
+  final PlanConnection? planConnection;
+
+  const PlanConnectionData({
+    this.planConnection,
+  });
+
+  factory PlanConnectionData.fromJson(Map<String, dynamic> json) =>
+      PlanConnectionData(
+        planConnection: json['planConnection'] == null
+            ? null
+            : PlanConnection.fromJson(
+                json['planConnection'] as Map<String, dynamic>),
+      );
+
+  Map<String, dynamic> toJson() => {
+        if (planConnection != null) 'planConnection': planConnection!.toJson(),
+      };
+}
+
+class PlanConnectionResponse {
+  final PlanConnectionData? data;
+  final List<GraphQLError>? errors;
+
+  const PlanConnectionResponse({
+    this.data,
+    this.errors,
+  });
+
+  factory PlanConnectionResponse.fromJson(Map<String, dynamic> json) =>
+      PlanConnectionResponse(
+        data: json['data'] == null
+            ? null
+            : PlanConnectionData.fromJson(json['data'] as Map<String, dynamic>),
+        errors: (json['errors'] as List<dynamic>?)
+            ?.map((e) => GraphQLError.fromJson(e as Map<String, dynamic>))
+            .toList(),
+      );
+
+  Map<String, dynamic> toJson() => {
+        if (data != null) 'data': data!.toJson(),
+        if (errors != null) 'errors': errors!.map((e) => e.toJson()).toList(),
+      };
+}
+
+class PlanConnectionVariables {
+  final PlanDateTimeInput dateTime;
+  final PlanLabeledLocationInput origin;
+  final PlanLabeledLocationInput destination;
+  final String searchWindow;
+  final List<PlanViaLocationInput>? via;
+  final PlanModesInput? modes;
+  final PlanPreferencesInput? preferences;
+  final String? before;
+  final String? after;
+
+  const PlanConnectionVariables({
+    required this.dateTime,
+    required this.origin,
+    required this.destination,
+    required this.searchWindow,
+    this.via,
+    this.modes,
+    this.preferences,
+    this.before,
+    this.after,
+  });
+
+  factory PlanConnectionVariables.fromJson(Map<String, dynamic> json) =>
+      PlanConnectionVariables(
+        dateTime: PlanDateTimeInput.fromJson(
+            json['dateTime'] as Map<String, dynamic>),
+        origin: PlanLabeledLocationInput.fromJson(
+            json['origin'] as Map<String, dynamic>),
+        destination: PlanLabeledLocationInput.fromJson(
+            json['destination'] as Map<String, dynamic>),
+        searchWindow: json['searchWindow'] as String,
+        via: (json['via'] as List<dynamic>?)
+            ?.map(
+                (e) => PlanViaLocationInput.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        modes: json['modes'] == null
+            ? null
+            : PlanModesInput.fromJson(json['modes'] as Map<String, dynamic>),
+        preferences: json['preferences'] == null
+            ? null
+            : PlanPreferencesInput.fromJson(
+                json['preferences'] as Map<String, dynamic>),
+        before: json['before'] as String?,
+        after: json['after'] as String?,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'dateTime': dateTime.toJson(),
+        'origin': origin.toJson(),
+        'destination': destination.toJson(),
+        'searchWindow': searchWindow,
+        if (via != null) 'via': via!.map((e) => e.toJson()).toList(),
+        if (modes != null) 'modes': modes!.toJson(),
+        if (preferences != null) 'preferences': preferences!.toJson(),
+        if (before != null) 'before': before!,
+        if (after != null) 'after': after!,
       };
 }
 

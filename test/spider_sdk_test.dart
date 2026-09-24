@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'package:spider_sdk/spider_sdk.dart';
+import 'package:spider_sdk/src/contract/contract_version.dart'
+    show contractVersion;
 import 'package:spider_sdk/src/polyline.dart' show decodePolyline;
 import 'package:spider_sdk/src/version.dart' show sdkVersion;
 import 'package:test/test.dart';
@@ -79,7 +81,7 @@ void main() {
       expect(req.uri.path, '/routing/plan');
       expect(req.method, 'POST');
       expect(req.headers['apikey'], 'secret-key');
-      expect(req.headers['x-spider-contract-version'], '0.1');
+      expect(req.headers['x-spider-contract-version'], contractVersion);
       expect(req.headers['x-spider-sdk'], 'dart/$sdkVersion');
       expect(req.headers['content-type'], 'application/json');
       final body = bodyOf(req);
@@ -425,7 +427,7 @@ void main() {
 
     test('client exposes contract version', () {
       final (client, _) = makeClient((_) => resp('{}'));
-      expect(client.contractVersion, '0.1');
+      expect(client.contractVersion, contractVersion);
     });
   });
 }
