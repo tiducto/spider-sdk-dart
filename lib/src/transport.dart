@@ -119,8 +119,11 @@ class Transport {
   Future<D> postJson<D>(String path, Map<String, dynamic> body,
       D Function(Map<String, dynamic>) fromJson,
       {String Function(String)? errorMessage}) async {
-    final resp = await _send(SpiderHttpRequest('POST', Uri.parse('$baseUrl$path'),
-        _contractHeaders(json: true), jsonEncode(body)));
+    final resp = await _send(SpiderHttpRequest(
+        'POST',
+        Uri.parse('$baseUrl$path'),
+        _contractHeaders(json: true),
+        jsonEncode(body)));
     checkContract(resp.headers[contractHeader]);
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
       final env = _parseErrorEnvelope(resp.body);

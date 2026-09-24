@@ -374,7 +374,8 @@ void main() {
   });
 
   group('warmup', () {
-    test('issues one apikey-authenticated GET to /ping and returns the elapsed duration',
+    test(
+        'issues one apikey-authenticated GET to /ping and returns the elapsed duration',
         () async {
       final (client, mock) = makeClient((_) => resp('pong'));
       final elapsed = await client.warmup();
