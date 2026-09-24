@@ -9,6 +9,14 @@
   transfer count verbatim made `maxTransfers` 0 and 1 behave identically. Now `0` means direct,
   `1` allows one transfer, and so on.
 
+## 0.1.2 - 2026-09-23
+
+- **`SpiderClient.warmup()`** — pre-warms the connection to the environment's API
+  host with one keyless `GET /ping`, so the first trip-planning call rides an
+  already-open TLS connection instead of paying ~0.6s of cold connection setup.
+  Best-effort and never throws; returns the measured round-trip `Duration`. Call
+  it at app start and on foreground; safe to fire-and-forget.
+
 ## 0.1.1 - 2026-08-26
 
 **Breaking:** `searchWindow` is now required on plan requests (the gateway enforces the

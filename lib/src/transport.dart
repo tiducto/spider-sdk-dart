@@ -66,8 +66,9 @@ class Transport {
     this.retry,
   }) : baseUrl = _stripTrailingSlashes(baseUrl);
 
-  Map<String, String> _headers({bool json = false}) => {
-        'apikey': apiKey,
+  /// The contract-gated identity headers a real API call carries. The invariant `apikey` is not here — it is
+  /// stamped centrally in [_send], so every request (including `/ping`) gets it without re-attaching per call.
+  Map<String, String> _contractHeaders({bool json = false}) => {
         contractHeader: contractVersion,
         sdkHeader: sdkIdentity,
         if (json) 'content-type': 'application/json',
@@ -79,7 +80,7 @@ class Transport {
     final resp = await _send(SpiderHttpRequest(
       'POST',
       Uri.parse('$baseUrl/routing/${op.path}'),
-      _headers(json: true),
+      _contractHeaders(json: true),
       jsonEncode({'id': op.id, 'variables': variables}),
     ));
     checkContract(resp.headers[contractHeader]);
@@ -118,8 +119,11 @@ class Transport {
   Future<D> postJson<D>(String path, Map<String, dynamic> body,
       D Function(Map<String, dynamic>) fromJson,
       {String Function(String)? errorMessage}) async {
-    final resp = await _send(SpiderHttpRequest('POST',
-        Uri.parse('$baseUrl$path'), _headers(json: true), jsonEncode(body)));
+    final resp = await _send(SpiderHttpRequest(
+        'POST',
+        Uri.parse('$baseUrl$path'),
+        _contractHeaders(json: true),
+        jsonEncode(body)));
     checkContract(resp.headers[contractHeader]);
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
       final env = _parseErrorEnvelope(resp.body);
@@ -136,7 +140,8 @@ class Transport {
       {Map<String, String> query = const {}}) async {
     final uri = Uri.parse('$baseUrl$path')
         .replace(queryParameters: query.isEmpty ? null : query);
-    final resp = await _send(SpiderHttpRequest('GET', uri, _headers(), null));
+    final resp =
+        await _send(SpiderHttpRequest('GET', uri, _contractHeaders(), null));
     checkContract(resp.headers[contractHeader]);
     return resp;
   }
@@ -154,12 +159,26 @@ class Transport {
     return fromJson(_decodeJson(resp.body, 'GET $path'));
   }
 
+  /// Connection warm-up: one `GET {baseUrl}/ping` through the shared [_send] path, so it opens (or reuses) the
+  /// TLS connection real calls travel over. Carries only the client `apikey` — stamped centrally by [_send], which
+  /// the keyed `/ping` route authenticates — and no contract/identity headers, since `/ping` is gateway
+  /// infrastructure, not a contract operation. The response (any status) is ignored; the round trip is the point.
+  /// Bounded by [timeout]; the warmup transport is retry-free, so this runs no retry (and no contract check).
+  Future<void> ping() async {
+    await _send(
+        SpiderHttpRequest('GET', Uri.parse('$baseUrl/ping'), const {}, null));
+  }
+
   Future<SpiderHttpResponse> _send(SpiderHttpRequest request) async {
+    // The client apikey is invariant for the client's whole life, so it is applied here — the single path every
+    // request funnels through — rather than re-attached per call.
+    final stamped = SpiderHttpRequest(request.method, request.uri,
+        {...request.headers, 'apikey': apiKey}, request.body);
     final maxAttempts = retry?.maxAttempts ?? 1;
     var attempt = 1;
     while (true) {
       try {
-        final resp = await httpClient.send(request).timeout(timeout);
+        final resp = await httpClient.send(stamped).timeout(timeout);
         if (attempt < maxAttempts &&
             (resp.statusCode == 429 || resp.statusCode >= 500)) {
           await _retryDelay(attempt, resp);
