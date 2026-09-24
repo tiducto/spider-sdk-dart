@@ -1,21 +1,36 @@
+import 'dart:convert';
+
 import 'contract/persisted_queries.dart';
 import 'contract/routing.dart' as wire;
 import 'enums.dart';
 import 'errors.dart';
 import 'location.dart';
+import 'plan_stream_event.dart';
 import 'polyline.dart';
 import 'result.dart';
 import 'transport.dart';
 
 // MARK: public routing models
 
-/// One leg of an itinerary (a single vehicle ride or walk).
+/// One leg of an itinerary (a single vehicle ride or walk). The realtime fields carry live schedule
+/// deviation when the feed reports it: [startEstimated]/[endEstimated] are the estimated boarding/alighting
+/// times, [startDelay]/[endDelay] the deviation from schedule, and [serviceDate] the GTFS service date
+/// (`YYYYMMDD`) that scopes a realtime delay lookup for this trip instance.
 class Leg {
   final TransitMode? mode;
   final String startScheduled;
   final String endScheduled;
+  final String? startEstimated;
+  final String? endEstimated;
+  final Duration? startDelay;
+  final Duration? endDelay;
+  final bool isRealtime;
+  final RealtimeState? realtimeState;
+  final String? serviceDate;
   final String? fromName;
   final String? toName;
+  final String? fromGtfsId;
+  final String? toGtfsId;
   final String? routeShortName;
   final String? routeLongName;
   final String? headsign;
@@ -31,8 +46,17 @@ class Leg {
     this.mode,
     required this.startScheduled,
     required this.endScheduled,
+    this.startEstimated,
+    this.endEstimated,
+    this.startDelay,
+    this.endDelay,
+    this.isRealtime = false,
+    this.realtimeState,
+    this.serviceDate,
     this.fromName,
     this.toName,
+    this.fromGtfsId,
+    this.toGtfsId,
     this.routeShortName,
     this.routeLongName,
     this.headsign,
@@ -244,6 +268,7 @@ enum _PageDirection { forward, backward }
 const _defaultSearchWindowMinutes = 60;
 const _defaultMaxTraversalMinutes = 360;
 const _defaultTargetResults = 10;
+const _defaultStreamTargetResults = 5;
 const _defaultTimeRangeSeconds = 24 * 60 * 60;
 const _intMax = 2147483647;
 
@@ -380,6 +405,52 @@ class SpiderRouting {
       rethrow;
     } catch (e) {
       return Failure(toSpiderError(e));
+    }
+  }
+
+  /// Streams itineraries over Server-Sent Events as the router sweeps the search window forward, emitting them
+  /// as they finalize instead of one batched page. Cold and cancellable: listening starts the request,
+  /// cancelling the subscription stops the sweep. Each [PlanStreamChunk] carries itineraries with realtime
+  /// delays already applied to their legs; a [PlanStreamPage] then carries the continuation cursors and a
+  /// [PlanStreamDone] closes the stream (or a terminal [PlanStreamFailure]).
+  ///
+  /// [targetResults] is a soft floor the sweep aims to reach; [maxWindowMinutes] caps how far forward it
+  /// searches. To continue, re-call with the same [options] plus [after] = the last [RoutePageInfo.endCursor]
+  /// (or [before] = [RoutePageInfo.startCursor] to walk earlier). For a single batched page instead, use
+  /// [plan]. [PlanOptions.searchWindowMinutes] is ignored here — the stream paces itself with
+  /// [targetResults]/[maxWindowMinutes].
+  Stream<PlanStreamEvent> planStream(
+    PlanOptions options, {
+    int targetResults = _defaultStreamTargetResults,
+    int maxWindowMinutes = _defaultMaxTraversalMinutes,
+    String? after,
+    String? before,
+  }) async* {
+    final request = _makeRequest(options);
+    final iso = request.time.toUtc().toIso8601String();
+    final dateTime = request.timeKind == _TimeKind.departAt
+        ? wire.PlanDateTimeInput(earliestDeparture: iso)
+        : wire.PlanDateTimeInput(latestArrival: iso);
+    final variables = wire.PlanConnectionStreamVariables(
+      dateTime: dateTime,
+      origin: _locationToInput(request.origin),
+      destination: _locationToInput(request.destination),
+      via: request.via.isEmpty ? null : request.via.map(_viaToInput).toList(),
+      modes: _modesInput(request.allowedTransitModes),
+      preferences: _preferencesInput(request),
+      targetResults: targetResults,
+      maxWindow: 'PT${maxWindowMinutes < 1 ? 1 : maxWindowMinutes}M',
+      before: before,
+      after: after,
+    ).toJson();
+    try {
+      await for (final frame
+          in _transport.sse(PersistedQueries.planstream, variables)) {
+        final event = parsePlanStreamRecord(frame.event, frame.data);
+        if (event != null) yield event;
+      }
+    } catch (e) {
+      yield PlanStreamFailure(toSpiderError(e));
     }
   }
 
@@ -545,6 +616,97 @@ wire.PlanPreferencesInput? _preferencesInput(_PlanRequest request) {
       accessibility: accessibility, transit: transit);
 }
 
+// MARK: plan-stream record parsing
+
+/// Parses one finished SSE record (its `event` name + accumulated `data`) into a [PlanStreamEvent]; returns
+/// null for records the SDK doesn't surface (heartbeats, blank data, unknown events). A malformed payload
+/// becomes a terminal [PlanStreamFailure] rather than throwing. Public so the wire-contract test exercises it
+/// directly, matching the batch plan's wire→domain mapping.
+PlanStreamEvent? parsePlanStreamRecord(String event, String data) {
+  if (data.trim().isEmpty) return null;
+  switch (event) {
+    case 'chunk':
+      try {
+        final json = jsonDecode(data) as Map<String, dynamic>;
+        final itineraries = (json['results'] as List<dynamic>? ?? const [])
+            .map((e) => _mapItinerary(
+                wire.Itinerary.fromJson(e as Map<String, dynamic>)))
+            .toList();
+        return PlanStreamChunk(
+          frontierSeconds: (json['frontier'] as num?)?.toInt() ?? 0,
+          found: (json['found'] as num?)?.toInt() ?? 0,
+          finalized: (json['finalized'] as num?)?.toInt() ?? 0,
+          itineraries: itineraries,
+        );
+      } catch (e) {
+        return PlanStreamFailure(_streamDecodingError('chunk', e));
+      }
+    case 'pageInfo':
+      try {
+        final json = jsonDecode(data) as Map<String, dynamic>;
+        return PlanStreamPage(RoutePageInfo(
+          startCursor: json['startCursor'] as String?,
+          endCursor: json['endCursor'] as String?,
+          hasNextPage: json['hasNextPage'] as bool? ?? false,
+          hasPreviousPage: json['hasPreviousPage'] as bool? ?? false,
+          searchWindowUsed: json['searchWindowUsed'] as String?,
+        ));
+      } catch (e) {
+        return PlanStreamFailure(_streamDecodingError('pageInfo', e));
+      }
+    case 'done':
+      try {
+        final json = jsonDecode(data) as Map<String, dynamic>;
+        return PlanStreamDone(
+          iterations: (json['iterations'] as num?)?.toInt() ?? 0,
+          windowSeconds: (json['windowSeconds'] as num?)?.toInt() ?? 0,
+          resultCount: (json['resultCount'] as num?)?.toInt() ?? 0,
+          stoppedBy: json['stoppedBy'] as String? ?? 'unknown',
+        );
+      } catch (e) {
+        return PlanStreamFailure(_streamDecodingError('done', e));
+      }
+    case 'error':
+      return PlanStreamFailure(_streamErrorToSpiderError(data));
+    default:
+      return null;
+  }
+}
+
+SpiderError _streamDecodingError(String event, Object cause) => SpiderError(
+    SpiderErrorCode.decoding, 'failed to parse plan-stream $event record',
+    cause: cause);
+
+// A stream `error` record is the same GraphQL error envelope the batch path returns, so it maps through the
+// same taxonomy: a top-level BAD_REQUEST becomes a typed badRequest (with its field), anything else server.
+SpiderError _streamErrorToSpiderError(String data) {
+  try {
+    final json = jsonDecode(data) as Map<String, dynamic>;
+    final errors = json['errors'];
+    if (errors is List && errors.isNotEmpty) {
+      for (final e in errors) {
+        final ext = e is Map ? e['extensions'] : null;
+        if (ext is Map && ext['code'] == 'BAD_REQUEST') {
+          return toSpiderError(TransportError(TransportErrorKind.badRequest,
+              (e as Map)['message']?.toString() ?? 'bad request',
+              field: ext['field'] as String?));
+        }
+      }
+      final joined = errors.map((e) => (e as Map)['message']).join(', ');
+      return toSpiderError(TransportError(
+          TransportErrorKind.upstream, 'plan-stream errors: $joined'));
+    }
+    final message = json['message'];
+    return toSpiderError(TransportError(TransportErrorKind.upstream,
+        'plan-stream error: ${message is String ? message : _truncData(data)}'));
+  } catch (_) {
+    return toSpiderError(TransportError(
+        TransportErrorKind.upstream, 'plan-stream error: ${_truncData(data)}'));
+  }
+}
+
+String _truncData(String s) => s.length > 300 ? s.substring(0, 300) : s;
+
 // MARK: response mappers
 
 Itinerary _mapItinerary(wire.Itinerary w) => Itinerary(
@@ -563,8 +725,17 @@ Leg _mapLeg(wire.Leg w) {
     mode: TransitMode.fromWire(w.mode?.wire),
     startScheduled: w.start.scheduledTime,
     endScheduled: w.end.scheduledTime,
+    startEstimated: w.start.estimated?.time,
+    endEstimated: w.end.estimated?.time,
+    startDelay: _durationFromWire(w.start.estimated?.delay),
+    endDelay: _durationFromWire(w.end.estimated?.delay),
+    isRealtime: w.realTime ?? false,
+    realtimeState: RealtimeState.fromWire(w.realtimeState?.wire),
+    serviceDate: w.serviceDate,
     fromName: w.from.name,
     toName: w.to.name,
+    fromGtfsId: w.from.stop?.gtfsId,
+    toGtfsId: w.to.stop?.gtfsId,
     routeShortName: w.route?.shortName,
     routeLongName: w.route?.longName,
     headsign: w.headsign,
@@ -579,6 +750,39 @@ Leg _mapLeg(wire.Leg w) {
         WheelchairBoarding.fromWire(w.to.stop?.wheelchairBoarding?.wire),
     geometry: points != null ? decodePolyline(points) : const [],
   );
+}
+
+// Parses an ISO-8601 duration ("PT60S", "PT1M30S", optionally signed) or a bare seconds count into a
+// [Duration]. Mirrors the Kotlin SDK's durationFromWire: ISO first, then a numeric-seconds fallback; an
+// unparseable or absent value is null.
+Duration? _durationFromWire(String? raw) {
+  if (raw == null || raw.isEmpty) return null;
+  final iso = _parseIsoDuration(raw);
+  if (iso != null) return iso;
+  final seconds = num.tryParse(raw);
+  return seconds == null
+      ? null
+      : Duration(
+          microseconds: (seconds * Duration.microsecondsPerSecond).round());
+}
+
+final _isoDurationPattern = RegExp(
+    r'^(-)?P(?:T(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?)?$');
+
+Duration? _parseIsoDuration(String raw) {
+  final match = _isoDurationPattern.firstMatch(raw);
+  if (match == null ||
+      (match[2] == null && match[3] == null && match[4] == null)) {
+    return null;
+  }
+  final sign = match[1] == '-' ? -1 : 1;
+  final hours = double.tryParse(match[2] ?? '0') ?? 0;
+  final minutes = double.tryParse(match[3] ?? '0') ?? 0;
+  final seconds = double.tryParse(match[4] ?? '0') ?? 0;
+  final micros =
+      ((hours * 3600 + minutes * 60 + seconds) * Duration.microsecondsPerSecond)
+          .round();
+  return Duration(microseconds: sign * micros);
 }
 
 List<Departure> _mapDepartures(wire.StopDeparturesStop stop) {

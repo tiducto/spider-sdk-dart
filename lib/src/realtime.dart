@@ -127,16 +127,40 @@ class TripDelay {
       };
 }
 
-/// Live deviations for a set of trips, plus the trip ids with no live delay.
+/// Live deviations grouped by GTFS service date. The same `tripId` on two dates is two distinct instances,
+/// so delays are resolved per `(tripId, serviceDate)` — look one up with [delayFor].
 class TripDelays {
+  final List<ServiceDateDelays> groups;
+  final FeedFreshness freshness;
+  const TripDelays(this.groups, this.freshness);
+
+  /// The delay for the ([tripId], [serviceDate]) instance, if the feed reported one.
+  TripDelay? delayFor(String tripId, String serviceDate) {
+    for (final group in groups) {
+      if (group.serviceDate != serviceDate) continue;
+      for (final delay in group.delays) {
+        if (delay.tripId == tripId) return delay;
+      }
+    }
+    return null;
+  }
+
+  Map<String, dynamic> toJson() => {
+        'groups': groups.map((g) => g.toJson()).toList(),
+        'freshness': freshness.toJson()
+      };
+}
+
+/// Delays for one GTFS service date: those the feed reported, and the [missing] trip ids it didn't.
+class ServiceDateDelays {
+  final String serviceDate;
   final List<TripDelay> delays;
   final List<String> missing;
-  final FeedFreshness freshness;
-  const TripDelays(this.delays, this.missing, this.freshness);
+  const ServiceDateDelays(this.serviceDate, this.delays, this.missing);
   Map<String, dynamic> toJson() => {
+        'serviceDate': serviceDate,
         'delays': delays.map((d) => d.toJson()).toList(),
         'missing': missing,
-        'freshness': freshness.toJson()
       };
 }
 
@@ -213,7 +237,7 @@ class ServiceAlerts {
 
 const _emptyFreshness = FeedFreshness();
 const _emptyPositions = VehiclePositions([], [], _emptyFreshness);
-const _emptyDelays = TripDelays([], [], _emptyFreshness);
+const _emptyDelays = TripDelays([], _emptyFreshness);
 
 /// The realtime surface: live vehicle positions, schedule deviations, and service alerts. Poll-based —
 /// see the `poll*` methods (extension below) for change-detecting streams.
@@ -272,28 +296,38 @@ class SpiderRealtime {
     }
   }
 
-  /// Live schedule deviation for the given trips. An empty input returns an empty result without a request.
-  Future<SpiderResult<TripDelays>> delays(List<String> tripIds) async {
-    if (tripIds.isEmpty) return const Success(_emptyDelays);
+  /// Live delays, resolved per `(tripId, serviceDate)` instance: group trip ids by the GTFS service date
+  /// (`YYYYMMDD`) they run on — pass each plan leg's `serviceDate` through. Grouping is required because
+  /// the same trip id runs on many dates (and two instances can overlap around midnight). An input with no
+  /// trip ids returns an empty result without a request.
+  Future<SpiderResult<TripDelays>> delaysByServiceDate(
+      Map<String, List<String>> byServiceDate) async {
+    if (byServiceDate.values.every((ids) => ids.isEmpty)) {
+      return const Success(_emptyDelays);
+    }
     try {
-      final json = await _transport.getJson('/realtime/delays', _identity,
-          query: {'tripIds': tripIds.join(',')});
-      final delays = (json['delays'] as List<dynamic>? ?? const [])
-          .map((d) => _mapDelay(d as Map<String, dynamic>))
-          .toList();
-      return Success(TripDelays(
-        delays,
-        (json['missing'] as List<dynamic>? ?? const [])
-            .map((e) => e as String)
+      final body = {
+        'queries': byServiceDate.entries
+            .map((e) => {'serviceDate': e.key, 'tripIds': e.value})
             .toList(),
-        _mapFreshness(json),
-      ));
+      };
+      final json =
+          await _transport.postJson('/realtime/delays', body, _identity);
+      final groups = (json['results'] as List<dynamic>? ?? const [])
+          .map((g) => _mapDelayGroup(g as Map<String, dynamic>))
+          .toList();
+      return Success(TripDelays(groups, _mapFreshness(json)));
     } on SpiderContractMismatchError {
       rethrow;
     } catch (e) {
       return Failure(toSpiderError(e));
     }
   }
+
+  /// Live delays for [tripIds] all running on one [serviceDate] (`YYYYMMDD`) — the common single-day case.
+  Future<SpiderResult<TripDelays>> delays(
+          List<String> tripIds, String serviceDate) =>
+      delaysByServiceDate({serviceDate: tripIds});
 
   /// All active service alerts for the environment.
   Future<SpiderResult<ServiceAlerts>> alerts() async {
@@ -323,9 +357,16 @@ extension SpiderRealtimePolling on SpiderRealtime {
       _poll(intervalMs, (v) => jsonEncode(v.toJson()),
           () => vehicleForTrip(tripId));
 
-  Stream<SpiderResult<TripDelays>> pollDelays(List<String> tripIds,
+  Stream<SpiderResult<TripDelays>> pollDelaysByServiceDate(
+          Map<String, List<String>> byServiceDate,
           {int? intervalMs}) =>
-      _poll(intervalMs, (v) => jsonEncode(v.toJson()), () => delays(tripIds));
+      _poll(intervalMs, (v) => jsonEncode(v.toJson()),
+          () => delaysByServiceDate(byServiceDate));
+
+  Stream<SpiderResult<TripDelays>> pollDelays(
+          List<String> tripIds, String serviceDate, {int? intervalMs}) =>
+      _poll(intervalMs, (v) => jsonEncode(v.toJson()),
+          () => delays(tripIds, serviceDate));
 
   Stream<SpiderResult<ServiceAlerts>> pollAlerts({int? intervalMs}) =>
       _poll(intervalMs, (v) => jsonEncode(v.toJson()), () => alerts());
@@ -375,6 +416,16 @@ LiveVehicle _mapVehicle(Map<String, dynamic> v) => LiveVehicle(
       currentStatus: v['currentStatus'] as String?,
       occupancy: OccupancyStatus.fromWire(v['occupancyStatus'] as String?),
       timestampEpochMs: _secondsToMs(v['timestamp']),
+    );
+
+ServiceDateDelays _mapDelayGroup(Map<String, dynamic> g) => ServiceDateDelays(
+      g['serviceDate'] as String? ?? '',
+      (g['delays'] as List<dynamic>? ?? const [])
+          .map((d) => _mapDelay(d as Map<String, dynamic>))
+          .toList(),
+      (g['missing'] as List<dynamic>? ?? const [])
+          .map((e) => e as String)
+          .toList(),
     );
 
 TripDelay _mapDelay(Map<String, dynamic> d) => TripDelay(

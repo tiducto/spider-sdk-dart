@@ -256,6 +256,7 @@ class Leg {
   final Mode? mode;
   final RealtimeState? realtimeState;
   final bool? realTime;
+  final String? serviceDate;
   final Route? route;
   final String? headsign;
   final double? distance;
@@ -272,6 +273,7 @@ class Leg {
     this.mode,
     this.realtimeState,
     this.realTime,
+    this.serviceDate,
     this.route,
     this.headsign,
     this.distance,
@@ -292,6 +294,7 @@ class Leg {
             ? null
             : RealtimeState.fromWire(json['realtimeState'] as String),
         realTime: json['realTime'] as bool?,
+        serviceDate: json['serviceDate'] as String?,
         route: json['route'] == null
             ? null
             : Route.fromJson(json['route'] as Map<String, dynamic>),
@@ -315,6 +318,7 @@ class Leg {
         if (mode != null) 'mode': mode!.toJson(),
         if (realtimeState != null) 'realtimeState': realtimeState!.toJson(),
         if (realTime != null) 'realTime': realTime!,
+        if (serviceDate != null) 'serviceDate': serviceDate!,
         if (route != null) 'route': route!.toJson(),
         if (headsign != null) 'headsign': headsign!,
         if (distance != null) 'distance': distance!,

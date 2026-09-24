@@ -1,2 +1,2 @@
 // Stamped from version.properties (contract.patch) by scripts/stamp-version.sh at release. Do not edit.
-const sdkVersion = '0.1.2';
+const sdkVersion = '0.7.0';

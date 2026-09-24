@@ -2,19 +2,35 @@ import 'dart:convert';
 import 'package:spider_sdk/spider_sdk.dart';
 import 'package:spider_sdk/src/contract/contract_version.dart'
     show contractVersion;
+import 'package:spider_sdk/src/contract/persisted_queries.dart'
+    show PersistedQueries;
+import 'package:spider_sdk/src/contract/routing.dart' as wire;
 import 'package:spider_sdk/src/polyline.dart' show decodePolyline;
+import 'package:spider_sdk/src/routing.dart' show parsePlanStreamRecord;
 import 'package:spider_sdk/src/version.dart' show sdkVersion;
 import 'package:test/test.dart';
 
 class MockHttpClient implements SpiderHttpClient {
   final List<SpiderHttpRequest> requests = [];
   final SpiderHttpResponse Function(SpiderHttpRequest) handler;
-  MockHttpClient(this.handler);
+  final SpiderHttpStreamedResponse Function(SpiderHttpRequest)? streamHandler;
+  MockHttpClient(this.handler, {this.streamHandler});
 
   @override
   Future<SpiderHttpResponse> send(SpiderHttpRequest request) async {
     requests.add(request);
     return handler(request);
+  }
+
+  @override
+  Future<SpiderHttpStreamedResponse> sendStreaming(
+      SpiderHttpRequest request) async {
+    requests.add(request);
+    final handle = streamHandler;
+    if (handle == null) {
+      throw StateError('no stream handler configured for this mock');
+    }
+    return handle(request);
   }
 }
 
@@ -85,8 +101,7 @@ void main() {
       expect(req.headers['x-spider-sdk'], 'dart/$sdkVersion');
       expect(req.headers['content-type'], 'application/json');
       final body = bodyOf(req);
-      expect(body['id'],
-          'dad4f190af803a8cb50ec99c5852544297e94db8edc0d94220c8f79d98f065a7');
+      expect(body['id'], PersistedQueries.plan.id);
       final vars = body['variables'] as Map<String, dynamic>;
       expect(vars.containsKey('first'), false);
       expect(vars.containsKey('last'), false);
@@ -374,6 +389,40 @@ void main() {
       final result = await client.realtime.vehicleForTrip('T1');
       expect((result as Success<LiveVehicleUpdate>).value.vehicle, isNull);
     });
+
+    test('delays posts grouped queries and resolves per (tripId, serviceDate)',
+        () async {
+      const body =
+          '{"results":[{"serviceDate":"20260715","delays":[{"tripId":"T1","routeId":"R1","delaySeconds":120,"scheduleRelationship":"SCHEDULED","stopTimeUpdates":[{"stopId":"S1","stopSequence":3,"arrivalDelay":120,"departureDelay":90}]}],"missing":["T2"]}],"feedTimestamp":1700000000,"staleSeconds":2.0}';
+      final (client, mock) = makeClient((_) => resp(body));
+      final result = await client.realtime.delays(['T1', 'T2'], '20260715');
+      final delays = (result as Success<TripDelays>).value;
+
+      final req = mock.requests[0];
+      expect(req.method, 'POST');
+      expect(req.uri.path, '/realtime/delays');
+      expect(bodyOf(req)['queries'], [
+        {
+          'serviceDate': '20260715',
+          'tripIds': ['T1', 'T2']
+        }
+      ]);
+
+      final d = delays.delayFor('T1', '20260715');
+      expect(d?.delaySeconds, 120);
+      expect(d?.stopTimeUpdates.first.arrivalDelay, 120);
+      expect(delays.groups.single.missing, ['T2']);
+      expect(delays.freshness.feedTimestampEpochMs, 1700000000 * 1000);
+      // The same trip id on another service date is a different instance.
+      expect(delays.delayFor('T1', '20260716'), isNull);
+    });
+
+    test('delays with no trip ids short-circuits without a request', () async {
+      final (client, mock) = makeClient((_) => resp('{}'));
+      final result = await client.realtime.delays([], '20260715');
+      expect((result as Success<TripDelays>).value.groups, isEmpty);
+      expect(mock.requests, isEmpty);
+    });
   });
 
   group('warmup', () {
@@ -428,6 +477,205 @@ void main() {
     test('client exposes contract version', () {
       final (client, _) = makeClient((_) => resp('{}'));
       expect(client.contractVersion, contractVersion);
+    });
+  });
+
+  group('plan-stream', () {
+    // A `chunk` carries itinerary nodes; realtime delays ride on each leg's estimated{time,delay} +
+    // realtimeState + realTime + serviceDate and must land on the domain Leg exactly as the batch plan maps.
+    test('chunk maps itineraries with realtime delays', () {
+      const data = '''
+        {
+          "frontier": 1800, "found": 3, "finalized": 1,
+          "results": [
+            {
+              "numberOfTransfers": 1,
+              "start": "2026-07-15T08:00:00Z", "end": "2026-07-15T08:30:00Z", "duration": 1800,
+              "legs": [
+                {
+                  "mode": "BUS",
+                  "start": { "scheduledTime": "2026-07-15T08:00:00Z", "estimated": { "time": "2026-07-15T08:01:00Z", "delay": "PT60S" } },
+                  "end":   { "scheduledTime": "2026-07-15T08:30:00Z", "estimated": { "time": "2026-07-15T08:32:00Z", "delay": "PT120S" } },
+                  "realtimeState": "UPDATED", "realTime": true, "serviceDate": "20260715",
+                  "from": { "name": "Origin", "stop": { "gtfsId": "1:A" } },
+                  "to":   { "name": "Dest",   "stop": { "gtfsId": "1:B" } },
+                  "route": { "shortName": "12" }, "trip": { "gtfsId": "1:T" }
+                }
+              ]
+            }
+          ]
+        }
+      ''';
+      final event = parsePlanStreamRecord('chunk', data);
+      expect(event, isA<PlanStreamChunk>());
+      final chunk = event as PlanStreamChunk;
+      expect(chunk.frontierSeconds, 1800);
+      expect(chunk.found, 3);
+      expect(chunk.finalized, 1);
+
+      final itinerary = chunk.itineraries.single;
+      expect(itinerary.numberOfTransfers, 1);
+      expect(itinerary.durationSeconds, 1800);
+
+      final leg = itinerary.legs.single;
+      expect(leg.mode, TransitMode.bus);
+      expect(leg.startDelay, const Duration(seconds: 60));
+      expect(leg.endDelay, const Duration(seconds: 120));
+      expect(leg.startEstimated, '2026-07-15T08:01:00Z');
+      expect(leg.isRealtime, true);
+      expect(leg.realtimeState, RealtimeState.updated);
+      expect(leg.serviceDate, '20260715');
+      expect(leg.fromGtfsId, '1:A');
+      expect(leg.toGtfsId, '1:B');
+    });
+
+    test('pageInfo maps to continuation cursors', () {
+      const data =
+          '{ "startCursor": "c-prev", "endCursor": "c-next", "hasNextPage": true, "hasPreviousPage": false, "searchWindowUsed": "PT1H" }';
+      final event = parsePlanStreamRecord('pageInfo', data);
+      expect(event, isA<PlanStreamPage>());
+      final page = (event as PlanStreamPage).pageInfo;
+      expect(page.startCursor, 'c-prev');
+      expect(page.endCursor, 'c-next');
+      expect(page.hasNextPage, true);
+      expect(page.hasPreviousPage, false);
+      expect(page.searchWindowUsed, 'PT1H');
+    });
+
+    test('done maps to the terminal summary', () {
+      const data =
+          '{ "iterations": 3, "windowSeconds": 3600, "resultCount": 5, "stoppedBy": "targetResults" }';
+      final event = parsePlanStreamRecord('done', data);
+      expect(event, isA<PlanStreamDone>());
+      final done = event as PlanStreamDone;
+      expect(done.iterations, 3);
+      expect(done.windowSeconds, 3600);
+      expect(done.resultCount, 5);
+      expect(done.stoppedBy, 'targetResults');
+    });
+
+    // A stream `error` record is the GraphQL error envelope; a top-level BAD_REQUEST becomes a typed badRequest.
+    test('error event maps to a typed badRequest failure', () {
+      const data =
+          '{ "data": null, "errors": [ { "message": "searchWindow exceeds the cap", "extensions": { "code": "BAD_REQUEST", "field": "searchWindow" } } ] }';
+      final event = parsePlanStreamRecord('error', data);
+      expect(event, isA<PlanStreamFailure>());
+      final error = (event as PlanStreamFailure).error;
+      expect(error.code, SpiderErrorCode.badRequest);
+      expect(error.field, 'searchWindow');
+      expect(error.message, 'searchWindow exceeds the cap');
+    });
+
+    test('heartbeats and unknown events are ignored', () {
+      expect(parsePlanStreamRecord('message', ''), isNull);
+      expect(parsePlanStreamRecord('weird', '{ "x": 1 }'), isNull);
+    });
+
+    // Pins the stream request wire shape (targetResults/maxWindow + via, nulls omitted) so a contract regen
+    // can't silently rename or reorder the fields the SDK sends to /routing/plan-stream.
+    test('stream variables serialize to the plan-stream wire shape', () {
+      final variables = wire.PlanConnectionStreamVariables(
+        dateTime:
+            wire.PlanDateTimeInput(earliestDeparture: '2026-07-15T08:00:00Z'),
+        origin: wire.PlanLabeledLocationInput(
+            location: wire.PlanLocationInput(
+                stopLocation:
+                    wire.PlanStopLocationInput(stopLocationId: '1:A'))),
+        destination: wire.PlanLabeledLocationInput(
+            location: wire.PlanLocationInput(
+                coordinate:
+                    wire.PlanCoordinateInput(latitude: 49.2, longitude: 16.6))),
+        via: [
+          wire.PlanViaLocationInput(
+              passThrough: wire.PlanPassThroughViaLocationInput(
+                  stopLocationIds: ['1:V']))
+        ],
+        targetResults: 5,
+        maxWindow: 'PT3H',
+      );
+      expect(variables.toJson(), {
+        'dateTime': {'earliestDeparture': '2026-07-15T08:00:00Z'},
+        'origin': {
+          'location': {
+            'stopLocation': {'stopLocationId': '1:A'}
+          }
+        },
+        'destination': {
+          'location': {
+            'coordinate': {'latitude': 49.2, 'longitude': 16.6}
+          }
+        },
+        'via': [
+          {
+            'passThrough': {
+              'stopLocationIds': ['1:V']
+            }
+          }
+        ],
+        'targetResults': 5,
+        'maxWindow': 'PT3H',
+      });
+    });
+
+    test('planStream emits chunk/page/done over SSE and sends the id + apikey',
+        () async {
+      const frames = 'event: chunk\n'
+          'data: {"frontier":1800,"found":1,"finalized":1,"results":[{"numberOfTransfers":0,"duration":600,"legs":[{"mode":"BUS","start":{"scheduledTime":"2026-07-15T08:00:00Z"},"end":{"scheduledTime":"2026-07-15T08:10:00Z"},"from":{"name":"A"},"to":{"name":"B"}}]}]}\n'
+          '\n'
+          ': heartbeat\n'
+          '\n'
+          'event: pageInfo\n'
+          'data: {"endCursor":"c-next","hasNextPage":true}\n'
+          '\n'
+          'event: done\n'
+          'data: {"iterations":1,"windowSeconds":1800,"resultCount":1,"stoppedBy":"targetResults"}\n'
+          '\n';
+      final mock = MockHttpClient((_) => resp('{}'),
+          streamHandler: (_) => SpiderHttpStreamedResponse(
+              200,
+              {'content-type': 'text/event-stream'},
+              Stream.value(utf8.encode(frames))));
+      final client = SpiderClient('https://env.api.example.com', 'secret-key',
+          SpiderClientOptions(httpClient: mock));
+
+      final events = await client.routing
+          .planStream(const PlanOptions(
+              origin: Location.stop('A'), destination: Location.stop('B')))
+          .toList();
+
+      expect(events.length, 3);
+      expect(events[0], isA<PlanStreamChunk>());
+      expect((events[0] as PlanStreamChunk).itineraries.single.legs.single.mode,
+          TransitMode.bus);
+      expect((events[1] as PlanStreamPage).pageInfo.endCursor, 'c-next');
+      expect((events[2] as PlanStreamDone).stoppedBy, 'targetResults');
+
+      final req = mock.requests.single;
+      expect(req.method, 'POST');
+      expect(req.uri.path, '/routing/plan-stream');
+      expect(req.headers['apikey'], 'secret-key');
+      expect(req.headers['accept'], 'text/event-stream');
+      expect(bodyOf(req)['id'], PersistedQueries.planstream.id);
+    });
+
+    test('planStream surfaces a non-2xx as a terminal failure', () async {
+      final mock = MockHttpClient((_) => resp('{}'),
+          streamHandler: (_) => SpiderHttpStreamedResponse(
+              403,
+              const {},
+              Stream.value(
+                  utf8.encode('{"code":"forbidden","message":"nope"}'))));
+      final client = SpiderClient('https://env.api.example.com', 'secret-key',
+          SpiderClientOptions(httpClient: mock));
+
+      final events = await client.routing
+          .planStream(const PlanOptions(
+              origin: Location.stop('A'), destination: Location.stop('B')))
+          .toList();
+
+      expect(events.single, isA<PlanStreamFailure>());
+      expect((events.single as PlanStreamFailure).error.code,
+          SpiderErrorCode.unauthorized);
     });
   });
 }
