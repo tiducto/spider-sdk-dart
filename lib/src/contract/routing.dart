@@ -48,8 +48,7 @@ class RealTimeEstimate {
     required this.delay,
   });
 
-  factory RealTimeEstimate.fromJson(Map<String, dynamic> json) =>
-      RealTimeEstimate(
+  factory RealTimeEstimate.fromJson(Map<String, dynamic> json) => RealTimeEstimate(
         time: json['time'] as String,
         delay: json['delay'] as String,
       );
@@ -71,10 +70,7 @@ class LegTime {
 
   factory LegTime.fromJson(Map<String, dynamic> json) => LegTime(
         scheduledTime: json['scheduledTime'] as String,
-        estimated: json['estimated'] == null
-            ? null
-            : RealTimeEstimate.fromJson(
-                json['estimated'] as Map<String, dynamic>),
+        estimated: json['estimated'] == null ? null : RealTimeEstimate.fromJson(json['estimated'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
@@ -136,15 +132,12 @@ class Stop {
 
   factory Stop.fromJson(Map<String, dynamic> json) => Stop(
         gtfsId: json['gtfsId'] as String,
-        wheelchairBoarding: json['wheelchairBoarding'] == null
-            ? null
-            : WheelchairBoarding.fromWire(json['wheelchairBoarding'] as String),
+        wheelchairBoarding: json['wheelchairBoarding'] == null ? null : WheelchairBoarding.fromWire(json['wheelchairBoarding'] as String),
       );
 
   Map<String, dynamic> toJson() => {
         'gtfsId': gtfsId,
-        if (wheelchairBoarding != null)
-          'wheelchairBoarding': wheelchairBoarding!.toJson(),
+        if (wheelchairBoarding != null) 'wheelchairBoarding': wheelchairBoarding!.toJson(),
       };
 }
 
@@ -159,9 +152,7 @@ class Place {
 
   factory Place.fromJson(Map<String, dynamic> json) => Place(
         name: json['name'] as String?,
-        stop: json['stop'] == null
-            ? null
-            : Stop.fromJson(json['stop'] as Map<String, dynamic>),
+        stop: json['stop'] == null ? null : Stop.fromJson(json['stop'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
@@ -221,9 +212,7 @@ class Trip {
 
   factory Trip.fromJson(Map<String, dynamic> json) => Trip(
         gtfsId: json['gtfsId'] as String,
-        bikesAllowed: json['bikesAllowed'] == null
-            ? null
-            : BikesAllowed.fromWire(json['bikesAllowed'] as String),
+        bikesAllowed: json['bikesAllowed'] == null ? null : BikesAllowed.fromWire(json['bikesAllowed'] as String),
       );
 
   Map<String, dynamic> toJson() => {
@@ -256,6 +245,7 @@ class Leg {
   final Mode? mode;
   final RealtimeState? realtimeState;
   final bool? realTime;
+  final String? serviceDate;
   final Route? route;
   final String? headsign;
   final double? distance;
@@ -272,6 +262,7 @@ class Leg {
     this.mode,
     this.realtimeState,
     this.realTime,
+    this.serviceDate,
     this.route,
     this.headsign,
     this.distance,
@@ -286,25 +277,17 @@ class Leg {
         end: LegTime.fromJson(json['end'] as Map<String, dynamic>),
         from: Place.fromJson(json['from'] as Map<String, dynamic>),
         to: Place.fromJson(json['to'] as Map<String, dynamic>),
-        mode:
-            json['mode'] == null ? null : Mode.fromWire(json['mode'] as String),
-        realtimeState: json['realtimeState'] == null
-            ? null
-            : RealtimeState.fromWire(json['realtimeState'] as String),
+        mode: json['mode'] == null ? null : Mode.fromWire(json['mode'] as String),
+        realtimeState: json['realtimeState'] == null ? null : RealtimeState.fromWire(json['realtimeState'] as String),
         realTime: json['realTime'] as bool?,
-        route: json['route'] == null
-            ? null
-            : Route.fromJson(json['route'] as Map<String, dynamic>),
+        serviceDate: json['serviceDate'] as String?,
+        route: json['route'] == null ? null : Route.fromJson(json['route'] as Map<String, dynamic>),
         headsign: json['headsign'] as String?,
         distance: (json['distance'] as num?)?.toDouble(),
         duration: (json['duration'] as num?)?.toDouble(),
         accessibilityScore: (json['accessibilityScore'] as num?)?.toDouble(),
-        trip: json['trip'] == null
-            ? null
-            : Trip.fromJson(json['trip'] as Map<String, dynamic>),
-        legGeometry: json['legGeometry'] == null
-            ? null
-            : Geometry.fromJson(json['legGeometry'] as Map<String, dynamic>),
+        trip: json['trip'] == null ? null : Trip.fromJson(json['trip'] as Map<String, dynamic>),
+        legGeometry: json['legGeometry'] == null ? null : Geometry.fromJson(json['legGeometry'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
@@ -315,12 +298,12 @@ class Leg {
         if (mode != null) 'mode': mode!.toJson(),
         if (realtimeState != null) 'realtimeState': realtimeState!.toJson(),
         if (realTime != null) 'realTime': realTime!,
+        if (serviceDate != null) 'serviceDate': serviceDate!,
         if (route != null) 'route': route!.toJson(),
         if (headsign != null) 'headsign': headsign!,
         if (distance != null) 'distance': distance!,
         if (duration != null) 'duration': duration!,
-        if (accessibilityScore != null)
-          'accessibilityScore': accessibilityScore!,
+        if (accessibilityScore != null) 'accessibilityScore': accessibilityScore!,
         if (trip != null) 'trip': trip!.toJson(),
         if (legGeometry != null) 'legGeometry': legGeometry!.toJson(),
       };
@@ -347,9 +330,7 @@ class Itinerary {
 
   factory Itinerary.fromJson(Map<String, dynamic> json) => Itinerary(
         numberOfTransfers: (json['numberOfTransfers'] as num).toInt(),
-        legs: (json['legs'] as List<dynamic>)
-            .map((e) => Leg.fromJson(e as Map<String, dynamic>))
-            .toList(),
+        legs: (json['legs'] as List<dynamic>).map((e) => Leg.fromJson(e as Map<String, dynamic>)).toList(),
         start: json['start'] as String?,
         end: json['end'] as String?,
         duration: (json['duration'] as num?)?.toInt(),
@@ -364,8 +345,7 @@ class Itinerary {
         if (end != null) 'end': end!,
         if (duration != null) 'duration': duration!,
         if (waitingTime != null) 'waitingTime': waitingTime!,
-        if (accessibilityScore != null)
-          'accessibilityScore': accessibilityScore!,
+        if (accessibilityScore != null) 'accessibilityScore': accessibilityScore!,
       };
 }
 
@@ -480,9 +460,7 @@ class RoutingError {
   factory RoutingError.fromJson(Map<String, dynamic> json) => RoutingError(
         code: RoutingErrorCode.fromWire(json['code'] as String),
         description: json['description'] as String,
-        inputField: json['inputField'] == null
-            ? null
-            : InputField.fromWire(json['inputField'] as String),
+        inputField: json['inputField'] == null ? null : InputField.fromWire(json['inputField'] as String),
       );
 
   Map<String, dynamic> toJson() => {
@@ -506,14 +484,9 @@ class PlanConnection {
   });
 
   factory PlanConnection.fromJson(Map<String, dynamic> json) => PlanConnection(
-        pageInfo:
-            PlanPageInfo.fromJson(json['pageInfo'] as Map<String, dynamic>),
-        routingErrors: (json['routingErrors'] as List<dynamic>)
-            .map((e) => RoutingError.fromJson(e as Map<String, dynamic>))
-            .toList(),
-        edges: (json['edges'] as List<dynamic>?)
-            ?.map((e) => PlanEdge.fromJson(e as Map<String, dynamic>))
-            .toList(),
+        pageInfo: PlanPageInfo.fromJson(json['pageInfo'] as Map<String, dynamic>),
+        routingErrors: (json['routingErrors'] as List<dynamic>).map((e) => RoutingError.fromJson(e as Map<String, dynamic>)).toList(),
+        edges: (json['edges'] as List<dynamic>?)?.map((e) => PlanEdge.fromJson(e as Map<String, dynamic>)).toList(),
         searchDateTime: json['searchDateTime'] as String?,
       );
 
@@ -525,19 +498,15 @@ class PlanConnection {
       };
 }
 
-class PlanConnectionStreamData {
+class PlanConnectionData {
   final PlanConnection? planConnection;
 
-  const PlanConnectionStreamData({
+  const PlanConnectionData({
     this.planConnection,
   });
 
-  factory PlanConnectionStreamData.fromJson(Map<String, dynamic> json) =>
-      PlanConnectionStreamData(
-        planConnection: json['planConnection'] == null
-            ? null
-            : PlanConnection.fromJson(
-                json['planConnection'] as Map<String, dynamic>),
+  factory PlanConnectionData.fromJson(Map<String, dynamic> json) => PlanConnectionData(
+        planConnection: json['planConnection'] == null ? null : PlanConnection.fromJson(json['planConnection'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
@@ -556,8 +525,7 @@ class GraphQLError {
 
   factory GraphQLError.fromJson(Map<String, dynamic> json) => GraphQLError(
         message: json['message'] as String,
-        path:
-            (json['path'] as List<dynamic>?)?.map((e) => e as String).toList(),
+        path: (json['path'] as List<dynamic>?)?.map((e) => e as String).toList(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -566,24 +534,18 @@ class GraphQLError {
       };
 }
 
-class PlanConnectionStreamResponse {
-  final PlanConnectionStreamData? data;
+class PlanConnectionResponse {
+  final PlanConnectionData? data;
   final List<GraphQLError>? errors;
 
-  const PlanConnectionStreamResponse({
+  const PlanConnectionResponse({
     this.data,
     this.errors,
   });
 
-  factory PlanConnectionStreamResponse.fromJson(Map<String, dynamic> json) =>
-      PlanConnectionStreamResponse(
-        data: json['data'] == null
-            ? null
-            : PlanConnectionStreamData.fromJson(
-                json['data'] as Map<String, dynamic>),
-        errors: (json['errors'] as List<dynamic>?)
-            ?.map((e) => GraphQLError.fromJson(e as Map<String, dynamic>))
-            .toList(),
+  factory PlanConnectionResponse.fromJson(Map<String, dynamic> json) => PlanConnectionResponse(
+        data: json['data'] == null ? null : PlanConnectionData.fromJson(json['data'] as Map<String, dynamic>),
+        errors: (json['errors'] as List<dynamic>?)?.map((e) => GraphQLError.fromJson(e as Map<String, dynamic>)).toList(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -601,8 +563,7 @@ class PlanDateTimeInput {
     this.latestArrival,
   });
 
-  factory PlanDateTimeInput.fromJson(Map<String, dynamic> json) =>
-      PlanDateTimeInput(
+  factory PlanDateTimeInput.fromJson(Map<String, dynamic> json) => PlanDateTimeInput(
         earliestDeparture: json['earliestDeparture'] as String?,
         latestArrival: json['latestArrival'] as String?,
       );
@@ -622,10 +583,8 @@ class PlanLabeledLocationInput {
     this.label,
   });
 
-  factory PlanLabeledLocationInput.fromJson(Map<String, dynamic> json) =>
-      PlanLabeledLocationInput(
-        location: PlanLocationInput.fromJson(
-            json['location'] as Map<String, dynamic>),
+  factory PlanLabeledLocationInput.fromJson(Map<String, dynamic> json) => PlanLabeledLocationInput(
+        location: PlanLocationInput.fromJson(json['location'] as Map<String, dynamic>),
         label: json['label'] as String?,
       );
 
@@ -644,16 +603,9 @@ class PlanLocationInput {
     this.stopLocation,
   });
 
-  factory PlanLocationInput.fromJson(Map<String, dynamic> json) =>
-      PlanLocationInput(
-        coordinate: json['coordinate'] == null
-            ? null
-            : PlanCoordinateInput.fromJson(
-                json['coordinate'] as Map<String, dynamic>),
-        stopLocation: json['stopLocation'] == null
-            ? null
-            : PlanStopLocationInput.fromJson(
-                json['stopLocation'] as Map<String, dynamic>),
+  factory PlanLocationInput.fromJson(Map<String, dynamic> json) => PlanLocationInput(
+        coordinate: json['coordinate'] == null ? null : PlanCoordinateInput.fromJson(json['coordinate'] as Map<String, dynamic>),
+        stopLocation: json['stopLocation'] == null ? null : PlanStopLocationInput.fromJson(json['stopLocation'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
@@ -671,8 +623,7 @@ class PlanCoordinateInput {
     required this.longitude,
   });
 
-  factory PlanCoordinateInput.fromJson(Map<String, dynamic> json) =>
-      PlanCoordinateInput(
+  factory PlanCoordinateInput.fromJson(Map<String, dynamic> json) => PlanCoordinateInput(
         latitude: (json['latitude'] as num).toDouble(),
         longitude: (json['longitude'] as num).toDouble(),
       );
@@ -690,8 +641,7 @@ class PlanStopLocationInput {
     required this.stopLocationId,
   });
 
-  factory PlanStopLocationInput.fromJson(Map<String, dynamic> json) =>
-      PlanStopLocationInput(
+  factory PlanStopLocationInput.fromJson(Map<String, dynamic> json) => PlanStopLocationInput(
         stopLocationId: json['stopLocationId'] as String,
       );
 
@@ -709,16 +659,9 @@ class PlanViaLocationInput {
     this.visit,
   });
 
-  factory PlanViaLocationInput.fromJson(Map<String, dynamic> json) =>
-      PlanViaLocationInput(
-        passThrough: json['passThrough'] == null
-            ? null
-            : PlanPassThroughViaLocationInput.fromJson(
-                json['passThrough'] as Map<String, dynamic>),
-        visit: json['visit'] == null
-            ? null
-            : PlanVisitViaLocationInput.fromJson(
-                json['visit'] as Map<String, dynamic>),
+  factory PlanViaLocationInput.fromJson(Map<String, dynamic> json) => PlanViaLocationInput(
+        passThrough: json['passThrough'] == null ? null : PlanPassThroughViaLocationInput.fromJson(json['passThrough'] as Map<String, dynamic>),
+        visit: json['visit'] == null ? null : PlanVisitViaLocationInput.fromJson(json['visit'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
@@ -736,11 +679,8 @@ class PlanPassThroughViaLocationInput {
     this.label,
   });
 
-  factory PlanPassThroughViaLocationInput.fromJson(Map<String, dynamic> json) =>
-      PlanPassThroughViaLocationInput(
-        stopLocationIds: (json['stopLocationIds'] as List<dynamic>)
-            .map((e) => e as String)
-            .toList(),
+  factory PlanPassThroughViaLocationInput.fromJson(Map<String, dynamic> json) => PlanPassThroughViaLocationInput(
+        stopLocationIds: (json['stopLocationIds'] as List<dynamic>).map((e) => e as String).toList(),
         label: json['label'] as String?,
       );
 
@@ -763,25 +703,18 @@ class PlanVisitViaLocationInput {
     this.stopLocationIds,
   });
 
-  factory PlanVisitViaLocationInput.fromJson(Map<String, dynamic> json) =>
-      PlanVisitViaLocationInput(
-        coordinate: json['coordinate'] == null
-            ? null
-            : PlanCoordinateInput.fromJson(
-                json['coordinate'] as Map<String, dynamic>),
+  factory PlanVisitViaLocationInput.fromJson(Map<String, dynamic> json) => PlanVisitViaLocationInput(
+        coordinate: json['coordinate'] == null ? null : PlanCoordinateInput.fromJson(json['coordinate'] as Map<String, dynamic>),
         label: json['label'] as String?,
         minimumWaitTime: json['minimumWaitTime'] as String?,
-        stopLocationIds: (json['stopLocationIds'] as List<dynamic>?)
-            ?.map((e) => e as String)
-            .toList(),
+        stopLocationIds: (json['stopLocationIds'] as List<dynamic>?)?.map((e) => e as String).toList(),
       );
 
   Map<String, dynamic> toJson() => {
         if (coordinate != null) 'coordinate': coordinate!.toJson(),
         if (label != null) 'label': label!,
         if (minimumWaitTime != null) 'minimumWaitTime': minimumWaitTime!,
-        if (stopLocationIds != null)
-          'stopLocationIds': stopLocationIds!.map((e) => e).toList(),
+        if (stopLocationIds != null) 'stopLocationIds': stopLocationIds!.map((e) => e).toList(),
       };
 }
 
@@ -799,14 +732,9 @@ class PlanModesInput {
   });
 
   factory PlanModesInput.fromJson(Map<String, dynamic> json) => PlanModesInput(
-        direct: (json['direct'] as List<dynamic>?)
-            ?.map((e) => PlanDirectMode.fromWire(e as String))
-            .toList(),
+        direct: (json['direct'] as List<dynamic>?)?.map((e) => PlanDirectMode.fromWire(e as String)).toList(),
         directOnly: json['directOnly'] as bool?,
-        transit: json['transit'] == null
-            ? null
-            : PlanTransitModesInput.fromJson(
-                json['transit'] as Map<String, dynamic>),
+        transit: json['transit'] == null ? null : PlanTransitModesInput.fromJson(json['transit'] as Map<String, dynamic>),
         transitOnly: json['transitOnly'] as bool?,
       );
 
@@ -857,30 +785,18 @@ class PlanTransitModesInput {
     this.transit,
   });
 
-  factory PlanTransitModesInput.fromJson(Map<String, dynamic> json) =>
-      PlanTransitModesInput(
-        access: (json['access'] as List<dynamic>?)
-            ?.map((e) => PlanAccessMode.fromWire(e as String))
-            .toList(),
-        egress: (json['egress'] as List<dynamic>?)
-            ?.map((e) => PlanEgressMode.fromWire(e as String))
-            .toList(),
-        transfer: (json['transfer'] as List<dynamic>?)
-            ?.map((e) => PlanTransferMode.fromWire(e as String))
-            .toList(),
-        transit: (json['transit'] as List<dynamic>?)
-            ?.map((e) => PlanTransitModePreferenceInput.fromJson(
-                e as Map<String, dynamic>))
-            .toList(),
+  factory PlanTransitModesInput.fromJson(Map<String, dynamic> json) => PlanTransitModesInput(
+        access: (json['access'] as List<dynamic>?)?.map((e) => PlanAccessMode.fromWire(e as String)).toList(),
+        egress: (json['egress'] as List<dynamic>?)?.map((e) => PlanEgressMode.fromWire(e as String)).toList(),
+        transfer: (json['transfer'] as List<dynamic>?)?.map((e) => PlanTransferMode.fromWire(e as String)).toList(),
+        transit: (json['transit'] as List<dynamic>?)?.map((e) => PlanTransitModePreferenceInput.fromJson(e as Map<String, dynamic>)).toList(),
       );
 
   Map<String, dynamic> toJson() => {
         if (access != null) 'access': access!.map((e) => e.toJson()).toList(),
         if (egress != null) 'egress': egress!.map((e) => e.toJson()).toList(),
-        if (transfer != null)
-          'transfer': transfer!.map((e) => e.toJson()).toList(),
-        if (transit != null)
-          'transit': transit!.map((e) => e.toJson()).toList(),
+        if (transfer != null) 'transfer': transfer!.map((e) => e.toJson()).toList(),
+        if (transit != null) 'transit': transit!.map((e) => e.toJson()).toList(),
       };
 }
 
@@ -965,13 +881,9 @@ class PlanTransitModePreferenceInput {
     this.cost,
   });
 
-  factory PlanTransitModePreferenceInput.fromJson(Map<String, dynamic> json) =>
-      PlanTransitModePreferenceInput(
+  factory PlanTransitModePreferenceInput.fromJson(Map<String, dynamic> json) => PlanTransitModePreferenceInput(
         mode: TransitMode.fromWire(json['mode'] as String),
-        cost: json['cost'] == null
-            ? null
-            : TransitModePreferenceCostInput.fromJson(
-                json['cost'] as Map<String, dynamic>),
+        cost: json['cost'] == null ? null : TransitModePreferenceCostInput.fromJson(json['cost'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
@@ -987,8 +899,7 @@ class TransitModePreferenceCostInput {
     required this.reluctance,
   });
 
-  factory TransitModePreferenceCostInput.fromJson(Map<String, dynamic> json) =>
-      TransitModePreferenceCostInput(
+  factory TransitModePreferenceCostInput.fromJson(Map<String, dynamic> json) => TransitModePreferenceCostInput(
         reluctance: (json['reluctance'] as num).toDouble(),
       );
 
@@ -1040,20 +951,10 @@ class PlanPreferencesInput {
     this.transit,
   });
 
-  factory PlanPreferencesInput.fromJson(Map<String, dynamic> json) =>
-      PlanPreferencesInput(
-        accessibility: json['accessibility'] == null
-            ? null
-            : AccessibilityPreferencesInput.fromJson(
-                json['accessibility'] as Map<String, dynamic>),
-        street: json['street'] == null
-            ? null
-            : PlanStreetPreferencesInput.fromJson(
-                json['street'] as Map<String, dynamic>),
-        transit: json['transit'] == null
-            ? null
-            : TransitPreferencesInput.fromJson(
-                json['transit'] as Map<String, dynamic>),
+  factory PlanPreferencesInput.fromJson(Map<String, dynamic> json) => PlanPreferencesInput(
+        accessibility: json['accessibility'] == null ? null : AccessibilityPreferencesInput.fromJson(json['accessibility'] as Map<String, dynamic>),
+        street: json['street'] == null ? null : PlanStreetPreferencesInput.fromJson(json['street'] as Map<String, dynamic>),
+        transit: json['transit'] == null ? null : TransitPreferencesInput.fromJson(json['transit'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
@@ -1070,12 +971,8 @@ class AccessibilityPreferencesInput {
     this.wheelchair,
   });
 
-  factory AccessibilityPreferencesInput.fromJson(Map<String, dynamic> json) =>
-      AccessibilityPreferencesInput(
-        wheelchair: json['wheelchair'] == null
-            ? null
-            : WheelchairPreferencesInput.fromJson(
-                json['wheelchair'] as Map<String, dynamic>),
+  factory AccessibilityPreferencesInput.fromJson(Map<String, dynamic> json) => AccessibilityPreferencesInput(
+        wheelchair: json['wheelchair'] == null ? null : WheelchairPreferencesInput.fromJson(json['wheelchair'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
@@ -1090,8 +987,7 @@ class WheelchairPreferencesInput {
     this.enabled,
   });
 
-  factory WheelchairPreferencesInput.fromJson(Map<String, dynamic> json) =>
-      WheelchairPreferencesInput(
+  factory WheelchairPreferencesInput.fromJson(Map<String, dynamic> json) => WheelchairPreferencesInput(
         enabled: json['enabled'] as bool?,
       );
 
@@ -1113,23 +1009,11 @@ class PlanStreetPreferencesInput {
     this.walk,
   });
 
-  factory PlanStreetPreferencesInput.fromJson(Map<String, dynamic> json) =>
-      PlanStreetPreferencesInput(
-        bicycle: json['bicycle'] == null
-            ? null
-            : BicyclePreferencesInput.fromJson(
-                json['bicycle'] as Map<String, dynamic>),
-        car: json['car'] == null
-            ? null
-            : CarPreferencesInput.fromJson(json['car'] as Map<String, dynamic>),
-        scooter: json['scooter'] == null
-            ? null
-            : ScooterPreferencesInput.fromJson(
-                json['scooter'] as Map<String, dynamic>),
-        walk: json['walk'] == null
-            ? null
-            : WalkPreferencesInput.fromJson(
-                json['walk'] as Map<String, dynamic>),
+  factory PlanStreetPreferencesInput.fromJson(Map<String, dynamic> json) => PlanStreetPreferencesInput(
+        bicycle: json['bicycle'] == null ? null : BicyclePreferencesInput.fromJson(json['bicycle'] as Map<String, dynamic>),
+        car: json['car'] == null ? null : CarPreferencesInput.fromJson(json['car'] as Map<String, dynamic>),
+        scooter: json['scooter'] == null ? null : ScooterPreferencesInput.fromJson(json['scooter'] as Map<String, dynamic>),
+        walk: json['walk'] == null ? null : WalkPreferencesInput.fromJson(json['walk'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
@@ -1159,27 +1043,14 @@ class BicyclePreferencesInput {
     this.walk,
   });
 
-  factory BicyclePreferencesInput.fromJson(Map<String, dynamic> json) =>
-      BicyclePreferencesInput(
+  factory BicyclePreferencesInput.fromJson(Map<String, dynamic> json) => BicyclePreferencesInput(
         boardCost: (json['boardCost'] as num?)?.toInt(),
-        optimization: json['optimization'] == null
-            ? null
-            : CyclingOptimizationInput.fromJson(
-                json['optimization'] as Map<String, dynamic>),
-        parking: json['parking'] == null
-            ? null
-            : BicycleParkingPreferencesInput.fromJson(
-                json['parking'] as Map<String, dynamic>),
+        optimization: json['optimization'] == null ? null : CyclingOptimizationInput.fromJson(json['optimization'] as Map<String, dynamic>),
+        parking: json['parking'] == null ? null : BicycleParkingPreferencesInput.fromJson(json['parking'] as Map<String, dynamic>),
         reluctance: (json['reluctance'] as num?)?.toDouble(),
-        rental: json['rental'] == null
-            ? null
-            : BicycleRentalPreferencesInput.fromJson(
-                json['rental'] as Map<String, dynamic>),
+        rental: json['rental'] == null ? null : BicycleRentalPreferencesInput.fromJson(json['rental'] as Map<String, dynamic>),
         speed: (json['speed'] as num?)?.toDouble(),
-        walk: json['walk'] == null
-            ? null
-            : BicycleWalkPreferencesInput.fromJson(
-                json['walk'] as Map<String, dynamic>),
+        walk: json['walk'] == null ? null : BicycleWalkPreferencesInput.fromJson(json['walk'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
@@ -1202,15 +1073,9 @@ class CyclingOptimizationInput {
     this.type,
   });
 
-  factory CyclingOptimizationInput.fromJson(Map<String, dynamic> json) =>
-      CyclingOptimizationInput(
-        triangle: json['triangle'] == null
-            ? null
-            : TriangleCyclingFactorsInput.fromJson(
-                json['triangle'] as Map<String, dynamic>),
-        type: json['type'] == null
-            ? null
-            : CyclingOptimizationType.fromWire(json['type'] as String),
+  factory CyclingOptimizationInput.fromJson(Map<String, dynamic> json) => CyclingOptimizationInput(
+        triangle: json['triangle'] == null ? null : TriangleCyclingFactorsInput.fromJson(json['triangle'] as Map<String, dynamic>),
+        type: json['type'] == null ? null : CyclingOptimizationType.fromWire(json['type'] as String),
       );
 
   Map<String, dynamic> toJson() => {
@@ -1230,8 +1095,7 @@ class TriangleCyclingFactorsInput {
     required this.time,
   });
 
-  factory TriangleCyclingFactorsInput.fromJson(Map<String, dynamic> json) =>
-      TriangleCyclingFactorsInput(
+  factory TriangleCyclingFactorsInput.fromJson(Map<String, dynamic> json) => TriangleCyclingFactorsInput(
         flatness: (json['flatness'] as num).toDouble(),
         safety: (json['safety'] as num).toDouble(),
         time: (json['time'] as num).toDouble(),
@@ -1276,22 +1140,15 @@ class BicycleParkingPreferencesInput {
     this.unpreferredCost,
   });
 
-  factory BicycleParkingPreferencesInput.fromJson(Map<String, dynamic> json) =>
-      BicycleParkingPreferencesInput(
-        filters: (json['filters'] as List<dynamic>?)
-            ?.map((e) => ParkingFilter.fromJson(e as Map<String, dynamic>))
-            .toList(),
-        preferred: (json['preferred'] as List<dynamic>?)
-            ?.map((e) => ParkingFilter.fromJson(e as Map<String, dynamic>))
-            .toList(),
+  factory BicycleParkingPreferencesInput.fromJson(Map<String, dynamic> json) => BicycleParkingPreferencesInput(
+        filters: (json['filters'] as List<dynamic>?)?.map((e) => ParkingFilter.fromJson(e as Map<String, dynamic>)).toList(),
+        preferred: (json['preferred'] as List<dynamic>?)?.map((e) => ParkingFilter.fromJson(e as Map<String, dynamic>)).toList(),
         unpreferredCost: (json['unpreferredCost'] as num?)?.toInt(),
       );
 
   Map<String, dynamic> toJson() => {
-        if (filters != null)
-          'filters': filters!.map((e) => e.toJson()).toList(),
-        if (preferred != null)
-          'preferred': preferred!.map((e) => e.toJson()).toList(),
+        if (filters != null) 'filters': filters!.map((e) => e.toJson()).toList(),
+        if (preferred != null) 'preferred': preferred!.map((e) => e.toJson()).toList(),
         if (unpreferredCost != null) 'unpreferredCost': unpreferredCost!,
       };
 }
@@ -1306,14 +1163,8 @@ class ParkingFilter {
   });
 
   factory ParkingFilter.fromJson(Map<String, dynamic> json) => ParkingFilter(
-        not: (json['not'] as List<dynamic>?)
-            ?.map((e) =>
-                ParkingFilterOperation.fromJson(e as Map<String, dynamic>))
-            .toList(),
-        select: (json['select'] as List<dynamic>?)
-            ?.map((e) =>
-                ParkingFilterOperation.fromJson(e as Map<String, dynamic>))
-            .toList(),
+        not: (json['not'] as List<dynamic>?)?.map((e) => ParkingFilterOperation.fromJson(e as Map<String, dynamic>)).toList(),
+        select: (json['select'] as List<dynamic>?)?.map((e) => ParkingFilterOperation.fromJson(e as Map<String, dynamic>)).toList(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -1329,10 +1180,8 @@ class ParkingFilterOperation {
     this.tags,
   });
 
-  factory ParkingFilterOperation.fromJson(Map<String, dynamic> json) =>
-      ParkingFilterOperation(
-        tags:
-            (json['tags'] as List<dynamic>?)?.map((e) => e as String).toList(),
+  factory ParkingFilterOperation.fromJson(Map<String, dynamic> json) => ParkingFilterOperation(
+        tags: (json['tags'] as List<dynamic>?)?.map((e) => e as String).toList(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -1351,27 +1200,16 @@ class BicycleRentalPreferencesInput {
     this.destinationBicyclePolicy,
   });
 
-  factory BicycleRentalPreferencesInput.fromJson(Map<String, dynamic> json) =>
-      BicycleRentalPreferencesInput(
-        allowedNetworks: (json['allowedNetworks'] as List<dynamic>?)
-            ?.map((e) => e as String)
-            .toList(),
-        bannedNetworks: (json['bannedNetworks'] as List<dynamic>?)
-            ?.map((e) => e as String)
-            .toList(),
-        destinationBicyclePolicy: json['destinationBicyclePolicy'] == null
-            ? null
-            : DestinationBicyclePolicyInput.fromJson(
-                json['destinationBicyclePolicy'] as Map<String, dynamic>),
+  factory BicycleRentalPreferencesInput.fromJson(Map<String, dynamic> json) => BicycleRentalPreferencesInput(
+        allowedNetworks: (json['allowedNetworks'] as List<dynamic>?)?.map((e) => e as String).toList(),
+        bannedNetworks: (json['bannedNetworks'] as List<dynamic>?)?.map((e) => e as String).toList(),
+        destinationBicyclePolicy: json['destinationBicyclePolicy'] == null ? null : DestinationBicyclePolicyInput.fromJson(json['destinationBicyclePolicy'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
-        if (allowedNetworks != null)
-          'allowedNetworks': allowedNetworks!.map((e) => e).toList(),
-        if (bannedNetworks != null)
-          'bannedNetworks': bannedNetworks!.map((e) => e).toList(),
-        if (destinationBicyclePolicy != null)
-          'destinationBicyclePolicy': destinationBicyclePolicy!.toJson(),
+        if (allowedNetworks != null) 'allowedNetworks': allowedNetworks!.map((e) => e).toList(),
+        if (bannedNetworks != null) 'bannedNetworks': bannedNetworks!.map((e) => e).toList(),
+        if (destinationBicyclePolicy != null) 'destinationBicyclePolicy': destinationBicyclePolicy!.toJson(),
       };
 }
 
@@ -1384,8 +1222,7 @@ class DestinationBicyclePolicyInput {
     this.keepingCost,
   });
 
-  factory DestinationBicyclePolicyInput.fromJson(Map<String, dynamic> json) =>
-      DestinationBicyclePolicyInput(
+  factory DestinationBicyclePolicyInput.fromJson(Map<String, dynamic> json) => DestinationBicyclePolicyInput(
         allowKeeping: json['allowKeeping'] as bool?,
         keepingCost: (json['keepingCost'] as num?)?.toInt(),
       );
@@ -1407,12 +1244,8 @@ class BicycleWalkPreferencesInput {
     this.speed,
   });
 
-  factory BicycleWalkPreferencesInput.fromJson(Map<String, dynamic> json) =>
-      BicycleWalkPreferencesInput(
-        cost: json['cost'] == null
-            ? null
-            : BicycleWalkPreferencesCostInput.fromJson(
-                json['cost'] as Map<String, dynamic>),
+  factory BicycleWalkPreferencesInput.fromJson(Map<String, dynamic> json) => BicycleWalkPreferencesInput(
+        cost: json['cost'] == null ? null : BicycleWalkPreferencesCostInput.fromJson(json['cost'] as Map<String, dynamic>),
         mountDismountTime: json['mountDismountTime'] as String?,
         speed: (json['speed'] as num?)?.toDouble(),
       );
@@ -1433,8 +1266,7 @@ class BicycleWalkPreferencesCostInput {
     this.reluctance,
   });
 
-  factory BicycleWalkPreferencesCostInput.fromJson(Map<String, dynamic> json) =>
-      BicycleWalkPreferencesCostInput(
+  factory BicycleWalkPreferencesCostInput.fromJson(Map<String, dynamic> json) => BicycleWalkPreferencesCostInput(
         mountDismountCost: (json['mountDismountCost'] as num?)?.toInt(),
         reluctance: (json['reluctance'] as num?)?.toDouble(),
       );
@@ -1458,18 +1290,11 @@ class CarPreferencesInput {
     this.rental,
   });
 
-  factory CarPreferencesInput.fromJson(Map<String, dynamic> json) =>
-      CarPreferencesInput(
+  factory CarPreferencesInput.fromJson(Map<String, dynamic> json) => CarPreferencesInput(
         boardCost: (json['boardCost'] as num?)?.toInt(),
-        parking: json['parking'] == null
-            ? null
-            : CarParkingPreferencesInput.fromJson(
-                json['parking'] as Map<String, dynamic>),
+        parking: json['parking'] == null ? null : CarParkingPreferencesInput.fromJson(json['parking'] as Map<String, dynamic>),
         reluctance: (json['reluctance'] as num?)?.toDouble(),
-        rental: json['rental'] == null
-            ? null
-            : CarRentalPreferencesInput.fromJson(
-                json['rental'] as Map<String, dynamic>),
+        rental: json['rental'] == null ? null : CarRentalPreferencesInput.fromJson(json['rental'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
@@ -1491,22 +1316,15 @@ class CarParkingPreferencesInput {
     this.unpreferredCost,
   });
 
-  factory CarParkingPreferencesInput.fromJson(Map<String, dynamic> json) =>
-      CarParkingPreferencesInput(
-        filters: (json['filters'] as List<dynamic>?)
-            ?.map((e) => ParkingFilter.fromJson(e as Map<String, dynamic>))
-            .toList(),
-        preferred: (json['preferred'] as List<dynamic>?)
-            ?.map((e) => ParkingFilter.fromJson(e as Map<String, dynamic>))
-            .toList(),
+  factory CarParkingPreferencesInput.fromJson(Map<String, dynamic> json) => CarParkingPreferencesInput(
+        filters: (json['filters'] as List<dynamic>?)?.map((e) => ParkingFilter.fromJson(e as Map<String, dynamic>)).toList(),
+        preferred: (json['preferred'] as List<dynamic>?)?.map((e) => ParkingFilter.fromJson(e as Map<String, dynamic>)).toList(),
         unpreferredCost: (json['unpreferredCost'] as num?)?.toInt(),
       );
 
   Map<String, dynamic> toJson() => {
-        if (filters != null)
-          'filters': filters!.map((e) => e.toJson()).toList(),
-        if (preferred != null)
-          'preferred': preferred!.map((e) => e.toJson()).toList(),
+        if (filters != null) 'filters': filters!.map((e) => e.toJson()).toList(),
+        if (preferred != null) 'preferred': preferred!.map((e) => e.toJson()).toList(),
         if (unpreferredCost != null) 'unpreferredCost': unpreferredCost!,
       };
 }
@@ -1522,22 +1340,15 @@ class CarRentalPreferencesInput {
     this.rentalDuration,
   });
 
-  factory CarRentalPreferencesInput.fromJson(Map<String, dynamic> json) =>
-      CarRentalPreferencesInput(
-        allowedNetworks: (json['allowedNetworks'] as List<dynamic>?)
-            ?.map((e) => e as String)
-            .toList(),
-        bannedNetworks: (json['bannedNetworks'] as List<dynamic>?)
-            ?.map((e) => e as String)
-            .toList(),
+  factory CarRentalPreferencesInput.fromJson(Map<String, dynamic> json) => CarRentalPreferencesInput(
+        allowedNetworks: (json['allowedNetworks'] as List<dynamic>?)?.map((e) => e as String).toList(),
+        bannedNetworks: (json['bannedNetworks'] as List<dynamic>?)?.map((e) => e as String).toList(),
         rentalDuration: json['rentalDuration'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
-        if (allowedNetworks != null)
-          'allowedNetworks': allowedNetworks!.map((e) => e).toList(),
-        if (bannedNetworks != null)
-          'bannedNetworks': bannedNetworks!.map((e) => e).toList(),
+        if (allowedNetworks != null) 'allowedNetworks': allowedNetworks!.map((e) => e).toList(),
+        if (bannedNetworks != null) 'bannedNetworks': bannedNetworks!.map((e) => e).toList(),
         if (rentalDuration != null) 'rentalDuration': rentalDuration!,
       };
 }
@@ -1555,17 +1366,10 @@ class ScooterPreferencesInput {
     this.speed,
   });
 
-  factory ScooterPreferencesInput.fromJson(Map<String, dynamic> json) =>
-      ScooterPreferencesInput(
-        optimization: json['optimization'] == null
-            ? null
-            : ScooterOptimizationInput.fromJson(
-                json['optimization'] as Map<String, dynamic>),
+  factory ScooterPreferencesInput.fromJson(Map<String, dynamic> json) => ScooterPreferencesInput(
+        optimization: json['optimization'] == null ? null : ScooterOptimizationInput.fromJson(json['optimization'] as Map<String, dynamic>),
         reluctance: (json['reluctance'] as num?)?.toDouble(),
-        rental: json['rental'] == null
-            ? null
-            : ScooterRentalPreferencesInput.fromJson(
-                json['rental'] as Map<String, dynamic>),
+        rental: json['rental'] == null ? null : ScooterRentalPreferencesInput.fromJson(json['rental'] as Map<String, dynamic>),
         speed: (json['speed'] as num?)?.toDouble(),
       );
 
@@ -1586,15 +1390,9 @@ class ScooterOptimizationInput {
     this.type,
   });
 
-  factory ScooterOptimizationInput.fromJson(Map<String, dynamic> json) =>
-      ScooterOptimizationInput(
-        triangle: json['triangle'] == null
-            ? null
-            : TriangleScooterFactorsInput.fromJson(
-                json['triangle'] as Map<String, dynamic>),
-        type: json['type'] == null
-            ? null
-            : ScooterOptimizationType.fromWire(json['type'] as String),
+  factory ScooterOptimizationInput.fromJson(Map<String, dynamic> json) => ScooterOptimizationInput(
+        triangle: json['triangle'] == null ? null : TriangleScooterFactorsInput.fromJson(json['triangle'] as Map<String, dynamic>),
+        type: json['type'] == null ? null : ScooterOptimizationType.fromWire(json['type'] as String),
       );
 
   Map<String, dynamic> toJson() => {
@@ -1614,8 +1412,7 @@ class TriangleScooterFactorsInput {
     required this.time,
   });
 
-  factory TriangleScooterFactorsInput.fromJson(Map<String, dynamic> json) =>
-      TriangleScooterFactorsInput(
+  factory TriangleScooterFactorsInput.fromJson(Map<String, dynamic> json) => TriangleScooterFactorsInput(
         flatness: (json['flatness'] as num).toDouble(),
         safety: (json['safety'] as num).toDouble(),
         time: (json['time'] as num).toDouble(),
@@ -1660,27 +1457,16 @@ class ScooterRentalPreferencesInput {
     this.destinationScooterPolicy,
   });
 
-  factory ScooterRentalPreferencesInput.fromJson(Map<String, dynamic> json) =>
-      ScooterRentalPreferencesInput(
-        allowedNetworks: (json['allowedNetworks'] as List<dynamic>?)
-            ?.map((e) => e as String)
-            .toList(),
-        bannedNetworks: (json['bannedNetworks'] as List<dynamic>?)
-            ?.map((e) => e as String)
-            .toList(),
-        destinationScooterPolicy: json['destinationScooterPolicy'] == null
-            ? null
-            : DestinationScooterPolicyInput.fromJson(
-                json['destinationScooterPolicy'] as Map<String, dynamic>),
+  factory ScooterRentalPreferencesInput.fromJson(Map<String, dynamic> json) => ScooterRentalPreferencesInput(
+        allowedNetworks: (json['allowedNetworks'] as List<dynamic>?)?.map((e) => e as String).toList(),
+        bannedNetworks: (json['bannedNetworks'] as List<dynamic>?)?.map((e) => e as String).toList(),
+        destinationScooterPolicy: json['destinationScooterPolicy'] == null ? null : DestinationScooterPolicyInput.fromJson(json['destinationScooterPolicy'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
-        if (allowedNetworks != null)
-          'allowedNetworks': allowedNetworks!.map((e) => e).toList(),
-        if (bannedNetworks != null)
-          'bannedNetworks': bannedNetworks!.map((e) => e).toList(),
-        if (destinationScooterPolicy != null)
-          'destinationScooterPolicy': destinationScooterPolicy!.toJson(),
+        if (allowedNetworks != null) 'allowedNetworks': allowedNetworks!.map((e) => e).toList(),
+        if (bannedNetworks != null) 'bannedNetworks': bannedNetworks!.map((e) => e).toList(),
+        if (destinationScooterPolicy != null) 'destinationScooterPolicy': destinationScooterPolicy!.toJson(),
       };
 }
 
@@ -1693,8 +1479,7 @@ class DestinationScooterPolicyInput {
     this.keepingCost,
   });
 
-  factory DestinationScooterPolicyInput.fromJson(Map<String, dynamic> json) =>
-      DestinationScooterPolicyInput(
+  factory DestinationScooterPolicyInput.fromJson(Map<String, dynamic> json) => DestinationScooterPolicyInput(
         allowKeeping: json['allowKeeping'] as bool?,
         keepingCost: (json['keepingCost'] as num?)?.toInt(),
       );
@@ -1718,8 +1503,7 @@ class WalkPreferencesInput {
     this.speed,
   });
 
-  factory WalkPreferencesInput.fromJson(Map<String, dynamic> json) =>
-      WalkPreferencesInput(
+  factory WalkPreferencesInput.fromJson(Map<String, dynamic> json) => WalkPreferencesInput(
         boardCost: (json['boardCost'] as num?)?.toInt(),
         reluctance: (json['reluctance'] as num?)?.toDouble(),
         safetyFactor: (json['safetyFactor'] as num?)?.toDouble(),
@@ -1749,34 +1533,18 @@ class TransitPreferencesInput {
     this.transfer,
   });
 
-  factory TransitPreferencesInput.fromJson(Map<String, dynamic> json) =>
-      TransitPreferencesInput(
-        alight: json['alight'] == null
-            ? null
-            : AlightPreferencesInput.fromJson(
-                json['alight'] as Map<String, dynamic>),
-        board: json['board'] == null
-            ? null
-            : BoardPreferencesInput.fromJson(
-                json['board'] as Map<String, dynamic>),
-        filters: (json['filters'] as List<dynamic>?)
-            ?.map((e) => TransitFilterInput.fromJson(e as Map<String, dynamic>))
-            .toList(),
-        timetable: json['timetable'] == null
-            ? null
-            : TimetablePreferencesInput.fromJson(
-                json['timetable'] as Map<String, dynamic>),
-        transfer: json['transfer'] == null
-            ? null
-            : TransferPreferencesInput.fromJson(
-                json['transfer'] as Map<String, dynamic>),
+  factory TransitPreferencesInput.fromJson(Map<String, dynamic> json) => TransitPreferencesInput(
+        alight: json['alight'] == null ? null : AlightPreferencesInput.fromJson(json['alight'] as Map<String, dynamic>),
+        board: json['board'] == null ? null : BoardPreferencesInput.fromJson(json['board'] as Map<String, dynamic>),
+        filters: (json['filters'] as List<dynamic>?)?.map((e) => TransitFilterInput.fromJson(e as Map<String, dynamic>)).toList(),
+        timetable: json['timetable'] == null ? null : TimetablePreferencesInput.fromJson(json['timetable'] as Map<String, dynamic>),
+        transfer: json['transfer'] == null ? null : TransferPreferencesInput.fromJson(json['transfer'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
         if (alight != null) 'alight': alight!.toJson(),
         if (board != null) 'board': board!.toJson(),
-        if (filters != null)
-          'filters': filters!.map((e) => e.toJson()).toList(),
+        if (filters != null) 'filters': filters!.map((e) => e.toJson()).toList(),
         if (timetable != null) 'timetable': timetable!.toJson(),
         if (transfer != null) 'transfer': transfer!.toJson(),
       };
@@ -1789,8 +1557,7 @@ class AlightPreferencesInput {
     this.slack,
   });
 
-  factory AlightPreferencesInput.fromJson(Map<String, dynamic> json) =>
-      AlightPreferencesInput(
+  factory AlightPreferencesInput.fromJson(Map<String, dynamic> json) => AlightPreferencesInput(
         slack: json['slack'] as String?,
       );
 
@@ -1808,8 +1575,7 @@ class BoardPreferencesInput {
     this.waitReluctance,
   });
 
-  factory BoardPreferencesInput.fromJson(Map<String, dynamic> json) =>
-      BoardPreferencesInput(
+  factory BoardPreferencesInput.fromJson(Map<String, dynamic> json) => BoardPreferencesInput(
         slack: json['slack'] as String?,
         waitReluctance: (json['waitReluctance'] as num?)?.toDouble(),
       );
@@ -1829,23 +1595,14 @@ class TransitFilterInput {
     this.include,
   });
 
-  factory TransitFilterInput.fromJson(Map<String, dynamic> json) =>
-      TransitFilterInput(
-        exclude: (json['exclude'] as List<dynamic>?)
-            ?.map((e) =>
-                TransitFilterSelectInput.fromJson(e as Map<String, dynamic>))
-            .toList(),
-        include: (json['include'] as List<dynamic>?)
-            ?.map((e) =>
-                TransitFilterSelectInput.fromJson(e as Map<String, dynamic>))
-            .toList(),
+  factory TransitFilterInput.fromJson(Map<String, dynamic> json) => TransitFilterInput(
+        exclude: (json['exclude'] as List<dynamic>?)?.map((e) => TransitFilterSelectInput.fromJson(e as Map<String, dynamic>)).toList(),
+        include: (json['include'] as List<dynamic>?)?.map((e) => TransitFilterSelectInput.fromJson(e as Map<String, dynamic>)).toList(),
       );
 
   Map<String, dynamic> toJson() => {
-        if (exclude != null)
-          'exclude': exclude!.map((e) => e.toJson()).toList(),
-        if (include != null)
-          'include': include!.map((e) => e.toJson()).toList(),
+        if (exclude != null) 'exclude': exclude!.map((e) => e.toJson()).toList(),
+        if (include != null) 'include': include!.map((e) => e.toJson()).toList(),
       };
 }
 
@@ -1858,14 +1615,9 @@ class TransitFilterSelectInput {
     this.routes,
   });
 
-  factory TransitFilterSelectInput.fromJson(Map<String, dynamic> json) =>
-      TransitFilterSelectInput(
-        agencies: (json['agencies'] as List<dynamic>?)
-            ?.map((e) => e as String)
-            .toList(),
-        routes: (json['routes'] as List<dynamic>?)
-            ?.map((e) => e as String)
-            .toList(),
+  factory TransitFilterSelectInput.fromJson(Map<String, dynamic> json) => TransitFilterSelectInput(
+        agencies: (json['agencies'] as List<dynamic>?)?.map((e) => e as String).toList(),
+        routes: (json['routes'] as List<dynamic>?)?.map((e) => e as String).toList(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -1885,22 +1637,16 @@ class TimetablePreferencesInput {
     this.includeRealTimeCancellations,
   });
 
-  factory TimetablePreferencesInput.fromJson(Map<String, dynamic> json) =>
-      TimetablePreferencesInput(
+  factory TimetablePreferencesInput.fromJson(Map<String, dynamic> json) => TimetablePreferencesInput(
         excludeRealTimeUpdates: json['excludeRealTimeUpdates'] as bool?,
-        includePlannedCancellations:
-            json['includePlannedCancellations'] as bool?,
-        includeRealTimeCancellations:
-            json['includeRealTimeCancellations'] as bool?,
+        includePlannedCancellations: json['includePlannedCancellations'] as bool?,
+        includeRealTimeCancellations: json['includeRealTimeCancellations'] as bool?,
       );
 
   Map<String, dynamic> toJson() => {
-        if (excludeRealTimeUpdates != null)
-          'excludeRealTimeUpdates': excludeRealTimeUpdates!,
-        if (includePlannedCancellations != null)
-          'includePlannedCancellations': includePlannedCancellations!,
-        if (includeRealTimeCancellations != null)
-          'includeRealTimeCancellations': includeRealTimeCancellations!,
+        if (excludeRealTimeUpdates != null) 'excludeRealTimeUpdates': excludeRealTimeUpdates!,
+        if (includePlannedCancellations != null) 'includePlannedCancellations': includePlannedCancellations!,
+        if (includeRealTimeCancellations != null) 'includeRealTimeCancellations': includeRealTimeCancellations!,
       };
 }
 
@@ -1917,70 +1663,52 @@ class TransferPreferencesInput {
     this.slack,
   });
 
-  factory TransferPreferencesInput.fromJson(Map<String, dynamic> json) =>
-      TransferPreferencesInput(
+  factory TransferPreferencesInput.fromJson(Map<String, dynamic> json) => TransferPreferencesInput(
         cost: (json['cost'] as num?)?.toInt(),
-        maximumAdditionalTransfers:
-            (json['maximumAdditionalTransfers'] as num?)?.toInt(),
+        maximumAdditionalTransfers: (json['maximumAdditionalTransfers'] as num?)?.toInt(),
         maximumTransfers: (json['maximumTransfers'] as num?)?.toInt(),
         slack: json['slack'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
         if (cost != null) 'cost': cost!,
-        if (maximumAdditionalTransfers != null)
-          'maximumAdditionalTransfers': maximumAdditionalTransfers!,
+        if (maximumAdditionalTransfers != null) 'maximumAdditionalTransfers': maximumAdditionalTransfers!,
         if (maximumTransfers != null) 'maximumTransfers': maximumTransfers!,
         if (slack != null) 'slack': slack!,
       };
 }
 
-class PlanConnectionStreamVariables {
+class PlanConnectionVariables {
   final PlanDateTimeInput dateTime;
   final PlanLabeledLocationInput origin;
   final PlanLabeledLocationInput destination;
+  final String searchWindow;
   final List<PlanViaLocationInput>? via;
   final PlanModesInput? modes;
   final PlanPreferencesInput? preferences;
-  final int? targetResults;
-  final String? maxWindow;
   final String? before;
   final String? after;
 
-  const PlanConnectionStreamVariables({
+  const PlanConnectionVariables({
     required this.dateTime,
     required this.origin,
     required this.destination,
+    required this.searchWindow,
     this.via,
     this.modes,
     this.preferences,
-    this.targetResults,
-    this.maxWindow,
     this.before,
     this.after,
   });
 
-  factory PlanConnectionStreamVariables.fromJson(Map<String, dynamic> json) =>
-      PlanConnectionStreamVariables(
-        dateTime: PlanDateTimeInput.fromJson(
-            json['dateTime'] as Map<String, dynamic>),
-        origin: PlanLabeledLocationInput.fromJson(
-            json['origin'] as Map<String, dynamic>),
-        destination: PlanLabeledLocationInput.fromJson(
-            json['destination'] as Map<String, dynamic>),
-        via: (json['via'] as List<dynamic>?)
-            ?.map(
-                (e) => PlanViaLocationInput.fromJson(e as Map<String, dynamic>))
-            .toList(),
-        modes: json['modes'] == null
-            ? null
-            : PlanModesInput.fromJson(json['modes'] as Map<String, dynamic>),
-        preferences: json['preferences'] == null
-            ? null
-            : PlanPreferencesInput.fromJson(
-                json['preferences'] as Map<String, dynamic>),
-        targetResults: (json['targetResults'] as num?)?.toInt(),
-        maxWindow: json['maxWindow'] as String?,
+  factory PlanConnectionVariables.fromJson(Map<String, dynamic> json) => PlanConnectionVariables(
+        dateTime: PlanDateTimeInput.fromJson(json['dateTime'] as Map<String, dynamic>),
+        origin: PlanLabeledLocationInput.fromJson(json['origin'] as Map<String, dynamic>),
+        destination: PlanLabeledLocationInput.fromJson(json['destination'] as Map<String, dynamic>),
+        searchWindow: json['searchWindow'] as String,
+        via: (json['via'] as List<dynamic>?)?.map((e) => PlanViaLocationInput.fromJson(e as Map<String, dynamic>)).toList(),
+        modes: json['modes'] == null ? null : PlanModesInput.fromJson(json['modes'] as Map<String, dynamic>),
+        preferences: json['preferences'] == null ? null : PlanPreferencesInput.fromJson(json['preferences'] as Map<String, dynamic>),
         before: json['before'] as String?,
         after: json['after'] as String?,
       );
@@ -1989,11 +1717,10 @@ class PlanConnectionStreamVariables {
         'dateTime': dateTime.toJson(),
         'origin': origin.toJson(),
         'destination': destination.toJson(),
+        'searchWindow': searchWindow,
         if (via != null) 'via': via!.map((e) => e.toJson()).toList(),
         if (modes != null) 'modes': modes!.toJson(),
         if (preferences != null) 'preferences': preferences!.toJson(),
-        if (targetResults != null) 'targetResults': targetResults!,
-        if (maxWindow != null) 'maxWindow': maxWindow!,
         if (before != null) 'before': before!,
         if (after != null) 'after': after!,
       };
@@ -2010,13 +1737,10 @@ class StopDeparturesRoute {
     this.mode,
   });
 
-  factory StopDeparturesRoute.fromJson(Map<String, dynamic> json) =>
-      StopDeparturesRoute(
+  factory StopDeparturesRoute.fromJson(Map<String, dynamic> json) => StopDeparturesRoute(
         shortName: json['shortName'] as String?,
         longName: json['longName'] as String?,
-        mode: json['mode'] == null
-            ? null
-            : TransitMode.fromWire(json['mode'] as String),
+        mode: json['mode'] == null ? null : TransitMode.fromWire(json['mode'] as String),
       );
 
   Map<String, dynamic> toJson() => {
@@ -2037,14 +1761,10 @@ class StopDeparturesTrip {
     this.bikesAllowed,
   });
 
-  factory StopDeparturesTrip.fromJson(Map<String, dynamic> json) =>
-      StopDeparturesTrip(
+  factory StopDeparturesTrip.fromJson(Map<String, dynamic> json) => StopDeparturesTrip(
         gtfsId: json['gtfsId'] as String,
-        route:
-            StopDeparturesRoute.fromJson(json['route'] as Map<String, dynamic>),
-        bikesAllowed: json['bikesAllowed'] == null
-            ? null
-            : BikesAllowed.fromWire(json['bikesAllowed'] as String),
+        route: StopDeparturesRoute.fromJson(json['route'] as Map<String, dynamic>),
+        bikesAllowed: json['bikesAllowed'] == null ? null : BikesAllowed.fromWire(json['bikesAllowed'] as String),
       );
 
   Map<String, dynamic> toJson() => {
@@ -2078,19 +1798,14 @@ class Stoptime {
         scheduledDeparture: (json['scheduledDeparture'] as num?)?.toInt(),
         realtimeDeparture: (json['realtimeDeparture'] as num?)?.toInt(),
         realtime: json['realtime'] as bool?,
-        realtimeState: json['realtimeState'] == null
-            ? null
-            : RealtimeState.fromWire(json['realtimeState'] as String),
+        realtimeState: json['realtimeState'] == null ? null : RealtimeState.fromWire(json['realtimeState'] as String),
         headsign: json['headsign'] as String?,
-        trip: json['trip'] == null
-            ? null
-            : StopDeparturesTrip.fromJson(json['trip'] as Map<String, dynamic>),
+        trip: json['trip'] == null ? null : StopDeparturesTrip.fromJson(json['trip'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
         if (serviceDay != null) 'serviceDay': serviceDay!,
-        if (scheduledDeparture != null)
-          'scheduledDeparture': scheduledDeparture!,
+        if (scheduledDeparture != null) 'scheduledDeparture': scheduledDeparture!,
         if (realtimeDeparture != null) 'realtimeDeparture': realtimeDeparture!,
         if (realtime != null) 'realtime': realtime!,
         if (realtimeState != null) 'realtimeState': realtimeState!.toJson(),
@@ -2112,27 +1827,18 @@ class StopDeparturesStop {
     this.stoptimesWithoutPatterns,
   });
 
-  factory StopDeparturesStop.fromJson(Map<String, dynamic> json) =>
-      StopDeparturesStop(
+  factory StopDeparturesStop.fromJson(Map<String, dynamic> json) => StopDeparturesStop(
         gtfsId: json['gtfsId'] as String,
         name: json['name'] as String,
-        wheelchairBoarding: json['wheelchairBoarding'] == null
-            ? null
-            : WheelchairBoarding.fromWire(json['wheelchairBoarding'] as String),
-        stoptimesWithoutPatterns:
-            (json['stoptimesWithoutPatterns'] as List<dynamic>?)
-                ?.map((e) => Stoptime.fromJson(e as Map<String, dynamic>))
-                .toList(),
+        wheelchairBoarding: json['wheelchairBoarding'] == null ? null : WheelchairBoarding.fromWire(json['wheelchairBoarding'] as String),
+        stoptimesWithoutPatterns: (json['stoptimesWithoutPatterns'] as List<dynamic>?)?.map((e) => Stoptime.fromJson(e as Map<String, dynamic>)).toList(),
       );
 
   Map<String, dynamic> toJson() => {
         'gtfsId': gtfsId,
         'name': name,
-        if (wheelchairBoarding != null)
-          'wheelchairBoarding': wheelchairBoarding!.toJson(),
-        if (stoptimesWithoutPatterns != null)
-          'stoptimesWithoutPatterns':
-              stoptimesWithoutPatterns!.map((e) => e.toJson()).toList(),
+        if (wheelchairBoarding != null) 'wheelchairBoarding': wheelchairBoarding!.toJson(),
+        if (stoptimesWithoutPatterns != null) 'stoptimesWithoutPatterns': stoptimesWithoutPatterns!.map((e) => e.toJson()).toList(),
       };
 }
 
@@ -2145,16 +1851,9 @@ class StopDeparturesData {
     this.asStation,
   });
 
-  factory StopDeparturesData.fromJson(Map<String, dynamic> json) =>
-      StopDeparturesData(
-        asStop: json['asStop'] == null
-            ? null
-            : StopDeparturesStop.fromJson(
-                json['asStop'] as Map<String, dynamic>),
-        asStation: json['asStation'] == null
-            ? null
-            : StopDeparturesStop.fromJson(
-                json['asStation'] as Map<String, dynamic>),
+  factory StopDeparturesData.fromJson(Map<String, dynamic> json) => StopDeparturesData(
+        asStop: json['asStop'] == null ? null : StopDeparturesStop.fromJson(json['asStop'] as Map<String, dynamic>),
+        asStation: json['asStation'] == null ? null : StopDeparturesStop.fromJson(json['asStation'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
@@ -2172,14 +1871,9 @@ class StopDeparturesResponse {
     this.errors,
   });
 
-  factory StopDeparturesResponse.fromJson(Map<String, dynamic> json) =>
-      StopDeparturesResponse(
-        data: json['data'] == null
-            ? null
-            : StopDeparturesData.fromJson(json['data'] as Map<String, dynamic>),
-        errors: (json['errors'] as List<dynamic>?)
-            ?.map((e) => GraphQLError.fromJson(e as Map<String, dynamic>))
-            .toList(),
+  factory StopDeparturesResponse.fromJson(Map<String, dynamic> json) => StopDeparturesResponse(
+        data: json['data'] == null ? null : StopDeparturesData.fromJson(json['data'] as Map<String, dynamic>),
+        errors: (json['errors'] as List<dynamic>?)?.map((e) => GraphQLError.fromJson(e as Map<String, dynamic>)).toList(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -2201,8 +1895,7 @@ class StopDeparturesVariables {
     this.timeRange,
   });
 
-  factory StopDeparturesVariables.fromJson(Map<String, dynamic> json) =>
-      StopDeparturesVariables(
+  factory StopDeparturesVariables.fromJson(Map<String, dynamic> json) => StopDeparturesVariables(
         id: json['id'] as String,
         numberOfDepartures: (json['numberOfDepartures'] as num?)?.toInt(),
         startTime: (json['startTime'] as num?)?.toInt(),
@@ -2211,26 +1904,21 @@ class StopDeparturesVariables {
 
   Map<String, dynamic> toJson() => {
         'id': id,
-        if (numberOfDepartures != null)
-          'numberOfDepartures': numberOfDepartures!,
+        if (numberOfDepartures != null) 'numberOfDepartures': numberOfDepartures!,
         if (startTime != null) 'startTime': startTime!,
         if (timeRange != null) 'timeRange': timeRange!,
       };
 }
 
-class PlanConnectionData {
+class PlanConnectionStreamData {
   final PlanConnection? planConnection;
 
-  const PlanConnectionData({
+  const PlanConnectionStreamData({
     this.planConnection,
   });
 
-  factory PlanConnectionData.fromJson(Map<String, dynamic> json) =>
-      PlanConnectionData(
-        planConnection: json['planConnection'] == null
-            ? null
-            : PlanConnection.fromJson(
-                json['planConnection'] as Map<String, dynamic>),
+  factory PlanConnectionStreamData.fromJson(Map<String, dynamic> json) => PlanConnectionStreamData(
+        planConnection: json['planConnection'] == null ? null : PlanConnection.fromJson(json['planConnection'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
@@ -2238,23 +1926,18 @@ class PlanConnectionData {
       };
 }
 
-class PlanConnectionResponse {
-  final PlanConnectionData? data;
+class PlanConnectionStreamResponse {
+  final PlanConnectionStreamData? data;
   final List<GraphQLError>? errors;
 
-  const PlanConnectionResponse({
+  const PlanConnectionStreamResponse({
     this.data,
     this.errors,
   });
 
-  factory PlanConnectionResponse.fromJson(Map<String, dynamic> json) =>
-      PlanConnectionResponse(
-        data: json['data'] == null
-            ? null
-            : PlanConnectionData.fromJson(json['data'] as Map<String, dynamic>),
-        errors: (json['errors'] as List<dynamic>?)
-            ?.map((e) => GraphQLError.fromJson(e as Map<String, dynamic>))
-            .toList(),
+  factory PlanConnectionStreamResponse.fromJson(Map<String, dynamic> json) => PlanConnectionStreamResponse(
+        data: json['data'] == null ? null : PlanConnectionStreamData.fromJson(json['data'] as Map<String, dynamic>),
+        errors: (json['errors'] as List<dynamic>?)?.map((e) => GraphQLError.fromJson(e as Map<String, dynamic>)).toList(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -2263,49 +1946,40 @@ class PlanConnectionResponse {
       };
 }
 
-class PlanConnectionVariables {
+class PlanConnectionStreamVariables {
   final PlanDateTimeInput dateTime;
   final PlanLabeledLocationInput origin;
   final PlanLabeledLocationInput destination;
-  final String searchWindow;
   final List<PlanViaLocationInput>? via;
   final PlanModesInput? modes;
   final PlanPreferencesInput? preferences;
+  final int? targetResults;
+  final String? maxWindow;
   final String? before;
   final String? after;
 
-  const PlanConnectionVariables({
+  const PlanConnectionStreamVariables({
     required this.dateTime,
     required this.origin,
     required this.destination,
-    required this.searchWindow,
     this.via,
     this.modes,
     this.preferences,
+    this.targetResults,
+    this.maxWindow,
     this.before,
     this.after,
   });
 
-  factory PlanConnectionVariables.fromJson(Map<String, dynamic> json) =>
-      PlanConnectionVariables(
-        dateTime: PlanDateTimeInput.fromJson(
-            json['dateTime'] as Map<String, dynamic>),
-        origin: PlanLabeledLocationInput.fromJson(
-            json['origin'] as Map<String, dynamic>),
-        destination: PlanLabeledLocationInput.fromJson(
-            json['destination'] as Map<String, dynamic>),
-        searchWindow: json['searchWindow'] as String,
-        via: (json['via'] as List<dynamic>?)
-            ?.map(
-                (e) => PlanViaLocationInput.fromJson(e as Map<String, dynamic>))
-            .toList(),
-        modes: json['modes'] == null
-            ? null
-            : PlanModesInput.fromJson(json['modes'] as Map<String, dynamic>),
-        preferences: json['preferences'] == null
-            ? null
-            : PlanPreferencesInput.fromJson(
-                json['preferences'] as Map<String, dynamic>),
+  factory PlanConnectionStreamVariables.fromJson(Map<String, dynamic> json) => PlanConnectionStreamVariables(
+        dateTime: PlanDateTimeInput.fromJson(json['dateTime'] as Map<String, dynamic>),
+        origin: PlanLabeledLocationInput.fromJson(json['origin'] as Map<String, dynamic>),
+        destination: PlanLabeledLocationInput.fromJson(json['destination'] as Map<String, dynamic>),
+        via: (json['via'] as List<dynamic>?)?.map((e) => PlanViaLocationInput.fromJson(e as Map<String, dynamic>)).toList(),
+        modes: json['modes'] == null ? null : PlanModesInput.fromJson(json['modes'] as Map<String, dynamic>),
+        preferences: json['preferences'] == null ? null : PlanPreferencesInput.fromJson(json['preferences'] as Map<String, dynamic>),
+        targetResults: (json['targetResults'] as num?)?.toInt(),
+        maxWindow: json['maxWindow'] as String?,
         before: json['before'] as String?,
         after: json['after'] as String?,
       );
@@ -2314,10 +1988,11 @@ class PlanConnectionVariables {
         'dateTime': dateTime.toJson(),
         'origin': origin.toJson(),
         'destination': destination.toJson(),
-        'searchWindow': searchWindow,
         if (via != null) 'via': via!.map((e) => e.toJson()).toList(),
         if (modes != null) 'modes': modes!.toJson(),
         if (preferences != null) 'preferences': preferences!.toJson(),
+        if (targetResults != null) 'targetResults': targetResults!,
+        if (maxWindow != null) 'maxWindow': maxWindow!,
         if (before != null) 'before': before!,
         if (after != null) 'after': after!,
       };
@@ -2337,9 +2012,7 @@ class TripRoute {
   factory TripRoute.fromJson(Map<String, dynamic> json) => TripRoute(
         shortName: json['shortName'] as String?,
         longName: json['longName'] as String?,
-        mode: json['mode'] == null
-            ? null
-            : TransitMode.fromWire(json['mode'] as String),
+        mode: json['mode'] == null ? null : TransitMode.fromWire(json['mode'] as String),
       );
 
   Map<String, dynamic> toJson() => {
@@ -2369,9 +2042,7 @@ class TripStop {
         name: json['name'] as String,
         lat: (json['lat'] as num?)?.toDouble(),
         lon: (json['lon'] as num?)?.toDouble(),
-        wheelchairBoarding: json['wheelchairBoarding'] == null
-            ? null
-            : WheelchairBoarding.fromWire(json['wheelchairBoarding'] as String),
+        wheelchairBoarding: json['wheelchairBoarding'] == null ? null : WheelchairBoarding.fromWire(json['wheelchairBoarding'] as String),
       );
 
   Map<String, dynamic> toJson() => {
@@ -2379,8 +2050,7 @@ class TripStop {
         'name': name,
         if (lat != null) 'lat': lat!,
         if (lon != null) 'lon': lon!,
-        if (wheelchairBoarding != null)
-          'wheelchairBoarding': wheelchairBoarding!.toJson(),
+        if (wheelchairBoarding != null) 'wheelchairBoarding': wheelchairBoarding!.toJson(),
       };
 }
 
@@ -2412,19 +2082,14 @@ class TripStoptime {
         realtimeArrival: (json['realtimeArrival'] as num?)?.toInt(),
         realtimeDeparture: (json['realtimeDeparture'] as num?)?.toInt(),
         realtime: json['realtime'] as bool?,
-        realtimeState: json['realtimeState'] == null
-            ? null
-            : RealtimeState.fromWire(json['realtimeState'] as String),
-        stop: json['stop'] == null
-            ? null
-            : TripStop.fromJson(json['stop'] as Map<String, dynamic>),
+        realtimeState: json['realtimeState'] == null ? null : RealtimeState.fromWire(json['realtimeState'] as String),
+        stop: json['stop'] == null ? null : TripStop.fromJson(json['stop'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
         if (serviceDay != null) 'serviceDay': serviceDay!,
         if (scheduledArrival != null) 'scheduledArrival': scheduledArrival!,
-        if (scheduledDeparture != null)
-          'scheduledDeparture': scheduledDeparture!,
+        if (scheduledDeparture != null) 'scheduledDeparture': scheduledDeparture!,
         if (realtimeArrival != null) 'realtimeArrival': realtimeArrival!,
         if (realtimeDeparture != null) 'realtimeDeparture': realtimeDeparture!,
         if (realtime != null) 'realtime': realtime!,
@@ -2477,16 +2142,9 @@ class TripTrip {
         route: TripRoute.fromJson(json['route'] as Map<String, dynamic>),
         directionId: json['directionId'] as String?,
         tripHeadsign: json['tripHeadsign'] as String?,
-        bikesAllowed: json['bikesAllowed'] == null
-            ? null
-            : BikesAllowed.fromWire(json['bikesAllowed'] as String),
-        stoptimesForDate: (json['stoptimesForDate'] as List<dynamic>?)
-            ?.map((e) => TripStoptime.fromJson(e as Map<String, dynamic>))
-            .toList(),
-        tripGeometry: json['tripGeometry'] == null
-            ? null
-            : TripGeometry.fromJson(
-                json['tripGeometry'] as Map<String, dynamic>),
+        bikesAllowed: json['bikesAllowed'] == null ? null : BikesAllowed.fromWire(json['bikesAllowed'] as String),
+        stoptimesForDate: (json['stoptimesForDate'] as List<dynamic>?)?.map((e) => TripStoptime.fromJson(e as Map<String, dynamic>)).toList(),
+        tripGeometry: json['tripGeometry'] == null ? null : TripGeometry.fromJson(json['tripGeometry'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
@@ -2495,8 +2153,7 @@ class TripTrip {
         if (directionId != null) 'directionId': directionId!,
         if (tripHeadsign != null) 'tripHeadsign': tripHeadsign!,
         if (bikesAllowed != null) 'bikesAllowed': bikesAllowed!.toJson(),
-        if (stoptimesForDate != null)
-          'stoptimesForDate': stoptimesForDate!.map((e) => e.toJson()).toList(),
+        if (stoptimesForDate != null) 'stoptimesForDate': stoptimesForDate!.map((e) => e.toJson()).toList(),
         if (tripGeometry != null) 'tripGeometry': tripGeometry!.toJson(),
       };
 }
@@ -2509,9 +2166,7 @@ class TripData {
   });
 
   factory TripData.fromJson(Map<String, dynamic> json) => TripData(
-        trip: json['trip'] == null
-            ? null
-            : TripTrip.fromJson(json['trip'] as Map<String, dynamic>),
+        trip: json['trip'] == null ? null : TripTrip.fromJson(json['trip'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
@@ -2529,12 +2184,8 @@ class TripResponse {
   });
 
   factory TripResponse.fromJson(Map<String, dynamic> json) => TripResponse(
-        data: json['data'] == null
-            ? null
-            : TripData.fromJson(json['data'] as Map<String, dynamic>),
-        errors: (json['errors'] as List<dynamic>?)
-            ?.map((e) => GraphQLError.fromJson(e as Map<String, dynamic>))
-            .toList(),
+        data: json['data'] == null ? null : TripData.fromJson(json['data'] as Map<String, dynamic>),
+        errors: (json['errors'] as List<dynamic>?)?.map((e) => GraphQLError.fromJson(e as Map<String, dynamic>)).toList(),
       );
 
   Map<String, dynamic> toJson() => {
