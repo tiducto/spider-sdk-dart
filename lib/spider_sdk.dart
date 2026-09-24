@@ -8,6 +8,7 @@ export 'src/enums.dart';
 export 'src/errors.dart'
     show SpiderError, SpiderErrorCode, SpiderContractMismatchError;
 export 'src/location.dart';
+export 'src/plan_stream_event.dart';
 export 'src/polyline.dart' show LatLon;
 export 'src/realtime.dart';
 export 'src/result.dart';
@@ -31,4 +32,5 @@ export 'src/transport.dart'
         SpiderHttpClient,
         SpiderHttpRequest,
         SpiderHttpResponse,
+        SpiderHttpStreamedResponse,
         DefaultSpiderHttpClient;

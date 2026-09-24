@@ -10,6 +10,10 @@ import 'identity.dart';
 /// The HTTP boundary the SDK depends on. Production uses [DefaultSpiderHttpClient]; tests inject their own.
 abstract class SpiderHttpClient {
   Future<SpiderHttpResponse> send(SpiderHttpRequest request);
+
+  /// Opens a response without buffering its body, for Server-Sent Events (the routing `plan-stream` route).
+  /// The body is delivered as it arrives so the caller can parse SSE records incrementally.
+  Future<SpiderHttpStreamedResponse> sendStreaming(SpiderHttpRequest request);
 }
 
 class SpiderHttpRequest {
@@ -27,6 +31,21 @@ class SpiderHttpResponse {
   const SpiderHttpResponse(this.statusCode, this.headers, this.body);
 }
 
+/// A response whose body is still streaming — the SSE counterpart of [SpiderHttpResponse].
+class SpiderHttpStreamedResponse {
+  final int statusCode;
+  final Map<String, String> headers; // lower-cased keys
+  final Stream<List<int>> body;
+  const SpiderHttpStreamedResponse(this.statusCode, this.headers, this.body);
+}
+
+/// One finished Server-Sent Events record: its `event` name (defaulting to `message`) and accumulated `data`.
+class SpiderSseEvent {
+  final String event;
+  final String data;
+  const SpiderSseEvent(this.event, this.data);
+}
+
 /// Default [SpiderHttpClient] backed by `package:http` (works on mobile, desktop, and web).
 class DefaultSpiderHttpClient implements SpiderHttpClient {
   final http.Client _client;
@@ -41,6 +60,17 @@ class DefaultSpiderHttpClient implements SpiderHttpClient {
     final streamed = await _client.send(req);
     final resp = await http.Response.fromStream(streamed);
     return SpiderHttpResponse(resp.statusCode, resp.headers, resp.body);
+  }
+
+  @override
+  Future<SpiderHttpStreamedResponse> sendStreaming(
+      SpiderHttpRequest request) async {
+    final req = http.Request(request.method, request.uri);
+    req.headers.addAll(request.headers);
+    if (request.body != null) req.body = request.body!;
+    final streamed = await _client.send(req);
+    return SpiderHttpStreamedResponse(
+        streamed.statusCode, streamed.headers, streamed.stream);
   }
 }
 
@@ -169,6 +199,71 @@ class Transport {
         SpiderHttpRequest('GET', Uri.parse('$baseUrl/ping'), const {}, null));
   }
 
+  /// Opens a Server-Sent Events stream for persisted-query [op]: `POST {baseUrl}/routing/{op.path}` with the
+  /// `{ id, variables }` body and the SDK's contract/identity headers, requesting `text/event-stream`. Yields
+  /// one [SpiderSseEvent] per finished SSE record. A non-2xx response throws a [TransportError] before any
+  /// event is yielded, so it maps to the same taxonomy as the buffered calls. The apikey is stamped here — SSE
+  /// bypasses the buffered, retrying [_send] path, so it opens a single, un-retried streaming connection.
+  Stream<SpiderSseEvent> sse(
+      PersistedOp op, Map<String, dynamic> variables) async* {
+    final headers = {
+      ..._contractHeaders(json: true),
+      'accept': 'text/event-stream',
+      'apikey': apiKey,
+    };
+    final response = await httpClient.sendStreaming(SpiderHttpRequest(
+        'POST',
+        Uri.parse('$baseUrl/routing/${op.path}'),
+        headers,
+        jsonEncode({'id': op.id, 'variables': variables})));
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      var body = '';
+      try {
+        body = await utf8.decodeStream(response.body);
+      } catch (_) {
+        // The error body is best-effort detail; its absence doesn't change the status mapping.
+      }
+      final env = _parseErrorEnvelope(body);
+      final detail = env.message ?? _trunc(body);
+      throw TransportError(TransportErrorKind.http,
+          'routing ${op.path} -> ${response.statusCode}: $detail',
+          httpStatus: response.statusCode, serverCode: env.code);
+    }
+    yield* _parseSse(response.body);
+  }
+
+  Stream<SpiderSseEvent> _parseSse(Stream<List<int>> bytes) async* {
+    var event = _defaultSseEvent;
+    final dataLines = <String>[];
+    await for (final line
+        in bytes.transform(utf8.decoder).transform(const LineSplitter())) {
+      if (line.isEmpty) {
+        if (dataLines.isNotEmpty || event != _defaultSseEvent) {
+          yield SpiderSseEvent(event, dataLines.join('\n'));
+        }
+        event = _defaultSseEvent;
+        dataLines.clear();
+        continue;
+      }
+      if (line.startsWith(':')) continue; // comment / heartbeat
+      final colon = line.indexOf(':');
+      final field = colon < 0 ? line : line.substring(0, colon);
+      var value = colon < 0 ? '' : line.substring(colon + 1);
+      if (value.startsWith(' ')) value = value.substring(1);
+      switch (field) {
+        case 'event':
+          event = value;
+        case 'data':
+          dataLines.add(value);
+        default:
+          break; // id / retry and unknown fields are not surfaced
+      }
+    }
+    if (dataLines.isNotEmpty || event != _defaultSseEvent) {
+      yield SpiderSseEvent(event, dataLines.join('\n'));
+    }
+  }
+
   Future<SpiderHttpResponse> _send(SpiderHttpRequest request) async {
     // The client apikey is invariant for the client's whole life, so it is applied here — the single path every
     // request funnels through — rather than re-attached per call.
@@ -210,6 +305,8 @@ class Transport {
         Duration(milliseconds: (baseMs + jitter).round()));
   }
 }
+
+const _defaultSseEvent = 'message';
 
 Map<String, dynamic> _decodeJson(String body, String where) {
   try {
