@@ -236,21 +236,44 @@ Future<void> streamTrip(SpiderClient client) async {
               '(${itinerary.numberOfTransfers} transfers)');
         }
       case PlanStreamDone(:final pageInfo):
-        // Terminal event: continue forward from here if there is more to fetch.
-        final cursor = pageInfo.endCursor;
-        if (pageInfo.hasNextPage && cursor != null) {
-          await for (final more
-              in client.routing.planStreamNext(options, after: cursor)) {
-            if (more case PlanStreamResult(:final itineraries)) {
-              print('+${itineraries.length} more');
-            }
-          }
-        }
+        print('done · more later: ${pageInfo.hasNextPage}');
       case PlanStreamFailure(:final error):
         print('stream failed: ${error.code.name} — ${error.message}');
     }
   }
   // [END streamTrip]
+}
+
+Future<void> streamTripContinue(SpiderClient client) async {
+  // [START streamTripContinue]
+  final options = PlanOptions(
+    origin: Location.coordinate(49.1951, 16.6068),
+    destination: Location.coordinate(49.2246, 16.5747),
+    departAt: DateTime.now(),
+  );
+
+  // Stream the first window, keeping the terminal page to continue from.
+  String? endCursor;
+  var hasNextPage = false;
+  await for (final event in client.routing.planStream(options)) {
+    if (event case PlanStreamDone(:final pageInfo)) {
+      hasNextPage = pageInfo.hasNextPage;
+      endCursor = pageInfo.endCursor;
+    }
+  }
+
+  // Continue forward only when the terminal page says there is more, using its endCursor.
+  if (hasNextPage && endCursor != null) {
+    await for (final more
+        in client.routing.planStreamNext(options, after: endCursor)) {
+      if (more case PlanStreamResult(:final itineraries)) {
+        for (final itinerary in itineraries) {
+          print('later: ${itinerary.start} → ${itinerary.end}');
+        }
+      }
+    }
+  }
+  // [END streamTripContinue]
 }
 
 /// List the next departures from a stop.
