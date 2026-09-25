@@ -276,6 +276,38 @@ Future<void> streamTripContinue(SpiderClient client) async {
   // [END streamTripContinue]
 }
 
+Future<void> streamTripPrevious(SpiderClient client) async {
+  // [START streamTripPrevious]
+  final options = PlanOptions(
+    origin: Location.coordinate(49.1951, 16.6068),
+    destination: Location.coordinate(49.2246, 16.5747),
+    departAt: DateTime.now(),
+  );
+
+  // Stream the first window, keeping the terminal page to page backwards from.
+  String? startCursor;
+  var hasPreviousPage = false;
+  await for (final event in client.routing.planStream(options)) {
+    if (event case PlanStreamDone(:final pageInfo)) {
+      hasPreviousPage = pageInfo.hasPreviousPage;
+      startCursor = pageInfo.startCursor;
+    }
+  }
+
+  // Page backward only when the terminal page says there is an earlier window, using its startCursor.
+  if (hasPreviousPage && startCursor != null) {
+    await for (final earlier
+        in client.routing.planStreamPrevious(options, before: startCursor)) {
+      if (earlier case PlanStreamResult(:final itineraries)) {
+        for (final itinerary in itineraries) {
+          print('earlier: ${itinerary.start} → ${itinerary.end}');
+        }
+      }
+    }
+  }
+  // [END streamTripPrevious]
+}
+
 /// Stream a plan for a specific departure time.
 Future<void> streamForTime(SpiderClient client) async {
   // [START streamForTime]
