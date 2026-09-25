@@ -276,6 +276,161 @@ Future<void> streamTripContinue(SpiderClient client) async {
   // [END streamTripContinue]
 }
 
+/// Stream a plan for a specific departure time.
+Future<void> streamForTime(SpiderClient client) async {
+  // [START streamForTime]
+  final options = PlanOptions(
+    origin: Location.coordinate(49.1951, 16.6068),
+    destination: Location.coordinate(49.2246, 16.5747),
+    departAt: DateTime(2026, 8, 21, 8, 30),
+  );
+
+  await for (final event in client.routing
+      .planStream(options, targetResults: 5, maxWindowMinutes: 120)) {
+    switch (event) {
+      case PlanStreamResult(:final itineraries):
+        for (final itinerary in itineraries) {
+          print('${itinerary.start} → ${itinerary.end}');
+        }
+      case PlanStreamDone():
+        break;
+      case PlanStreamFailure(:final error):
+        print('stream failed: ${error.code.name} — ${error.message}');
+    }
+  }
+  // [END streamForTime]
+}
+
+/// Stream a plan that arrives by a given time instead of departing at one.
+Future<void> streamArriveBy(SpiderClient client) async {
+  // [START streamArriveBy]
+  final options = PlanOptions(
+    origin: Location.coordinate(49.1951, 16.6068),
+    destination: Location.coordinate(49.2246, 16.5747),
+    arriveBy: DateTime(2026, 8, 21, 9, 0),
+  );
+
+  await for (final event in client.routing
+      .planStream(options, targetResults: 5, maxWindowMinutes: 120)) {
+    switch (event) {
+      case PlanStreamResult(:final itineraries):
+        for (final itinerary in itineraries) {
+          print('${itinerary.start} → ${itinerary.end}');
+        }
+      case PlanStreamDone():
+        break;
+      case PlanStreamFailure(:final error):
+        print('stream failed: ${error.code.name} — ${error.message}');
+    }
+  }
+  // [END streamArriveBy]
+}
+
+/// Stream a plan restricted to a set of transit modes (here: tram + subway).
+Future<void> streamWithModes(SpiderClient client) async {
+  // [START streamWithModes]
+  final options = PlanOptions(
+    origin: Location.coordinate(49.1951, 16.6068),
+    destination: Location.coordinate(49.2246, 16.5747),
+    allowedTransitModes: const [TransitMode.tram, TransitMode.subway],
+  );
+
+  await for (final event in client.routing
+      .planStream(options, targetResults: 5, maxWindowMinutes: 120)) {
+    switch (event) {
+      case PlanStreamResult(:final itineraries):
+        for (final itinerary in itineraries) {
+          print('${itinerary.start} → ${itinerary.end}');
+        }
+      case PlanStreamDone():
+        break;
+      case PlanStreamFailure(:final error):
+        print('stream failed: ${error.code.name} — ${error.message}');
+    }
+  }
+  // [END streamWithModes]
+}
+
+/// Stream a plan that passes through a via point, dwelling there for a few minutes.
+Future<void> streamVia(SpiderClient client) async {
+  // [START streamVia]
+  final options = PlanOptions(
+    origin: Location.coordinate(49.1951, 16.6068),
+    destination: Location.coordinate(49.2246, 16.5747),
+    via: [
+      ViaLocation.visit(
+        Location.coordinate(49.2103, 16.5993),
+        minimumWaitSeconds: 300,
+      ),
+    ],
+  );
+
+  await for (final event in client.routing
+      .planStream(options, targetResults: 5, maxWindowMinutes: 120)) {
+    switch (event) {
+      case PlanStreamResult(:final itineraries):
+        for (final itinerary in itineraries) {
+          print('${itinerary.start} → ${itinerary.end}');
+        }
+      case PlanStreamDone():
+        break;
+      case PlanStreamFailure(:final error):
+        print('stream failed: ${error.code.name} — ${error.message}');
+    }
+  }
+  // [END streamVia]
+}
+
+/// Stream a wheelchair-accessible plan.
+Future<void> streamWheelchair(SpiderClient client) async {
+  // [START streamWheelchair]
+  final options = PlanOptions(
+    origin: Location.coordinate(49.1951, 16.6068),
+    destination: Location.coordinate(49.2246, 16.5747),
+    wheelchairAccessible: true,
+  );
+
+  await for (final event in client.routing
+      .planStream(options, targetResults: 5, maxWindowMinutes: 120)) {
+    switch (event) {
+      case PlanStreamResult(:final itineraries):
+        for (final itinerary in itineraries) {
+          print('${itinerary.start} → ${itinerary.end}');
+        }
+      case PlanStreamDone():
+        break;
+      case PlanStreamFailure(:final error):
+        print('stream failed: ${error.code.name} — ${error.message}');
+    }
+  }
+  // [END streamWheelchair]
+}
+
+/// Stream a plan that caps the number of transfers.
+Future<void> streamWithLimits(SpiderClient client) async {
+  // [START streamWithLimits]
+  final options = PlanOptions(
+    origin: Location.coordinate(49.1951, 16.6068),
+    destination: Location.coordinate(49.2246, 16.5747),
+    maxTransfers: 2,
+  );
+
+  await for (final event in client.routing
+      .planStream(options, targetResults: 5, maxWindowMinutes: 120)) {
+    switch (event) {
+      case PlanStreamResult(:final itineraries):
+        for (final itinerary in itineraries) {
+          print('${itinerary.start} → ${itinerary.end}');
+        }
+      case PlanStreamDone():
+        break;
+      case PlanStreamFailure(:final error):
+        print('stream failed: ${error.code.name} — ${error.message}');
+    }
+  }
+  // [END streamWithLimits]
+}
+
 /// List the next departures from a stop.
 Future<void> departures(SpiderClient client) async {
   // [START departures]
