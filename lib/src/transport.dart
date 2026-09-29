@@ -80,7 +80,7 @@ class RetryConfig {
 }
 
 /// Translates SDK calls into HTTP against the gateway: identity headers, the persisted-query body shape,
-/// the contract-version response check, and the retry/backoff loop.
+/// and the retry/backoff loop.
 class Transport {
   final String baseUrl;
   final String apiKey;
@@ -113,13 +113,8 @@ class Transport {
       _contractHeaders(json: true),
       jsonEncode({'id': op.id, 'variables': variables}),
     ));
-    checkContract(resp.headers[contractHeader]);
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      final env = _parseErrorEnvelope(resp.body);
-      final detail = env.message ?? _trunc(resp.body);
-      throw TransportError(TransportErrorKind.http,
-          'routing ${op.path} -> ${resp.statusCode}: $detail',
-          httpStatus: resp.statusCode, serverCode: env.code);
+      throw _routingHttpError(op, resp.statusCode, resp.body);
     }
     final decoded = _decodeJson(resp.body, 'routing ${op.path}');
     final errors = decoded['errors'];
@@ -154,7 +149,6 @@ class Transport {
         Uri.parse('$baseUrl$path'),
         _contractHeaders(json: true),
         jsonEncode(body)));
-    checkContract(resp.headers[contractHeader]);
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
       final env = _parseErrorEnvelope(resp.body);
       final message =
@@ -167,13 +161,10 @@ class Transport {
   }
 
   Future<SpiderHttpResponse> getRaw(String path,
-      {Map<String, String> query = const {}}) async {
+      {Map<String, String> query = const {}}) {
     final uri = Uri.parse('$baseUrl$path')
         .replace(queryParameters: query.isEmpty ? null : query);
-    final resp =
-        await _send(SpiderHttpRequest('GET', uri, _contractHeaders(), null));
-    checkContract(resp.headers[contractHeader]);
-    return resp;
+    return _send(SpiderHttpRequest('GET', uri, _contractHeaders(), null));
   }
 
   Future<D> getJson<D>(String path, D Function(Map<String, dynamic>) fromJson,
@@ -193,7 +184,7 @@ class Transport {
   /// TLS connection real calls travel over. Carries only the client `apikey` — stamped centrally by [_send], which
   /// the keyed `/ping` route authenticates — and no contract/identity headers, since `/ping` is gateway
   /// infrastructure, not a contract operation. The response (any status) is ignored; the round trip is the point.
-  /// Bounded by [timeout]; the warmup transport is retry-free, so this runs no retry (and no contract check).
+  /// Bounded by [timeout]; the warmup transport is retry-free, so this runs no retry.
   Future<void> ping() async {
     await _send(
         SpiderHttpRequest('GET', Uri.parse('$baseUrl/ping'), const {}, null));
@@ -223,11 +214,7 @@ class Transport {
       } catch (_) {
         // The error body is best-effort detail; its absence doesn't change the status mapping.
       }
-      final env = _parseErrorEnvelope(body);
-      final detail = env.message ?? _trunc(body);
-      throw TransportError(TransportErrorKind.http,
-          'routing ${op.path} -> ${response.statusCode}: $detail',
-          httpStatus: response.statusCode, serverCode: env.code);
+      throw _routingHttpError(op, response.statusCode, body);
     }
     yield* _parseSse(response.body);
   }
@@ -307,6 +294,35 @@ class Transport {
 }
 
 const _defaultSseEvent = 'message';
+
+// The gateway answers an id missing from its persisted-query allowlist with a 403 carrying this `error`. The
+// SDK only sends ids from its own contract, so that 403 means this SDK's query has been retired.
+const _persistedQueryRejected = 'persisted_query_rejected';
+
+TransportError _routingHttpError(PersistedOp op, int status, String body) {
+  if (status == 403 && _gatewayError(body) == _persistedQueryRejected) {
+    return TransportError(TransportErrorKind.http,
+        "routing ${op.path} -> 403: this SDK version's query has been retired by the API; update the SDK",
+        httpStatus: status, serverCode: _persistedQueryRejected);
+  }
+  final env = _parseErrorEnvelope(body);
+  final detail = env.message ?? _trunc(body);
+  return TransportError(
+      TransportErrorKind.http, 'routing ${op.path} -> $status: $detail',
+      httpStatus: status, serverCode: env.code);
+}
+
+String? _gatewayError(String body) {
+  try {
+    final obj = jsonDecode(body);
+    if (obj is Map<String, dynamic> && obj['error'] is String) {
+      return obj['error'] as String;
+    }
+  } catch (_) {
+    // not the gateway's JSON rejection
+  }
+  return null;
+}
 
 Map<String, dynamic> _decodeJson(String body, String where) {
   try {

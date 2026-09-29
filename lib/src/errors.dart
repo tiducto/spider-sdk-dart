@@ -33,20 +33,6 @@ class SpiderError implements Exception {
   String toString() => 'SpiderError(${code.name}: $message)';
 }
 
-/// Thrown (never returned) when the gateway declares a different MAJOR contract version than this SDK speaks.
-class SpiderContractMismatchError implements Exception {
-  final String expected;
-  final String actual;
-
-  const SpiderContractMismatchError(this.expected, this.actual);
-
-  String get message =>
-      'Spider contract mismatch: this SDK speaks $expected but the gateway declared $actual';
-
-  @override
-  String toString() => message;
-}
-
 // Internal transport errors, mapped to SpiderError by [toSpiderError].
 enum TransportErrorKind { http, noData, upstream, badRequest }
 

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'enums.dart';
 import 'errors.dart';
 import 'result.dart';
+import 'service_date.dart';
 import 'transport.dart';
 
 // MARK: public realtime models (toJson is used by the poll* streams to de-duplicate consecutive results)
@@ -261,8 +262,6 @@ class SpiderRealtime {
             .toList(),
         _mapFreshness(json),
       ));
-    } on SpiderContractMismatchError {
-      rethrow;
     } catch (e) {
       return Failure(toSpiderError(e));
     }
@@ -289,19 +288,22 @@ class SpiderRealtime {
         vehicle == null ? null : _mapVehicle(vehicle as Map<String, dynamic>),
         _mapFreshness(json),
       ));
-    } on SpiderContractMismatchError {
-      rethrow;
     } catch (e) {
       return Failure(toSpiderError(e));
     }
   }
 
   /// Live delays, resolved per `(tripId, serviceDate)` instance: group trip ids by the GTFS service date
-  /// (`YYYYMMDD`) they run on — pass each plan leg's `serviceDate` through. Grouping is required because
-  /// the same trip id runs on many dates (and two instances can overlap around midnight). An input with no
-  /// trip ids returns an empty result without a request.
+  /// (`YYYY-MM-DD`) they run on — pass each plan leg's or departure's `serviceDate` through. Grouping is
+  /// required because the same trip id runs on many dates (and two instances can overlap around midnight).
+  /// A malformed date fails with [SpiderErrorCode.badRequest], and an input with no trip ids returns an empty
+  /// result, both without a request.
   Future<SpiderResult<TripDelays>> delaysByServiceDate(
       Map<String, List<String>> byServiceDate) async {
+    for (final serviceDate in byServiceDate.keys) {
+      final invalid = invalidServiceDate(serviceDate);
+      if (invalid != null) return Failure(invalid);
+    }
     if (byServiceDate.values.every((ids) => ids.isEmpty)) {
       return const Success(_emptyDelays);
     }
@@ -317,14 +319,12 @@ class SpiderRealtime {
           .map((g) => _mapDelayGroup(g as Map<String, dynamic>))
           .toList();
       return Success(TripDelays(groups, _mapFreshness(json)));
-    } on SpiderContractMismatchError {
-      rethrow;
     } catch (e) {
       return Failure(toSpiderError(e));
     }
   }
 
-  /// Live delays for [tripIds] all running on one [serviceDate] (`YYYYMMDD`) — the common single-day case.
+  /// Live delays for [tripIds] all running on one [serviceDate] (`YYYY-MM-DD`) — the common single-day case.
   Future<SpiderResult<TripDelays>> delays(
           List<String> tripIds, String serviceDate) =>
       delaysByServiceDate({serviceDate: tripIds});
@@ -337,8 +337,6 @@ class SpiderRealtime {
           .map((a) => _mapAlert(a as Map<String, dynamic>))
           .toList();
       return Success(ServiceAlerts(alerts, _mapFreshness(json)));
-    } on SpiderContractMismatchError {
-      rethrow;
     } catch (e) {
       return Failure(toSpiderError(e));
     }

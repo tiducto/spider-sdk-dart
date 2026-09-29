@@ -7,6 +7,7 @@ import 'package:spider_sdk/src/contract/persisted_queries.dart'
 import 'package:spider_sdk/src/contract/routing.dart' as wire;
 import 'package:spider_sdk/src/polyline.dart' show decodePolyline;
 import 'package:spider_sdk/src/routing.dart' show parsePlanStreamRecord;
+import 'package:spider_sdk/src/service_date.dart' show serviceDateOf;
 import 'package:spider_sdk/src/version.dart' show sdkVersion;
 import 'package:test/test.dart';
 
@@ -227,47 +228,100 @@ void main() {
       expect(error.message, 'searchWindow exceeds the maximum of PT2H');
     });
 
-    test('contract mismatch throws instead of returning', () async {
+    test('a different contract major declared by the gateway is ignored',
+        () async {
       final (client, _) =
           makeClient((_) => resp(planBody, contractVersion: '4.0'));
-      await expectLater(
-        client.routing.plan(const PlanOptions(
-            origin: Location.stop('A'), destination: Location.stop('B'))),
-        throwsA(isA<SpiderContractMismatchError>()),
-      );
+      final result = await client.routing.plan(const PlanOptions(
+          origin: Location.stop('A'), destination: Location.stop('B')));
+      expect(result, isA<Success<Route>>());
     });
 
-    test('departures maps and drops sibling-terminating trips', () async {
+    test('a retired persisted-query id (403) is an update-the-SDK failure',
+        () async {
+      final (client, _) = makeClient((_) => resp(
+          '{"error":"persisted_query_rejected","message":"unknown persisted-query id: abc"}',
+          status: 403));
+      final result = await client.routing.plan(const PlanOptions(
+          origin: Location.stop('A'), destination: Location.stop('B')));
+      final error = (result as Failure<Route>).error;
+      expect(error.code, SpiderErrorCode.unauthorized);
+      expect(error.httpStatus, 403);
+      expect(error.serverCode, 'persisted_query_rejected');
+      expect(error.message, contains('update the SDK'));
+    });
+
+    test('any other 403 keeps the gateway message', () async {
+      final (client, _) = makeClient((_) => resp(
+          '{"error":"Access to this API has been disallowed"}',
+          status: 403));
+      final result = await client.routing.departures('S');
+      final error = (result as Failure<List<Departure>>).error;
+      expect(error.code, SpiderErrorCode.unauthorized);
+      expect(error.serverCode, isNull);
+      expect(error.message, isNot(contains('update the SDK')));
+    });
+
+    // serviceDay 1784066400 = 2026-07-14T22:00Z, noon minus 12 h on 2026-07-15 in Europe/Prague (CEST).
+    test(
+        'departures keeps every row the router returns and carries the '
+        'service date', () async {
       const body = '''
       {"data":{"asStop":{"gtfsId":"S","name":"Main Square","wheelchairBoarding":"POSSIBLE","stoptimesWithoutPatterns":[
-        {"serviceDay":1700000000,"scheduledDeparture":36000,"realtimeDeparture":36060,"realtime":true,"realtimeState":"UPDATED","headsign":"Airport","trip":{"gtfsId":"T1","bikesAllowed":"ALLOWED","route":{"shortName":"12","longName":"Line 12","mode":"BUS"}}},
-        {"serviceDay":1700000000,"scheduledDeparture":36300,"realtime":false,"headsign":"main square","trip":{"gtfsId":"T2","route":{"shortName":"5","mode":"TRAM"}}}
+        {"serviceDay":1784066400,"scheduledDeparture":36000,"realtimeDeparture":36060,"realtime":true,"realtimeState":"UPDATED","headsign":"Airport","trip":{"gtfsId":"T1","bikesAllowed":"ALLOWED","route":{"shortName":"12","longName":"Line 12","mode":"BUS"}}},
+        {"serviceDay":1784066400,"scheduledDeparture":88800,"realtime":false,"headsign":"main square","trip":{"gtfsId":"T2","route":{"shortName":"5","mode":"TRAM"}}}
       ]}}}''';
       final (client, _) = makeClient((_) => resp(body));
       final result =
           await client.routing.departures('S', numberOfDepartures: 10);
       final departures = (result as Success<List<Departure>>).value;
-      expect(departures.length, 1);
-      expect(departures[0].scheduledTimeEpochMs, (1700000000 + 36000) * 1000);
+      expect(departures.length, 2);
+      expect(departures[0].scheduledTimeEpochMs, (1784066400 + 36000) * 1000);
       expect(departures[0].mode, TransitMode.bus);
       expect(departures[0].realtimeState, RealtimeState.updated);
       expect(departures[0].isRealtime, true);
+      expect(departures[0].serviceDate, '2026-07-15');
+      // A row whose headsign is the stop's own name is a real departure, not a terminating trip.
+      expect(departures[1].headsign, 'main square');
+      // 24:40 on the 15th's timetable runs on the 16th's clock but keeps the 15th's service date.
+      expect(departures[1].serviceDate, '2026-07-15');
     });
 
     test('trip maps stops, geometry and enums', () async {
       const body = '''
       {"data":{"trip":{"gtfsId":"T1","directionId":"0","tripHeadsign":"Airport","bikesAllowed":"NOT_ALLOWED","route":{"shortName":"12","longName":"Line 12","mode":"BUS"},"stoptimesForDate":[
-        {"serviceDay":1700000000,"scheduledArrival":36000,"scheduledDeparture":36030,"realtimeArrival":36050,"realtimeDeparture":36080,"realtime":true,"stop":{"gtfsId":"S1","name":"A","lat":49.19,"lon":16.61,"wheelchairBoarding":"POSSIBLE"}}
+        {"serviceDay":1787263200,"scheduledArrival":36000,"scheduledDeparture":36030,"realtimeArrival":36050,"realtimeDeparture":36080,"realtime":true,"stop":{"gtfsId":"S1","name":"A","lat":49.19,"lon":16.61,"wheelchairBoarding":"POSSIBLE"}}
       ],"tripGeometry":{"points":"_p~iF~ps|U","length":2}}}}''';
-      final (client, _) = makeClient((_) => resp(body));
+      final (client, mock) = makeClient((_) => resp(body));
       final result = await client.routing.trip('T1', serviceDate: '2026-08-21');
       final trip = (result as Success<TripDetails>).value;
       expect(trip.mode, TransitMode.bus);
       expect(trip.bikesAllowed, BikesAllowed.notAllowed);
+      expect(trip.serviceDate, '2026-08-21');
       expect(trip.stops.length, 1);
       expect(
-          trip.stops[0].scheduledArrivalEpochMs, (1700000000 + 36000) * 1000);
+          trip.stops[0].scheduledArrivalEpochMs, (1787263200 + 36000) * 1000);
       expect(trip.geometry.length, 1);
+      expect((bodyOf(mock.requests.single)['variables'] as Map)['serviceDate'],
+          '2026-08-21');
+    });
+
+    test('trip rejects a malformed service date without a request', () async {
+      for (final date in ['20260821', '2026-02-30', '2026-8-21', 'today']) {
+        final (client, mock) = makeClient((_) => resp('{}'));
+        final result = await client.routing.trip('T1', serviceDate: date);
+        final error = (result as Failure<TripDetails>).error;
+        expect(error.code, SpiderErrorCode.badRequest, reason: date);
+        expect(error.field, 'serviceDate');
+        expect(mock.requests, isEmpty);
+      }
+    });
+
+    test('service date is the UTC date of noon on the service day', () {
+      expect(serviceDateOf(1784066400), '2026-07-15'); // Prague, summer
+      expect(serviceDateOf(1774735200), '2026-03-29'); // Prague, spring-forward
+      expect(serviceDateOf(1792882800), '2026-10-25'); // Prague, fall-back
+      expect(serviceDateOf(1784098800), '2026-07-15'); // Los Angeles, summer
     });
   });
 
@@ -285,6 +339,24 @@ void main() {
       final body2 = bodyOf(mock.requests[0]);
       expect(body2['q'], 'Main');
       expect(body2['filter'], r'country = "CZ" AND city = "Br\"no"');
+    });
+
+    test('search maps code, location type and wheelchair boarding', () async {
+      const body = '{"hits":['
+          '{"gtfsId":"1:U1","name":"Station","code":"ZV","locationType":1,"wheelchairBoarding":1},'
+          '{"gtfsId":"1:U2","name":"Stop","wheelchairBoarding":2},'
+          '{"gtfsId":"1:U3","name":"Bare","wheelchairBoarding":0}'
+          ']}';
+      final (client, _) = makeClient((_) => resp(body));
+      final result = await client.stops.search(const StopFilter(name: 'S'));
+      final stops = (result as Success<List<Stop>>).value;
+      expect(stops[0].code, 'ZV');
+      expect(stops[0].locationType, 1);
+      expect(stops[0].wheelchairBoarding, WheelchairBoarding.possible);
+      expect(stops[1].code, isNull);
+      expect(stops[1].locationType, isNull);
+      expect(stops[1].wheelchairBoarding, WheelchairBoarding.notPossible);
+      expect(stops[2].wheelchairBoarding, isNull);
     });
 
     test('search with only a name omits the filter', () async {
@@ -393,9 +465,9 @@ void main() {
     test('delays posts grouped queries and resolves per (tripId, serviceDate)',
         () async {
       const body =
-          '{"results":[{"serviceDate":"20260715","delays":[{"tripId":"T1","routeId":"R1","delaySeconds":120,"scheduleRelationship":"SCHEDULED","stopTimeUpdates":[{"stopId":"S1","stopSequence":3,"arrivalDelay":120,"departureDelay":90}]}],"missing":["T2"]}],"feedTimestamp":1700000000,"staleSeconds":2.0}';
+          '{"results":[{"serviceDate":"2026-07-15","delays":[{"tripId":"T1","routeId":"R1","delaySeconds":120,"scheduleRelationship":"SCHEDULED","stopTimeUpdates":[{"stopId":"S1","stopSequence":3,"arrivalDelay":120,"departureDelay":90}]}],"missing":["T2"]}],"feedTimestamp":1700000000,"staleSeconds":2.0}';
       final (client, mock) = makeClient((_) => resp(body));
-      final result = await client.realtime.delays(['T1', 'T2'], '20260715');
+      final result = await client.realtime.delays(['T1', 'T2'], '2026-07-15');
       final delays = (result as Success<TripDelays>).value;
 
       final req = mock.requests[0];
@@ -403,24 +475,37 @@ void main() {
       expect(req.uri.path, '/realtime/delays');
       expect(bodyOf(req)['queries'], [
         {
-          'serviceDate': '20260715',
+          'serviceDate': '2026-07-15',
           'tripIds': ['T1', 'T2']
         }
       ]);
 
-      final d = delays.delayFor('T1', '20260715');
+      final d = delays.delayFor('T1', '2026-07-15');
       expect(d?.delaySeconds, 120);
       expect(d?.stopTimeUpdates.first.arrivalDelay, 120);
       expect(delays.groups.single.missing, ['T2']);
       expect(delays.freshness.feedTimestampEpochMs, 1700000000 * 1000);
       // The same trip id on another service date is a different instance.
-      expect(delays.delayFor('T1', '20260716'), isNull);
+      expect(delays.delayFor('T1', '2026-07-16'), isNull);
     });
 
     test('delays with no trip ids short-circuits without a request', () async {
       final (client, mock) = makeClient((_) => resp('{}'));
-      final result = await client.realtime.delays([], '20260715');
+      final result = await client.realtime.delays([], '2026-07-15');
       expect((result as Success<TripDelays>).value.groups, isEmpty);
+      expect(mock.requests, isEmpty);
+    });
+
+    test('delays rejects a malformed service date without a request', () async {
+      final (client, mock) = makeClient((_) => resp('{}'));
+      final result = await client.realtime.delaysByServiceDate({
+        '2026-07-15': ['T1'],
+        '20260716': ['T2'],
+      });
+      final error = (result as Failure<TripDelays>).error;
+      expect(error.code, SpiderErrorCode.badRequest);
+      expect(error.field, 'serviceDate');
+      expect(error.message, contains('20260716'));
       expect(mock.requests, isEmpty);
     });
   });
@@ -495,7 +580,7 @@ void main() {
                   "mode": "BUS",
                   "start": { "scheduledTime": "2026-07-15T08:00:00Z", "estimated": { "time": "2026-07-15T08:01:00Z", "delay": "PT60S" } },
                   "end":   { "scheduledTime": "2026-07-15T08:30:00Z", "estimated": { "time": "2026-07-15T08:32:00Z", "delay": "PT120S" } },
-                  "realtimeState": "UPDATED", "realTime": true, "serviceDate": "20260715",
+                  "realtimeState": "UPDATED", "realTime": true, "serviceDate": "2026-07-15",
                   "from": { "name": "Origin", "stop": { "gtfsId": "1:A" } },
                   "to":   { "name": "Dest",   "stop": { "gtfsId": "1:B" } },
                   "route": { "shortName": "12" }, "trip": { "gtfsId": "1:T" }
@@ -520,7 +605,7 @@ void main() {
       expect(leg.startEstimated, '2026-07-15T08:01:00Z');
       expect(leg.isRealtime, true);
       expect(leg.realtimeState, RealtimeState.updated);
-      expect(leg.serviceDate, '20260715');
+      expect(leg.serviceDate, '2026-07-15');
       expect(leg.fromGtfsId, '1:A');
       expect(leg.toGtfsId, '1:B');
     });
@@ -537,6 +622,24 @@ void main() {
       expect(page.hasNextPage, true);
       expect(page.hasPreviousPage, false);
       expect(page.searchWindowUsed, 'PT1H');
+      expect(event.routingErrors, isEmpty);
+    });
+
+    // Routing outcomes ride on the terminal pageInfo, shaped like batch planConnection's routingErrors.
+    test('pageInfo carries routing errors on the terminal Done', () {
+      const data = '{ "hasNextPage": false, "hasPreviousPage": false, '
+          '"routingErrors": ['
+          '{ "code": "OUTSIDE_SERVICE_PERIOD", "inputField": "DATE_TIME", "description": "outside the feed" },'
+          '{ "code": "LOCATION_NOT_FOUND", "inputField": "FROM", "description": "unknown stop" }'
+          '] }';
+      final event = parsePlanStreamRecord('pageInfo', data) as PlanStreamDone;
+      expect(event.routingErrors.length, 2);
+      expect(
+          event.routingErrors[0].code, RoutingErrorCode.outsideServicePeriod);
+      expect(event.routingErrors[0].inputField, InputField.dateTime);
+      expect(event.routingErrors[0].description, 'outside the feed');
+      expect(event.routingErrors[1].code, RoutingErrorCode.locationNotFound);
+      expect(event.routingErrors[1].inputField, InputField.from);
     });
 
     // The old `done` telemetry frame is no longer surfaced — it just ends the stream.
@@ -655,6 +758,34 @@ void main() {
       final vars = body['variables'] as Map<String, dynamic>;
       expect(vars.containsKey('after'), false);
       expect(vars.containsKey('before'), false);
+      // No SDK-side window: the router's default cap applies.
+      expect(vars.containsKey('maxWindow'), false);
+      expect(vars['targetResults'], 5);
+    });
+
+    test('planStream sends an explicit maxWindowMinutes as an ISO duration',
+        () async {
+      const frames = 'event: pageInfo\n'
+          'data: {"hasNextPage":false,"hasPreviousPage":false}\n'
+          '\n';
+      final mock = MockHttpClient((_) => resp('{}'),
+          streamHandler: (_) => SpiderHttpStreamedResponse(
+              200,
+              {'content-type': 'text/event-stream'},
+              Stream.value(utf8.encode(frames))));
+      final client = SpiderClient('https://env.api.example.com', 'secret-key',
+          SpiderClientOptions(httpClient: mock));
+
+      await client.routing
+          .planStream(
+              const PlanOptions(
+                  origin: Location.stop('A'), destination: Location.stop('B')),
+              maxWindowMinutes: 120)
+          .toList();
+
+      final vars =
+          bodyOf(mock.requests.single)['variables'] as Map<String, dynamic>;
+      expect(vars['maxWindow'], 'PT120M');
     });
 
     test('planStreamNext continues forward with after and repeats the request',
@@ -685,7 +816,7 @@ void main() {
       expect(vars['after'], 'c-next');
       expect(vars.containsKey('before'), false);
       expect(vars['targetResults'], isNotNull);
-      expect(vars['maxWindow'], isNotNull);
+      expect(vars.containsKey('maxWindow'), false);
     });
 
     test('planStreamPrevious continues backward with before', () async {
@@ -734,6 +865,28 @@ void main() {
       expect(events.single, isA<PlanStreamFailure>());
       expect((events.single as PlanStreamFailure).error.code,
           SpiderErrorCode.unauthorized);
+    });
+
+    test('planStream maps a retired persisted-query id to update-the-SDK',
+        () async {
+      final mock = MockHttpClient((_) => resp('{}'),
+          streamHandler: (_) => SpiderHttpStreamedResponse(
+              403,
+              const {},
+              Stream.value(utf8.encode(
+                  '{"error":"persisted_query_rejected","message":"unknown persisted-query id: abc"}'))));
+      final client = SpiderClient('https://env.api.example.com', 'secret-key',
+          SpiderClientOptions(httpClient: mock));
+
+      final events = await client.routing
+          .planStream(const PlanOptions(
+              origin: Location.stop('A'), destination: Location.stop('B')))
+          .toList();
+
+      final error = (events.single as PlanStreamFailure).error;
+      expect(error.code, SpiderErrorCode.unauthorized);
+      expect(error.serverCode, 'persisted_query_rejected');
+      expect(error.message, contains('update the SDK'));
     });
   });
 }

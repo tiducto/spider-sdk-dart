@@ -8,6 +8,7 @@ import 'location.dart';
 import 'plan_stream_event.dart';
 import 'polyline.dart';
 import 'result.dart';
+import 'service_date.dart';
 import 'transport.dart';
 
 // MARK: public routing models
@@ -15,7 +16,7 @@ import 'transport.dart';
 /// One leg of an itinerary (a single vehicle ride or walk). The realtime fields carry live schedule
 /// deviation when the feed reports it: [startEstimated]/[endEstimated] are the estimated boarding/alighting
 /// times, [startDelay]/[endDelay] the deviation from schedule, and [serviceDate] the GTFS service date
-/// (`YYYYMMDD`) that scopes a realtime delay lookup for this trip instance.
+/// (`YYYY-MM-DD`) that scopes a realtime delay lookup for this trip instance.
 class Leg {
   final TransitMode? mode;
   final String startScheduled;
@@ -150,6 +151,11 @@ class Departure {
   final String? routeShortName;
   final String? routeLongName;
   final TransitMode? mode;
+
+  /// The GTFS service date (`YYYY-MM-DD`) this departure's trip runs on — pass it with [tripGtfsId] to
+  /// [SpiderRouting.trip] and to the realtime delays lookup. An after-midnight departure can carry the
+  /// previous day's date.
+  final String serviceDate;
   const Departure({
     required this.scheduledTimeEpochMs,
     this.realtimeTimeEpochMs,
@@ -160,6 +166,7 @@ class Departure {
     this.routeShortName,
     this.routeLongName,
     this.mode,
+    required this.serviceDate,
   });
 }
 
@@ -198,6 +205,10 @@ class TripDetails {
   final String? headsign;
   final String? directionId;
   final BikesAllowed? bikesAllowed;
+
+  /// The GTFS service date (`YYYY-MM-DD`) of this trip instance — the value to pass to the realtime delays
+  /// lookup. Null when the trip has no stop times on the requested date.
+  final String? serviceDate;
   final List<TripStop> stops;
   final List<LatLon> geometry;
   const TripDetails({
@@ -208,6 +219,7 @@ class TripDetails {
     this.headsign,
     this.directionId,
     this.bikesAllowed,
+    this.serviceDate,
     required this.stops,
     required this.geometry,
   });
@@ -265,7 +277,6 @@ class _PlanRequest {
 
 const _defaultSearchWindowMinutes = 60;
 const _defaultStreamTargetResults = 5;
-const _defaultStreamMaxWindowMinutes = 360;
 const _defaultTimeRangeSeconds = 24 * 60 * 60;
 const _intMax = 2147483647;
 
@@ -332,16 +343,19 @@ class SpiderRouting {
             'routing returned no stop or station for id=$stopId');
       }
       return Success(_mapDepartures(stop));
-    } on SpiderContractMismatchError {
-      rethrow;
     } catch (e) {
       return Failure(toSpiderError(e));
     }
   }
 
-  /// A single trip's stops, times, and geometry.
+  /// A single trip's stops, times, and geometry. [serviceDate] (`YYYY-MM-DD`, e.g. a [Departure.serviceDate]
+  /// or [Leg.serviceDate]) picks the trip instance and defaults to today; a malformed date fails with
+  /// [SpiderErrorCode.badRequest] without sending a request.
   Future<SpiderResult<TripDetails>> trip(String tripId,
       {String? serviceDate}) async {
+    final invalid =
+        serviceDate == null ? null : invalidServiceDate(serviceDate);
+    if (invalid != null) return Failure(invalid);
     try {
       final variables =
           wire.TripVariables(id: tripId, serviceDate: serviceDate).toJson();
@@ -353,8 +367,6 @@ class SpiderRouting {
             'routing returned no trip for id=$tripId');
       }
       return Success(_mapTrip(trip));
-    } on SpiderContractMismatchError {
-      rethrow;
     } catch (e) {
       return Failure(toSpiderError(e));
     }
@@ -367,14 +379,17 @@ class SpiderRouting {
   /// the continuation paging info (or a terminal [PlanStreamFailure]).
   ///
   /// [targetResults] is a soft floor the sweep aims to reach; [maxWindowMinutes] caps how far forward it
-  /// searches. To continue, read [PlanStreamDone.pageInfo] and call [planStreamNext] with its
-  /// [RoutePageInfo.endCursor] (or [planStreamPrevious] with its [RoutePageInfo.startCursor]). For a single
-  /// batched page instead, use [plan]. [PlanOptions.searchWindowMinutes] is ignored here — the stream paces
-  /// itself with [targetResults]/[maxWindowMinutes].
+  /// searches and, when omitted, the router's default cap applies (a value above that cap fails with
+  /// [SpiderErrorCode.badRequest]). A search the router can't answer (e.g. a date outside the feed) still ends
+  /// with a [PlanStreamDone], whose [PlanStreamDone.routingErrors] say why. To continue, read
+  /// [PlanStreamDone.pageInfo] and call [planStreamNext] with its [RoutePageInfo.endCursor] (or
+  /// [planStreamPrevious] with its [RoutePageInfo.startCursor]). For a single batched page instead, use
+  /// [plan]. [PlanOptions.searchWindowMinutes] is ignored here — the stream paces itself with
+  /// [targetResults]/[maxWindowMinutes].
   Stream<PlanStreamEvent> planStream(
     PlanOptions options, {
     int targetResults = _defaultStreamTargetResults,
-    int maxWindowMinutes = _defaultStreamMaxWindowMinutes,
+    int? maxWindowMinutes,
   }) {
     return _planStream(options, targetResults, maxWindowMinutes, null, null);
   }
@@ -385,7 +400,7 @@ class SpiderRouting {
   Stream<PlanStreamEvent> planStreamNext(
     PlanOptions options, {
     int targetResults = _defaultStreamTargetResults,
-    int maxWindowMinutes = _defaultStreamMaxWindowMinutes,
+    int? maxWindowMinutes,
     required String after,
   }) {
     return _planStream(options, targetResults, maxWindowMinutes, null, after);
@@ -397,7 +412,7 @@ class SpiderRouting {
   Stream<PlanStreamEvent> planStreamPrevious(
     PlanOptions options, {
     int targetResults = _defaultStreamTargetResults,
-    int maxWindowMinutes = _defaultStreamMaxWindowMinutes,
+    int? maxWindowMinutes,
     required String before,
   }) {
     return _planStream(options, targetResults, maxWindowMinutes, before, null);
@@ -406,7 +421,7 @@ class SpiderRouting {
   Stream<PlanStreamEvent> _planStream(
     PlanOptions options,
     int targetResults,
-    int maxWindowMinutes,
+    int? maxWindowMinutes,
     String? before,
     String? after,
   ) async* {
@@ -423,7 +438,9 @@ class SpiderRouting {
       modes: _modesInput(request.allowedTransitModes),
       preferences: _preferencesInput(request),
       targetResults: targetResults,
-      maxWindow: 'PT${maxWindowMinutes < 1 ? 1 : maxWindowMinutes}M',
+      maxWindow: maxWindowMinutes == null
+          ? null
+          : 'PT${maxWindowMinutes < 1 ? 1 : maxWindowMinutes}M',
       before: before,
       after: after,
     ).toJson();
@@ -460,8 +477,6 @@ class SpiderRouting {
       {String? before, String? after}) async {
     try {
       return Success(await _fetchPlan(request, before: before, after: after));
-    } on SpiderContractMismatchError {
-      rethrow;
     } catch (e) {
       return Failure(toSpiderError(e));
     }
@@ -502,10 +517,7 @@ class SpiderRouting {
       hasPreviousPage: plan.pageInfo.hasPreviousPage,
       searchWindowUsed: plan.pageInfo.searchWindowUsed,
     );
-    final routingErrors = plan.routingErrors
-        .map((re) => RoutingError(RoutingErrorCode.fromWire(re.code.wire),
-            re.description, InputField.fromWire(re.inputField?.wire)))
-        .toList();
+    final routingErrors = plan.routingErrors.map(_mapRoutingError).toList();
     return Route._(
         edges: edges,
         pageInfo: pageInfo,
@@ -605,13 +617,19 @@ PlanStreamEvent? parsePlanStreamRecord(String event, String data) {
     case 'pageInfo':
       try {
         final json = jsonDecode(data) as Map<String, dynamic>;
-        return PlanStreamDone(RoutePageInfo(
-          startCursor: json['startCursor'] as String?,
-          endCursor: json['endCursor'] as String?,
-          hasNextPage: json['hasNextPage'] as bool? ?? false,
-          hasPreviousPage: json['hasPreviousPage'] as bool? ?? false,
-          searchWindowUsed: json['searchWindowUsed'] as String?,
-        ));
+        return PlanStreamDone(
+          RoutePageInfo(
+            startCursor: json['startCursor'] as String?,
+            endCursor: json['endCursor'] as String?,
+            hasNextPage: json['hasNextPage'] as bool? ?? false,
+            hasPreviousPage: json['hasPreviousPage'] as bool? ?? false,
+            searchWindowUsed: json['searchWindowUsed'] as String?,
+          ),
+          routingErrors: (json['routingErrors'] as List<dynamic>? ?? const [])
+              .map((e) => _mapRoutingError(
+                  wire.RoutingError.fromJson(e as Map<String, dynamic>)))
+              .toList(),
+        );
       } catch (e) {
         return PlanStreamFailure(_streamDecodingError('pageInfo', e));
       }
@@ -658,6 +676,11 @@ SpiderError _streamErrorToSpiderError(String data) {
 String _truncData(String s) => s.length > 300 ? s.substring(0, 300) : s;
 
 // MARK: response mappers
+
+RoutingError _mapRoutingError(wire.RoutingError w) => RoutingError(
+    RoutingErrorCode.fromWire(w.code.wire),
+    w.description,
+    InputField.fromWire(w.inputField?.wire));
 
 Itinerary _mapItinerary(wire.Itinerary w) => Itinerary(
       start: w.start,
@@ -736,14 +759,11 @@ Duration? _parseIsoDuration(String raw) {
 }
 
 List<Departure> _mapDepartures(wire.StopDeparturesStop stop) {
-  final stopName = stop.name.trim().toLowerCase();
   final out = <Departure>[];
   for (final st in stop.stoptimesWithoutPatterns ?? const <wire.Stoptime>[]) {
     final serviceDay = st.serviceDay;
     final scheduledOffset = st.scheduledDeparture;
     if (serviceDay == null || scheduledOffset == null) continue;
-    final headsign = st.headsign;
-    if (headsign != null && headsign.trim().toLowerCase() == stopName) continue;
     final route = st.trip?.route;
     final rt = st.realtimeDeparture;
     out.add(Departure(
@@ -756,6 +776,7 @@ List<Departure> _mapDepartures(wire.StopDeparturesStop stop) {
       routeShortName: route?.shortName,
       routeLongName: route?.longName,
       mode: TransitMode.fromWire(route?.mode?.wire),
+      serviceDate: serviceDateOf(serviceDay),
     ));
   }
   return out;
@@ -763,7 +784,9 @@ List<Departure> _mapDepartures(wire.StopDeparturesStop stop) {
 
 TripDetails _mapTrip(wire.TripTrip w) {
   final stops = <TripStop>[];
+  int? serviceDay;
   for (final st in w.stoptimesForDate ?? const <wire.TripStoptime>[]) {
+    serviceDay ??= st.serviceDay;
     final s = st.stop;
     if (s == null) continue;
     final day = st.serviceDay;
@@ -792,6 +815,7 @@ TripDetails _mapTrip(wire.TripTrip w) {
     headsign: w.tripHeadsign,
     directionId: w.directionId,
     bikesAllowed: BikesAllowed.fromWire(w.bikesAllowed?.wire),
+    serviceDate: serviceDay == null ? null : serviceDateOf(serviceDay),
     stops: stops,
     geometry: points != null ? decodePolyline(points) : const [],
   );

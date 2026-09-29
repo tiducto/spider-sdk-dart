@@ -5,8 +5,7 @@ library;
 export 'src/client.dart'
     show SpiderClient, SpiderClientOptions, FeatureOptions, AutoRetryOptions;
 export 'src/enums.dart';
-export 'src/errors.dart'
-    show SpiderError, SpiderErrorCode, SpiderContractMismatchError;
+export 'src/errors.dart' show SpiderError, SpiderErrorCode;
 export 'src/location.dart';
 export 'src/plan_stream_event.dart';
 export 'src/polyline.dart' show LatLon;

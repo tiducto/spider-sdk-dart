@@ -1,12 +1,24 @@
 import 'dart:convert';
+import 'enums.dart';
 import 'errors.dart';
 import 'result.dart';
 import 'transport.dart';
 
-/// A stop returned by search.
+/// A stop returned by search. A station's platforms are folded into it, so the station is returned instead.
 class Stop {
   final String gtfsId;
   final String name;
+
+  /// The short public code riders know the stop by (GTFS `stop_code`), when the feed gives one.
+  final String? code;
+
+  /// GTFS `location_type`: `0` a stop or platform, `1` a station. Null when the feed doesn't set it, which
+  /// means a stop.
+  final int? locationType;
+
+  /// Whether a rider in a wheelchair can board here, from the stop's own GTFS `wheelchair_boarding`; null
+  /// when the feed has no information.
+  final WheelchairBoarding? wheelchairBoarding;
   final double? lat;
   final double? lon;
   final String? country;
@@ -17,6 +29,9 @@ class Stop {
   const Stop({
     required this.gtfsId,
     required this.name,
+    this.code,
+    this.locationType,
+    this.wheelchairBoarding,
     this.lat,
     this.lon,
     this.country,
@@ -103,8 +118,6 @@ class SpiderStops {
           '/stops/search', body, _parseSearchResponse,
           errorMessage: _extractStopError);
       return Success(stops);
-    } on SpiderContractMismatchError {
-      rethrow;
     } catch (e) {
       return Failure(toSpiderError(e));
     }
@@ -123,8 +136,6 @@ class SpiderStops {
           '/stops/search', body, _parseSearchResponse,
           errorMessage: _extractStopError);
       return Success(stops.isEmpty ? null : stops.first);
-    } on SpiderContractMismatchError {
-      rethrow;
     } catch (e) {
       return Failure(toSpiderError(e));
     }
@@ -178,6 +189,13 @@ List<Stop> _parseSearchResponse(Map<String, dynamic> json) {
 Stop _toStop(Map<String, dynamic> hit) => Stop(
       gtfsId: hit['gtfsId'] as String,
       name: hit['name'] as String,
+      code: hit['code'] as String?,
+      locationType: (hit['locationType'] as num?)?.toInt(),
+      wheelchairBoarding: switch (hit['wheelchairBoarding']) {
+        1 => WheelchairBoarding.possible,
+        2 => WheelchairBoarding.notPossible,
+        _ => null,
+      },
       lat: (hit['lat'] as num?)?.toDouble(),
       lon: (hit['lon'] as num?)?.toDouble(),
       country: hit['country'] as String?,

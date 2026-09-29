@@ -96,7 +96,7 @@ Future<void> vehicleForTrip(SpiderClient client, String tripId) async {
   // [END vehicleForTrip]
 }
 
-/// Live schedule deviation for a set of trips running on one GTFS service date (`YYYYMMDD`).
+/// Live schedule deviation for a set of trips running on one GTFS service date (`YYYY-MM-DD`).
 Future<void> delays(
     SpiderClient client, List<String> tripIds, String serviceDate) async {
   // [START delays]
