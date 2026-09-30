@@ -339,8 +339,8 @@ TransportError _routingHttpError(PersistedOp op, int status, String body) {
 
 /// The [TransportError] for a non-2xx response ([where] is e.g. `GET /realtime/vehicles`): the error
 /// envelope's message (else the raw body), [serverCode] or the envelope's `code`, and for a 400 the field its
-/// message names. A gateway plan-limit `error` code maps to its own kind, with the body's message, whatever
-/// the status.
+/// message names. A gateway plan-limit `error` code maps to its own kind whatever the status, with the body's
+/// trimmed message, or its fixed wording when that is blank.
 TransportError httpFailure(String where, int status, String body,
     {String? serverCode}) {
   final env = _parseErrorEnvelope(body);
@@ -348,7 +348,8 @@ TransportError httpFailure(String where, int status, String body,
   final planLimit = _planLimits[gatewayError];
   if (planLimit != null) {
     final (kind, defaultMessage) = planLimit;
-    return TransportError(kind, env.message ?? defaultMessage,
+    final message = env.message?.trim() ?? '';
+    return TransportError(kind, message.isEmpty ? defaultMessage : message,
         httpStatus: status, serverCode: gatewayError);
   }
   return TransportError(TransportErrorKind.http,

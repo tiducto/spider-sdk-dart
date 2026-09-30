@@ -1524,11 +1524,25 @@ void main() {
     test('a refusal without a message keeps the code and its own message',
         () async {
       for (final (code, serverCode, message) in limits) {
-        final error = await errorOf(
-            'plan', resp(jsonEncode({'error': serverCode}), status: 403));
-        expect(error.code, code);
-        expect(error.message, message);
+        for (final body in [
+          {'error': serverCode},
+          {'error': serverCode, 'message': ''},
+          {'error': serverCode, 'message': '  '},
+        ]) {
+          final error =
+              await errorOf('plan', resp(jsonEncode(body), status: 403));
+          expect(error.code, code, reason: '$body');
+          expect(error.message, message, reason: '$body');
+        }
       }
+    });
+
+    test('a refusal message is trimmed', () async {
+      final error = await errorOf(
+          'plan',
+          resp(refusal('agreement_inactive', ' agreement is not active \n'),
+              status: 403));
+      expect(error.message, 'agreement is not active');
     });
 
     test('planStream maps a refusal before the stream starts', () async {

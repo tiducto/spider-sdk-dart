@@ -32,13 +32,14 @@ Targets Spider API contract `1.0`. The first stable release: from here on, break
 - **`SpiderErrorCode.queryRetired`** for a persisted query the API no longer serves (HTTP 410). It used to
   arrive as `unauthorized`. An exhaustive `switch` on `SpiderErrorCode` needs the new case.
 - **`SpiderErrorCode.planningLimitReached`** when the project has reached its plan's trip planning limit. Trip
-  planning (`plan`, `planStream`) is refused and the other calls still work; the message is
-  `trip planning limit reached`.
+  planning (`plan`, `planStream`) is refused and the other calls still work.
 - **`SpiderErrorCode.agreementInactive`** when the project has no active agreement. Every call made with the
-  key is refused; the message is `agreement is not active`.
+  key is refused.
   Both come from the response body's code whatever the HTTP status, on every surface (including a plan stream
-  refused before it starts), with `httpStatus` and `serverCode` set. A 403 without one stays `unauthorized`.
-  An exhaustive `switch` on `SpiderErrorCode` needs both cases.
+  refused before it starts), with `httpStatus` and `serverCode` set. A `vehicleForTrip` 404 that carries one
+  is that error, not "no vehicle". The message is the body's; when the body has none, it is
+  `trip planning limit reached` or `agreement is not active`. A 403 without one of these codes stays
+  `unauthorized`. An exhaustive `switch` on `SpiderErrorCode` needs both cases.
 - **Display fields.** `Leg`: `routeGtfsId`, `routeColor`, `routeTextColor`, `fromPlatformCode`,
   `toPlatformCode`, `fromZoneId`, `toZoneId`. `Departure`: `routeGtfsId`, `routeColor`, `routeTextColor`,
   `stopGtfsId`, `platformCode`, `wheelchairAccessible`. `TripDetails`: `routeGtfsId`, `routeColor`,
