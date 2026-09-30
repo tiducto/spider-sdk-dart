@@ -31,9 +31,9 @@ Targets Spider API contract `1.0`. The first stable release: from here on, break
 
 - **`SpiderErrorCode.queryRetired`** for a persisted query the API no longer serves (HTTP 410). It used to
   arrive as `unauthorized`. An exhaustive `switch` on `SpiderErrorCode` needs the new case.
-- **`SpiderErrorCode.searchLimitReached`** when the project has used the searches its plan includes. Trip
+- **`SpiderErrorCode.planningLimitReached`** when the project has reached its plan's trip planning limit. Trip
   planning (`plan`, `planStream`) is refused and the other calls still work; the message is
-  `search limit reached`.
+  `trip planning limit reached`.
 - **`SpiderErrorCode.agreementInactive`** when the project has no active agreement. Every call made with the
   key is refused; the message is `agreement is not active`.
   Both come from the response body's code whatever the HTTP status, on every surface (including a plan stream

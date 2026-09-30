@@ -313,9 +313,9 @@ const _persistedQueryRejected = 'persisted_query_rejected';
 // Gateway `error` codes for a request the project's plan refuses (403), with each one's message when the body
 // carries none. Only the body code identifies them, never the status.
 const _planLimits = {
-  'search_limit_reached': (
-    TransportErrorKind.searchLimitReached,
-    'search limit reached'
+  'planning_limit_reached': (
+    TransportErrorKind.planningLimitReached,
+    'trip planning limit reached'
   ),
   'agreement_inactive': (
     TransportErrorKind.agreementInactive,

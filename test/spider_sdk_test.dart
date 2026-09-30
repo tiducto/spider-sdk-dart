@@ -1433,9 +1433,9 @@ void main() {
   group('plan limits', () {
     const limits = [
       (
-        SpiderErrorCode.searchLimitReached,
-        'search_limit_reached',
-        'search limit reached'
+        SpiderErrorCode.planningLimitReached,
+        'planning_limit_reached',
+        'trip planning limit reached'
       ),
       (
         SpiderErrorCode.agreementInactive,
@@ -1501,7 +1501,7 @@ void main() {
     test('a 403 without a plan-limit code stays unauthorized', () async {
       for (final body in [
         '',
-        '{"error":"forbidden","message":"search limit reached"}',
+        '{"error":"forbidden","message":"trip planning limit reached"}',
         '{"message":"agreement is not active"}',
       ]) {
         for (final call in calls.keys) {

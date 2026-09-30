@@ -15,9 +15,9 @@ enum SpiderErrorCode {
   /// HTTP 410).
   queryRetired,
 
-  /// The project has used the searches its plan includes, so trip planning (`plan`, `planStream`) is refused;
-  /// the other calls still work (gateway `search_limit_reached`).
-  searchLimitReached,
+  /// The project has reached its plan's trip planning limit, so trip planning (`plan`, `planStream`) is refused;
+  /// the other calls still work (gateway `planning_limit_reached`).
+  planningLimitReached,
 
   /// The project has no active agreement, so every call made with the key is refused (gateway
   /// `agreement_inactive`).
@@ -53,7 +53,7 @@ enum TransportErrorKind {
   upstream,
   badRequest,
   queryRetired,
-  searchLimitReached,
+  planningLimitReached,
   agreementInactive
 }
 
@@ -113,8 +113,8 @@ SpiderError toSpiderError(Object error) {
       case TransportErrorKind.queryRetired:
         return SpiderError(SpiderErrorCode.queryRetired, error.message,
             httpStatus: error.httpStatus, serverCode: error.serverCode);
-      case TransportErrorKind.searchLimitReached:
-        return SpiderError(SpiderErrorCode.searchLimitReached, error.message,
+      case TransportErrorKind.planningLimitReached:
+        return SpiderError(SpiderErrorCode.planningLimitReached, error.message,
             httpStatus: error.httpStatus, serverCode: error.serverCode);
       case TransportErrorKind.agreementInactive:
         return SpiderError(SpiderErrorCode.agreementInactive, error.message,
