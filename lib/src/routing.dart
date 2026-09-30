@@ -115,7 +115,9 @@ class RoutePageInfo {
   });
 }
 
-/// A non-fatal routing problem (e.g. no transit connection in the window).
+/// A non-fatal routing problem (e.g. no transit connection in the window). An unknown stop id comes back as
+/// [RoutingErrorCode.locationNotFound] with [inputField] [InputField.from], [InputField.to] or
+/// [InputField.via], saying which input named it.
 class RoutingError {
   final RoutingErrorCode code;
   final String description;
@@ -226,7 +228,12 @@ class TripDetails {
 }
 
 /// Options for a trip-plan search. [departAt]/[arriveBy] are mutually exclusive (arriveBy wins if both set;
-/// neither = depart now). [allowedTransitModes] empty = all modes. [searchWindowMinutes] defaults to 60.
+/// neither = depart now). [allowedTransitModes] empty = all modes. [searchWindowMinutes] defaults to 60; the
+/// environment sets its maximum, and a window above it fails with [SpiderErrorCode.badRequest].
+///
+/// Each [via] location takes 1–10 stop ids and a visit waits 0–24 h ([VisitVia.minimumWaitSeconds]); outside
+/// that the call fails with [SpiderErrorCode.badRequest] (field `via`) without a request. The environment sets
+/// how many via locations a plan may have.
 class PlanOptions {
   final Location origin;
   final Location destination;
@@ -276,9 +283,11 @@ class _PlanRequest {
 }
 
 const _defaultSearchWindowMinutes = 60;
-const _defaultStreamTargetResults = 5;
-const _defaultTimeRangeSeconds = 24 * 60 * 60;
-const _intMax = 2147483647;
+const _defaultNumberOfDepartures = 30;
+const _maxTimeRangeSeconds = 24 * 60 * 60;
+const _minStreamWindowMinutes = 2 * 60;
+const _maxViaStopIds = 10;
+const _maxViaWaitSeconds = 24 * 60 * 60;
 
 // The transit modes valid in a modes filter — street/leg modes (WALK/BICYCLE/CAR/TRANSIT) must not reach it.
 const _wireTransitModes = {
@@ -305,7 +314,9 @@ class SpiderRouting {
   SpiderRouting(this._transport);
 
   /// Plans a trip. Returns the first window of itineraries.
-  Future<SpiderResult<Route>> plan(PlanOptions options) {
+  Future<SpiderResult<Route>> plan(PlanOptions options) async {
+    final invalid = _invalidVia(options.via);
+    if (invalid != null) return Failure(invalid);
     return _page(_makeRequest(options));
   }
 
@@ -321,11 +332,17 @@ class SpiderRouting {
     return _page(route._request, before: route.pageInfo.startCursor);
   }
 
-  /// Departures from a stop, soonest first. [numberOfDepartures] caps the count; [startTime] defaults to now.
+  /// Departures from a stop, soonest first: up to [numberOfDepartures] (default 30; the environment sets the
+  /// maximum) within [timeRangeSeconds] (default 24 h) of [startTime] (default now). A [timeRangeSeconds] that
+  /// isn't above 0 and at most 24 h fails with [SpiderErrorCode.badRequest] (field `timeRange`) without a
+  /// request.
   Future<SpiderResult<List<Departure>>> departures(String stopId,
-      {int numberOfDepartures = 30,
+      {int numberOfDepartures = _defaultNumberOfDepartures,
       DateTime? startTime,
-      int? timeRangeSeconds}) async {
+      int timeRangeSeconds = _maxTimeRangeSeconds}) async {
+    if (timeRangeSeconds <= 0 || timeRangeSeconds > _maxTimeRangeSeconds) {
+      return Failure(invalidInput('timeRange'));
+    }
     try {
       final variables = wire.StopDeparturesVariables(
         id: stopId,
@@ -333,7 +350,7 @@ class SpiderRouting {
         startTime: startTime == null
             ? null
             : (startTime.millisecondsSinceEpoch / 1000).floor(),
-        timeRange: _clampSeconds(timeRangeSeconds ?? _defaultTimeRangeSeconds),
+        timeRange: timeRangeSeconds,
       ).toJson();
       final data = await _transport.graphql(PersistedQueries.departures,
           variables, wire.StopDeparturesData.fromJson);
@@ -378,18 +395,20 @@ class SpiderRouting {
   /// itineraries with realtime delays already applied to their legs; a terminal [PlanStreamDone] then carries
   /// the continuation paging info (or a terminal [PlanStreamFailure]).
   ///
-  /// [targetResults] is a soft floor the sweep aims to reach; [maxWindowMinutes] caps how far forward it
-  /// searches and, when omitted, the router's default cap applies (a value above that cap fails with
-  /// [SpiderErrorCode.badRequest]). A search the router can't answer (e.g. a date outside the feed) still ends
-  /// with a [PlanStreamDone], whose [PlanStreamDone.routingErrors] say why. To continue, read
-  /// [PlanStreamDone.pageInfo] and call [planStreamNext] with its [RoutePageInfo.endCursor] (or
-  /// [planStreamPrevious] with its [RoutePageInfo.startCursor]). For a single batched page instead, use
-  /// [plan]. [PlanOptions.searchWindowMinutes] is ignored here — the stream paces itself with
+  /// [targetResults] is how many itineraries the sweep aims for, from 1 up to the environment's result count.
+  /// [maxWindowMinutes] caps how far the sweep searches: at least 120 (2 h), up to the environment's maximum
+  /// search window. Below 120 the stream ends with a [PlanStreamFailure] ([SpiderErrorCode.badRequest], field
+  /// `maxWindow`) without a request; a value over an environment limit fails the same way from the server. A
+  /// search the router can't answer (e.g. a date outside the feed) still ends with a [PlanStreamDone], whose
+  /// [PlanStreamDone.routingErrors] say why. To continue, read [PlanStreamDone.pageInfo] and call
+  /// [planStreamNext] with its [RoutePageInfo.endCursor] (or [planStreamPrevious] with its
+  /// [RoutePageInfo.startCursor]). For a single batched page instead, use [plan].
+  /// [PlanOptions.searchWindowMinutes] is ignored here — the stream paces itself with
   /// [targetResults]/[maxWindowMinutes].
   Stream<PlanStreamEvent> planStream(
     PlanOptions options, {
-    int targetResults = _defaultStreamTargetResults,
-    int? maxWindowMinutes,
+    required int targetResults,
+    required int maxWindowMinutes,
   }) {
     return _planStream(options, targetResults, maxWindowMinutes, null, null);
   }
@@ -399,8 +418,8 @@ class SpiderRouting {
   /// re-paced per continuation.
   Stream<PlanStreamEvent> planStreamNext(
     PlanOptions options, {
-    int targetResults = _defaultStreamTargetResults,
-    int? maxWindowMinutes,
+    required int targetResults,
+    required int maxWindowMinutes,
     required String after,
   }) {
     return _planStream(options, targetResults, maxWindowMinutes, null, after);
@@ -411,8 +430,8 @@ class SpiderRouting {
   /// can be re-paced per continuation.
   Stream<PlanStreamEvent> planStreamPrevious(
     PlanOptions options, {
-    int targetResults = _defaultStreamTargetResults,
-    int? maxWindowMinutes,
+    required int targetResults,
+    required int maxWindowMinutes,
     required String before,
   }) {
     return _planStream(options, targetResults, maxWindowMinutes, before, null);
@@ -421,10 +440,17 @@ class SpiderRouting {
   Stream<PlanStreamEvent> _planStream(
     PlanOptions options,
     int targetResults,
-    int? maxWindowMinutes,
+    int maxWindowMinutes,
     String? before,
     String? after,
   ) async* {
+    final invalid = maxWindowMinutes < _minStreamWindowMinutes
+        ? invalidInput('maxWindow')
+        : _invalidVia(options.via);
+    if (invalid != null) {
+      yield PlanStreamFailure(invalid);
+      return;
+    }
     final request = _makeRequest(options);
     final iso = request.time.toUtc().toIso8601String();
     final dateTime = request.timeKind == _TimeKind.departAt
@@ -438,9 +464,7 @@ class SpiderRouting {
       modes: _modesInput(request.allowedTransitModes),
       preferences: _preferencesInput(request),
       targetResults: targetResults,
-      maxWindow: maxWindowMinutes == null
-          ? null
-          : 'PT${maxWindowMinutes < 1 ? 1 : maxWindowMinutes}M',
+      maxWindow: 'PT${maxWindowMinutes}M',
       before: before,
       after: after,
     ).toJson();
@@ -495,8 +519,7 @@ class SpiderRouting {
       via: request.via.isEmpty ? null : request.via.map(_viaToInput).toList(),
       modes: _modesInput(request.allowedTransitModes),
       preferences: _preferencesInput(request),
-      searchWindow:
-          'PT${request.searchWindowMinutes < 1 ? 1 : request.searchWindowMinutes}M',
+      searchWindow: 'PT${request.searchWindowMinutes}M',
       before: before,
       after: after,
     ).toJson();
@@ -528,6 +551,21 @@ class SpiderRouting {
 }
 
 // MARK: request builders
+
+// Fixed platform limits on each via location. How many via locations a plan may have is an environment
+// setting, so the server checks that.
+SpiderError? _invalidVia(List<ViaLocation> via) {
+  for (final location in via) {
+    final valid = switch (location) {
+      PassThroughVia(:final stopIds) =>
+        stopIds.isNotEmpty && stopIds.length <= _maxViaStopIds,
+      VisitVia(:final minimumWaitSeconds) =>
+        minimumWaitSeconds >= 0 && minimumWaitSeconds <= _maxViaWaitSeconds,
+    };
+    if (!valid) return invalidInput('via');
+  }
+  return null;
+}
 
 wire.PlanLabeledLocationInput _locationToInput(Location location) {
   return switch (location) {
@@ -646,23 +684,14 @@ SpiderError _streamDecodingError(String event, Object cause) => SpiderError(
     cause: cause);
 
 // A stream `error` record is the same GraphQL error envelope the batch path returns, so it maps through the
-// same taxonomy: a top-level BAD_REQUEST becomes a typed badRequest (with its field), anything else server.
+// same taxonomy.
 SpiderError _streamErrorToSpiderError(String data) {
   try {
     final json = jsonDecode(data) as Map<String, dynamic>;
     final errors = json['errors'];
     if (errors is List && errors.isNotEmpty) {
-      for (final e in errors) {
-        final ext = e is Map ? e['extensions'] : null;
-        if (ext is Map && ext['code'] == 'BAD_REQUEST') {
-          return toSpiderError(TransportError(TransportErrorKind.badRequest,
-              (e as Map)['message']?.toString() ?? 'bad request',
-              field: ext['field'] as String?));
-        }
-      }
-      final joined = errors.map((e) => (e as Map)['message']).join(', ');
-      return toSpiderError(TransportError(
-          TransportErrorKind.upstream, 'plan-stream errors: $joined'));
+      return toSpiderError(
+          graphqlErrorsToTransportError(errors, 'plan-stream'));
     }
     final message = json['message'];
     return toSpiderError(TransportError(TransportErrorKind.upstream,
@@ -758,9 +787,10 @@ Duration? _parseIsoDuration(String raw) {
   return Duration(microseconds: sign * micros);
 }
 
-List<Departure> _mapDepartures(wire.StopDeparturesStop stop) {
+List<Departure> _mapDepartures(wire.StopDeparturesStop2 stop) {
   final out = <Departure>[];
-  for (final st in stop.stoptimesWithoutPatterns ?? const <wire.Stoptime>[]) {
+  for (final st in stop.stoptimesWithoutPatterns ??
+      const <wire.StopDeparturesStoptime>[]) {
     final serviceDay = st.serviceDay;
     final scheduledOffset = st.scheduledDeparture;
     if (serviceDay == null || scheduledOffset == null) continue;
@@ -785,7 +815,7 @@ List<Departure> _mapDepartures(wire.StopDeparturesStop stop) {
 TripDetails _mapTrip(wire.TripTrip w) {
   final stops = <TripStop>[];
   int? serviceDay;
-  for (final st in w.stoptimesForDate ?? const <wire.TripStoptime>[]) {
+  for (final st in w.stoptimesForDate ?? const <wire.Stoptime>[]) {
     serviceDay ??= st.serviceDay;
     final s = st.stop;
     if (s == null) continue;
@@ -820,6 +850,3 @@ TripDetails _mapTrip(wire.TripTrip w) {
     geometry: points != null ? decodePolyline(points) : const [],
   );
 }
-
-int _clampSeconds(int seconds) =>
-    seconds < 0 ? 0 : (seconds > _intMax ? _intMax : seconds);

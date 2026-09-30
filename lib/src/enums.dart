@@ -143,9 +143,16 @@ enum RoutingErrorCode {
 
 /// Which input a routing error refers to. Open: unrecognized values map to [InputField.unknown].
 enum InputField {
+  /// The requested departure or arrival time.
   dateTime('DATE_TIME'),
+
+  /// The origin, e.g. an unknown origin stop id ([RoutingErrorCode.locationNotFound]).
   from('FROM'),
+
+  /// The destination, e.g. an unknown destination stop id ([RoutingErrorCode.locationNotFound]).
   to('TO'),
+
+  /// A via location, e.g. an unknown via stop id ([RoutingErrorCode.locationNotFound]).
   via('VIA'),
   unknown('UNKNOWN');
 

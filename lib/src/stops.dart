@@ -19,6 +19,10 @@ class Stop {
   /// Whether a rider in a wheelchair can board here, from the stop's own GTFS `wheelchair_boarding`; null
   /// when the feed has no information.
   final WheelchairBoarding? wheelchairBoarding;
+
+  /// The modes of the routes serving the stop, each once (a station's cover all its platforms); empty when no
+  /// route serves it. A mode this SDK doesn't know is [TransitMode.unknown].
+  final List<TransitMode> modes;
   final double? lat;
   final double? lon;
   final String? country;
@@ -32,6 +36,7 @@ class Stop {
     this.code,
     this.locationType,
     this.wheelchairBoarding,
+    this.modes = const [],
     this.lat,
     this.lon,
     this.country,
@@ -63,9 +68,12 @@ class GeoBoundingBox {
   });
 }
 
-/// Search criteria. [name] is a free-text query; the admin fields narrow it by administrative area; the geo
-/// fields ([near]/[radiusMeters]/[bbox]/[sortByDistance]) constrain and order it spatially.
+/// Search criteria. [name] is a free-text query; the admin fields narrow it by administrative area, [modes]
+/// by the modes serving the stop; the geo fields ([near]/[radiusMeters]/[bbox]/[sortByDistance]) constrain
+/// and order it spatially.
 class StopFilter {
+  /// Free text matched against the stop's name, its code, and its town ([Stop.city]) and district within the
+  /// town ([Stop.suburb]) where the environment has them.
   final String? name;
   final String? country;
   final String? region;
@@ -85,8 +93,12 @@ class StopFilter {
   /// Sort results by distance from [near], nearest first. Requires [near].
   final bool? sortByDistance;
 
-  /// Cap on the number of hits returned.
-  final int? limit;
+  /// Restrict to stops served by at least one of these modes. Empty = any mode.
+  final List<TransitMode> modes;
+
+  /// The most hits to return, 1–50 (default 20). Outside that range the search fails with
+  /// [SpiderErrorCode.badRequest] (field `limit`) without a request.
+  final int limit;
 
   const StopFilter({
     this.name,
@@ -99,17 +111,24 @@ class StopFilter {
     this.radiusMeters,
     this.bbox,
     this.sortByDistance,
-    this.limit,
+    this.modes = const [],
+    this.limit = _defaultLimit,
   });
 }
+
+const _defaultLimit = 20;
+const _maxLimit = 50;
 
 /// The stops surface: text + administrative-area + geographic stop search, and single-stop lookup.
 class SpiderStops {
   final Transport _transport;
   SpiderStops(this._transport);
 
-  /// Searches stops by free text, administrative area, and/or geography.
+  /// Searches stops by free text, administrative area, mode, and/or geography.
   Future<SpiderResult<List<Stop>>> search(StopFilter filter) async {
+    if (filter.limit < 1 || filter.limit > _maxLimit) {
+      return Failure(invalidInput('limit'));
+    }
     // Build + validate before the try so misuse (radius/sort without `near`) surfaces as a thrown
     // ArgumentError rather than being folded into a Failure — mirrors the Kotlin/TS surfaces.
     final body = _buildSearchRequest(filter);
@@ -145,7 +164,7 @@ class SpiderStops {
   /// without it, the nearest [limit] stops overall are returned. Convenience over a `near` + `sortByDistance`
   /// [search].
   Future<SpiderResult<List<Stop>>> near(double lat, double lng,
-          {int? radiusMeters, int? limit}) =>
+          {int? radiusMeters, int limit = _defaultLimit}) =>
       search(StopFilter(
         near: GeoPoint(lat, lng),
         radiusMeters: radiusMeters,
@@ -157,7 +176,7 @@ class SpiderStops {
   /// corners. Convenience over `search(StopFilter(bbox: ...))`.
   Future<SpiderResult<List<Stop>>> within(
           double minLat, double minLng, double maxLat, double maxLng,
-          {int? limit}) =>
+          {int limit = _defaultLimit}) =>
       search(StopFilter(
         bbox: GeoBoundingBox(
             minLat: minLat, minLng: minLng, maxLat: maxLat, maxLng: maxLng),
@@ -177,7 +196,7 @@ Map<String, dynamic> _buildSearchRequest(StopFilter filter) {
   if (expr != null) body['filter'] = expr;
   final sort = _buildSort(filter);
   if (sort != null) body['sort'] = sort;
-  if (filter.limit != null) body['limit'] = filter.limit;
+  body['limit'] = filter.limit;
   return body;
 }
 
@@ -196,6 +215,9 @@ Stop _toStop(Map<String, dynamic> hit) => Stop(
         2 => WheelchairBoarding.notPossible,
         _ => null,
       },
+      modes: (hit['modes'] as List<dynamic>? ?? const [])
+          .map((m) => TransitMode.fromWire(m as String)!)
+          .toList(),
       lat: (hit['lat'] as num?)?.toDouble(),
       lon: (hit['lon'] as num?)?.toDouble(),
       country: hit['country'] as String?,
@@ -205,7 +227,7 @@ Stop _toStop(Map<String, dynamic> hit) => Stop(
       suburb: hit['suburb'] as String?,
     );
 
-// Composes the search-index filter expression: `city = "…" AND gtfsId = "…" AND _geoRadius(…) AND …`.
+// Composes the search-index filter expression: `city = "…" AND modes IN ["…"] AND _geoRadius(…) AND …`.
 // Attribute names are bare identifiers (the filter syntax doesn't quote them); only string values are double-quoted,
 // with embedded `"`/`\` escaped so a value can't break out of its clause. Coordinates are interpolated via
 // Dart's Locale-invariant `double.toString` ('.' decimal) — never a Locale formatter that could emit a comma
@@ -223,6 +245,10 @@ String? _buildFilterExpression(StopFilter filter) {
     final value = pair.value;
     if (value == null || value.isEmpty) continue;
     clauses.add('${pair.key} = "${_escapeFilter(value)}"');
+  }
+  if (filter.modes.isNotEmpty) {
+    final modes = filter.modes.map((m) => '"${m.wire}"');
+    clauses.add('modes IN [${modes.join(', ')}]');
   }
   final near = filter.near;
   if (near != null && filter.radiusMeters != null) {

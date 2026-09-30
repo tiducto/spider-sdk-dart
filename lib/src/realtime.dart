@@ -19,6 +19,7 @@ class FeedFreshness {
 }
 
 /// A vehicle's live position. GTFS-RT producers populate wildly different subsets, so every field is optional.
+/// [tripId], [routeId], [stopId] and [vehicleId] are feed-prefixed (`<feedId>:<id>`), like routing's ids.
 class LiveVehicle {
   final String? tripId;
   final String? routeId;
@@ -237,8 +238,14 @@ class ServiceAlerts {
 }
 
 const _emptyFreshness = FeedFreshness();
-const _emptyPositions = VehiclePositions([], [], _emptyFreshness);
-const _emptyDelays = TripDelays([], _emptyFreshness);
+const _maxTripIds = 50;
+
+// A fixed platform limit per request, counted across every service-date group.
+SpiderError? _invalidTripIds(int count) => count == 0
+    ? invalidInput('tripIds', missing: true)
+    : count > _maxTripIds
+        ? invalidInput('tripIds')
+        : null;
 
 /// The realtime surface: live vehicle positions, schedule deviations, and service alerts. Poll-based —
 /// see the `poll*` methods (extension below) for change-detecting streams.
@@ -246,9 +253,11 @@ class SpiderRealtime {
   final Transport _transport;
   SpiderRealtime(this._transport);
 
-  /// Live positions for the given trips. An empty input returns an empty result without a request.
+  /// Live positions for 1–50 trips. No trip ids, or more than 50, fails with [SpiderErrorCode.badRequest]
+  /// (field `tripIds`) without a request.
   Future<SpiderResult<VehiclePositions>> vehicles(List<String> tripIds) async {
-    if (tripIds.isEmpty) return const Success(_emptyPositions);
+    final invalid = _invalidTripIds(tripIds.length);
+    if (invalid != null) return Failure(invalid);
     try {
       final json = await _transport.getJson('/realtime/vehicles', _identity,
           query: {'tripIds': tripIds.join(',')});
@@ -296,17 +305,17 @@ class SpiderRealtime {
   /// Live delays, resolved per `(tripId, serviceDate)` instance: group trip ids by the GTFS service date
   /// (`YYYY-MM-DD`) they run on — pass each plan leg's or departure's `serviceDate` through. Grouping is
   /// required because the same trip id runs on many dates (and two instances can overlap around midnight).
-  /// A malformed date fails with [SpiderErrorCode.badRequest], and an input with no trip ids returns an empty
-  /// result, both without a request.
+  /// Takes 1–50 trip ids, counted across all dates. A malformed date, or no trip ids or more than 50, fails with
+  /// [SpiderErrorCode.badRequest] (field `serviceDate` or `tripIds`) without a request.
   Future<SpiderResult<TripDelays>> delaysByServiceDate(
       Map<String, List<String>> byServiceDate) async {
     for (final serviceDate in byServiceDate.keys) {
       final invalid = invalidServiceDate(serviceDate);
       if (invalid != null) return Failure(invalid);
     }
-    if (byServiceDate.values.every((ids) => ids.isEmpty)) {
-      return const Success(_emptyDelays);
-    }
+    final invalid = _invalidTripIds(
+        byServiceDate.values.fold(0, (sum, ids) => sum + ids.length));
+    if (invalid != null) return Failure(invalid);
     try {
       final body = {
         'queries': byServiceDate.entries

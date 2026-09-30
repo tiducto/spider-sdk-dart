@@ -30,8 +30,9 @@ final class PlanStreamDone extends PlanStreamEvent {
   const PlanStreamDone(this.pageInfo, {this.routingErrors = const []});
 }
 
-/// Terminal failure — a transport/HTTP problem, a decoding error, or a server `error` event (an invalid
-/// request). [error] is the same [SpiderError] taxonomy the one-shot calls return.
+/// Terminal failure — an input the SDK or the server rejects ([SpiderErrorCode.badRequest] naming the field),
+/// a transport/HTTP problem, or a decoding error. [error] is the same [SpiderError] taxonomy the one-shot calls
+/// return.
 final class PlanStreamFailure extends PlanStreamEvent {
   final SpiderError error;
   const PlanStreamFailure(this.error);

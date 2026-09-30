@@ -42,8 +42,9 @@ Future<void> handleResult(SpiderClient client) async {
 }
 
 /// React to a failure by branching on its typed `SpiderErrorCode`. The codes are
-/// camelCase: network, timeout, unauthorized, notFound, server, rateLimited,
-/// decoding, unknown. The switch is exhaustive — no `default` needed.
+/// camelCase: network, timeout, unauthorized, badRequest, notFound, server,
+/// rateLimited, queryRetired, decoding, unknown. The switch is exhaustive — no
+/// `default` needed.
 Future<void> handleErrors(SpiderClient client) async {
   // [START handleErrors]
   final result = await client.routing.plan(PlanOptions(
@@ -58,10 +59,12 @@ Future<void> handleErrors(SpiderClient client) async {
       case SpiderErrorCode.unauthorized:
         print('Check the API key for this environment');
       case SpiderErrorCode.badRequest:
-        // A server validation failure: over-cap searchWindow, bad via, or a missing required field.
+        // A missing, invalid or out-of-range input; error.field names it.
         print('Invalid request on ${error.field ?? 'input'}: ${error.message}');
       case SpiderErrorCode.rateLimited:
         print('Rate limited — back off, then retry');
+      case SpiderErrorCode.queryRetired:
+        print('The API no longer serves this query: ${error.message}');
       case SpiderErrorCode.timeout:
         print('Request timed out — retry');
       case SpiderErrorCode.network:

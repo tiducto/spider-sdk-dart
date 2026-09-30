@@ -119,19 +119,7 @@ class Transport {
     final decoded = _decodeJson(resp.body, 'routing ${op.path}');
     final errors = decoded['errors'];
     if (errors is List && errors.isNotEmpty) {
-      // A BAD_REQUEST extension (over-cap searchWindow, bad via, missing required field) → typed badRequest;
-      // anything else stays a generic upstream (→ server).
-      for (final e in errors) {
-        final ext = e is Map ? e['extensions'] : null;
-        if (ext is Map && ext['code'] == 'BAD_REQUEST') {
-          throw TransportError(TransportErrorKind.badRequest,
-              (e as Map)['message']?.toString() ?? 'bad request',
-              field: ext['field'] as String?);
-        }
-      }
-      final joined = errors.map((e) => (e as Map)['message']).join(', ');
-      throw TransportError(
-          TransportErrorKind.upstream, 'routing ${op.path} errors: $joined');
+      throw graphqlErrorsToTransportError(errors, 'routing ${op.path}');
     }
     final data = decoded['data'];
     if (data == null) {
@@ -155,7 +143,9 @@ class Transport {
           errorMessage?.call(resp.body) ?? env.message ?? _trunc(resp.body);
       throw TransportError(
           TransportErrorKind.http, 'POST $path -> ${resp.statusCode}: $message',
-          httpStatus: resp.statusCode, serverCode: env.code);
+          httpStatus: resp.statusCode,
+          serverCode: env.code,
+          field: _fieldNamedBy(resp.statusCode, env.message ?? resp.body));
     }
     return fromJson(_decodeJson(resp.body, 'POST $path'));
   }
@@ -175,7 +165,9 @@ class Transport {
       final detail = env.message ?? _trunc(resp.body);
       throw TransportError(
           TransportErrorKind.http, 'GET $path -> ${resp.statusCode}: $detail',
-          httpStatus: resp.statusCode, serverCode: env.code);
+          httpStatus: resp.statusCode,
+          serverCode: env.code,
+          field: _fieldNamedBy(resp.statusCode, env.message ?? resp.body));
     }
     return fromJson(_decodeJson(resp.body, 'GET $path'));
   }
@@ -192,9 +184,10 @@ class Transport {
 
   /// Opens a Server-Sent Events stream for persisted-query [op]: `POST {baseUrl}/routing/{op.path}` with the
   /// `{ id, variables }` body and the SDK's contract/identity headers, requesting `text/event-stream`. Yields
-  /// one [SpiderSseEvent] per finished SSE record. A non-2xx response throws a [TransportError] before any
-  /// event is yielded, so it maps to the same taxonomy as the buffered calls. The apikey is stamped here — SSE
-  /// bypasses the buffered, retrying [_send] path, so it opens a single, un-retried streaming connection.
+  /// one [SpiderSseEvent] per finished SSE record. A non-2xx response, or a 2xx that isn't an event stream,
+  /// throws a [TransportError] before any event is yielded, so it maps to the same taxonomy as the buffered
+  /// calls. The apikey is stamped here — SSE bypasses the buffered, retrying [_send] path, so it opens a
+  /// single, un-retried streaming connection.
   Stream<SpiderSseEvent> sse(
       PersistedOp op, Map<String, dynamic> variables) async* {
     final headers = {
@@ -215,6 +208,17 @@ class Transport {
         // The error body is best-effort detail; its absence doesn't change the status mapping.
       }
       throw _routingHttpError(op, response.statusCode, body);
+    }
+    if (!_isEventStream(response.headers)) {
+      // The gateway answers a request it rejects before routing (e.g. a missing required variable) with the
+      // batch GraphQL error body, so it maps exactly like the batch call.
+      final body = await utf8.decodeStream(response.body);
+      final errors = _decodeJson(body, 'routing ${op.path}')['errors'];
+      if (errors is List && errors.isNotEmpty) {
+        throw graphqlErrorsToTransportError(errors, 'routing ${op.path}');
+      }
+      throw TransportError(TransportErrorKind.upstream,
+          'routing ${op.path} returned no event stream: ${_trunc(body)}');
     }
     yield* _parseSse(response.body);
   }
@@ -295,14 +299,41 @@ class Transport {
 
 const _defaultSseEvent = 'message';
 
-// The gateway answers an id missing from its persisted-query allowlist with a 403 carrying this `error`. The
-// SDK only sends ids from its own contract, so that 403 means this SDK's query has been retired.
+/// Maps a GraphQL `errors` array: a `BAD_REQUEST` extension becomes a typed badRequest naming its field;
+/// anything else is a generic upstream failure (→ server).
+TransportError graphqlErrorsToTransportError(
+    List<dynamic> errors, String where) {
+  for (final e in errors) {
+    final ext = e is Map ? e['extensions'] : null;
+    if (ext is Map && ext['code'] == 'BAD_REQUEST') {
+      return TransportError(TransportErrorKind.badRequest,
+          (e as Map)['message']?.toString() ?? 'bad request',
+          field: ext['field'] as String?);
+    }
+  }
+  final joined = errors.map((e) => e is Map ? e['message'] : e).join(', ');
+  return TransportError(TransportErrorKind.upstream, '$where errors: $joined');
+}
+
+bool _isEventStream(Map<String, String> headers) {
+  final type = headers['content-type'];
+  return type == null || type.toLowerCase().contains('text/event-stream');
+}
+
+// Gateway `error` codes for a persisted-query id it won't run: retired (410) or never registered (403).
+const _queryRetired = 'query_retired';
 const _persistedQueryRejected = 'persisted_query_rejected';
 
 TransportError _routingHttpError(PersistedOp op, int status, String body) {
-  if (status == 403 && _gatewayError(body) == _persistedQueryRejected) {
+  final gatewayError = _gatewayError(body);
+  if (gatewayError == _queryRetired || status == 410) {
+    return TransportError(TransportErrorKind.queryRetired,
+        'routing ${op.path} -> $status: persisted query is retired',
+        httpStatus: status, serverCode: _queryRetired);
+  }
+  if (status == 403 && gatewayError == _persistedQueryRejected) {
     return TransportError(TransportErrorKind.http,
-        "routing ${op.path} -> 403: this SDK version's query has been retired by the API; update the SDK",
+        'routing ${op.path} -> 403: unknown persisted-query id',
         httpStatus: status, serverCode: _persistedQueryRejected);
   }
   final env = _parseErrorEnvelope(body);
@@ -346,6 +377,12 @@ ErrorEnvelope _parseErrorEnvelope(String text) {
   }
   return const ErrorEnvelope(null, null);
 }
+
+// Stop search and realtime start a 400 message with the field it names ("limit is out of range").
+final _fieldMessage = RegExp(r'^([A-Za-z_]\w*) (?:is|must) ');
+
+String? _fieldNamedBy(int status, String message) =>
+    status == 400 ? _fieldMessage.firstMatch(message.trim())?.group(1) : null;
 
 String _trunc(String s) => s.length > 300 ? s.substring(0, 300) : s;
 
