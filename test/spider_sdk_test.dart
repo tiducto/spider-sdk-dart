@@ -1429,4 +1429,145 @@ void main() {
       expect(error.message, contains('unknown persisted-query id: abc'));
     });
   });
+
+  group('plan limits', () {
+    const limits = [
+      (
+        SpiderErrorCode.planningLimitReached,
+        'planning_limit_reached',
+        'trip planning limit reached'
+      ),
+      (
+        SpiderErrorCode.agreementInactive,
+        'agreement_inactive',
+        'agreement is not active'
+      ),
+    ];
+
+    String refusal(String code, String message) =>
+        jsonEncode({'error': code, 'message': message});
+
+    // Every buffered call, by surface. Each one here has to fail against the mock's response.
+    final calls =
+        <String, Future<SpiderResult<Object?>> Function(SpiderClient)>{
+      'plan': (c) => c.routing.plan(stopsAB),
+      'departures': (c) => c.routing.departures('S'),
+      'trip': (c) => c.routing.trip('T1'),
+      'stops.search': (c) => c.stops.search(const StopFilter(name: 'M')),
+      'stops.byId': (c) => c.stops.byId('1:S1'),
+      'realtime.vehicles': (c) => c.realtime.vehicles(['T1']),
+      'realtime.vehicleForTrip': (c) => c.realtime.vehicleForTrip('T1'),
+      'realtime.delays': (c) => c.realtime.delays(['T1'], '2026-07-15'),
+      'realtime.alerts': (c) => c.realtime.alerts(),
+    };
+
+    Future<SpiderError> errorOf(
+        String call, SpiderHttpResponse response) async {
+      final (client, _) = makeClient((_) => response);
+      final result = await calls[call]!(client);
+      expect(result, isA<Failure<Object?>>(), reason: call);
+      return result.errorOrNull!;
+    }
+
+    test('a 403 refusal maps to its code on every surface', () async {
+      for (final (code, serverCode, message) in limits) {
+        for (final call in calls.keys) {
+          final error = await errorOf(
+              call, resp(refusal(serverCode, message), status: 403));
+          expect(error.code, code, reason: '$call $serverCode');
+          expect(error.httpStatus, 403, reason: '$call $serverCode');
+          expect(error.serverCode, serverCode, reason: '$call $serverCode');
+          expect(error.message, message, reason: '$call $serverCode');
+        }
+      }
+    });
+
+    test('the body code wins over a rewritten status', () async {
+      for (final (code, serverCode, message) in limits) {
+        for (final status in [400, 401, 404, 410, 429, 500]) {
+          for (final call in calls.keys) {
+            final error = await errorOf(
+                call, resp(refusal(serverCode, message), status: status));
+            expect(error.code, code, reason: '$call $status $serverCode');
+            expect(error.httpStatus, status,
+                reason: '$call $status $serverCode');
+            expect(error.serverCode, serverCode,
+                reason: '$call $status $serverCode');
+          }
+        }
+      }
+    });
+
+    test('a 403 without a plan-limit code stays unauthorized', () async {
+      for (final body in [
+        '',
+        '{"error":"forbidden","message":"trip planning limit reached"}',
+        '{"message":"agreement is not active"}',
+      ]) {
+        for (final call in calls.keys) {
+          final error = await errorOf(call, resp(body, status: 403));
+          expect(error.code, SpiderErrorCode.unauthorized,
+              reason: '$call $body');
+          expect(error.httpStatus, 403, reason: '$call $body');
+        }
+      }
+    });
+
+    test('the message is the body message', () async {
+      final error = await errorOf(
+          'departures',
+          resp(refusal('agreement_inactive', 'agreement is not active (env)'),
+              status: 403));
+      expect(error.message, 'agreement is not active (env)');
+    });
+
+    test('a refusal without a message keeps the code and its own message',
+        () async {
+      for (final (code, serverCode, message) in limits) {
+        for (final body in [
+          {'error': serverCode},
+          {'error': serverCode, 'message': ''},
+          {'error': serverCode, 'message': '  '},
+        ]) {
+          final error =
+              await errorOf('plan', resp(jsonEncode(body), status: 403));
+          expect(error.code, code, reason: '$body');
+          expect(error.message, message, reason: '$body');
+        }
+      }
+    });
+
+    test('a refusal message is trimmed', () async {
+      final error = await errorOf(
+          'plan',
+          resp(refusal('agreement_inactive', ' agreement is not active \n'),
+              status: 403));
+      expect(error.message, 'agreement is not active');
+    });
+
+    test('planStream maps a refusal before the stream starts', () async {
+      for (final (code, serverCode, message) in limits) {
+        final (client, _) = makeStreamClient(403, refusal(serverCode, message),
+            contentType: 'application/json');
+        final events = await client.routing
+            .planStream(stopsAB, targetResults: 5, maxWindowMinutes: 120)
+            .toList();
+        final error = (events.single as PlanStreamFailure).error;
+        expect(error.code, code);
+        expect(error.httpStatus, 403);
+        expect(error.serverCode, serverCode);
+        expect(error.message, message);
+      }
+    });
+
+    test('planStream keeps a plain 403 unauthorized', () async {
+      final (client, _) =
+          makeStreamClient(403, '', contentType: 'application/json');
+      final events = await client.routing
+          .planStream(stopsAB, targetResults: 5, maxWindowMinutes: 120)
+          .toList();
+      expect((events.single as PlanStreamFailure).error.code,
+          SpiderErrorCode.unauthorized);
+    });
+  });
 }

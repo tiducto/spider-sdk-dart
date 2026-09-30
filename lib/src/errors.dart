@@ -14,6 +14,14 @@ enum SpiderErrorCode {
   /// The persisted query behind this call is retired: the API no longer serves it (gateway `query_retired`,
   /// HTTP 410).
   queryRetired,
+
+  /// The project has reached its plan's trip planning limit, so trip planning (`plan`, `planStream`) is refused;
+  /// the other calls still work (gateway `planning_limit_reached`).
+  planningLimitReached,
+
+  /// The project has no active agreement, so every call made with the key is refused (gateway
+  /// `agreement_inactive`).
+  agreementInactive,
   decoding,
   unknown
 }
@@ -39,7 +47,15 @@ class SpiderError implements Exception {
 }
 
 // Internal transport errors, mapped to SpiderError by [toSpiderError].
-enum TransportErrorKind { http, noData, upstream, badRequest, queryRetired }
+enum TransportErrorKind {
+  http,
+  noData,
+  upstream,
+  badRequest,
+  queryRetired,
+  planningLimitReached,
+  agreementInactive
+}
 
 class TransportError implements Exception {
   final TransportErrorKind kind;
@@ -96,6 +112,12 @@ SpiderError toSpiderError(Object error) {
             field: error.field);
       case TransportErrorKind.queryRetired:
         return SpiderError(SpiderErrorCode.queryRetired, error.message,
+            httpStatus: error.httpStatus, serverCode: error.serverCode);
+      case TransportErrorKind.planningLimitReached:
+        return SpiderError(SpiderErrorCode.planningLimitReached, error.message,
+            httpStatus: error.httpStatus, serverCode: error.serverCode);
+      case TransportErrorKind.agreementInactive:
+        return SpiderError(SpiderErrorCode.agreementInactive, error.message,
             httpStatus: error.httpStatus, serverCode: error.serverCode);
       case TransportErrorKind.noData:
         return SpiderError(SpiderErrorCode.notFound, error.message);
