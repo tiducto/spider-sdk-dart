@@ -2,18 +2,61 @@
 
 ## 1.0.0 - Unreleased
 
-Targets Spider API contract `1.0`.
+Targets Spider API contract `1.0`. The first stable release: from here on, breaking changes need a new major.
+
+### Changed
+
+- **`planStream` / `planStreamNext` / `planStreamPrevious` require `targetResults:` and `maxWindowMinutes:`.**
+  There is no SDK default; `maxWindowMinutes` must be at least 120.
+- **`WheelchairBoarding` and `BikesAllowed` gain `unknown`**, so every decoded enum (`TransitMode`,
+  `OccupancyStatus`, `RealtimeState`, `RoutingErrorCode`, `InputField`, `WheelchairBoarding`, `BikesAllowed`)
+  maps a value this SDK version doesn't know to `unknown` instead of `null`. `NO_INFORMATION` /
+  `NO_DATA_AVAILABLE` stay `null`. An exhaustive `switch` on either enum needs the `unknown` case.
+- **HTTP 400 is `SpiderErrorCode.badRequest`** on every surface (it was `unknown`), with `SpiderError.field`
+  set when the server's message names the input.
+- **Invalid input is rejected before any request**, as `badRequest` naming only the field (e.g.
+  `maxWindow is out of range`) with `field` set: a stream window under 120 minutes, a departures
+  `timeRangeSeconds` outside (0, 86400], more than 50 realtime trip ids across all service dates, a malformed
+  `serviceDate` on `trip` or `delays` / `delaysByServiceDate`, a stop-search `limit` outside 1–50, a via
+  pass-through without 1–10 stop ids, or a visit wait outside 0–86400 s. Nothing is clamped.
+- **Departures always send 30 departures over 24 h** unless told otherwise (`timeRangeSeconds` is a non-null
+  `int`), and **stop search always sends `limit`** (20 unless told otherwise; `StopFilter.limit` and the
+  `limit` of `near` / `within` are non-null `int`s).
+- A plan stream the gateway rejects before routing (e.g. a missing variable) fails as `badRequest` naming the
+  field, like the batch call.
+- An unknown persisted-query id (403 `persisted_query_rejected`) stays `unauthorized` and keeps the gateway's
+  message.
 
 ### Added
 
-- **`SpiderErrorCode.searchLimitReached`**: the project has used the searches its plan includes, so trip
-  planning (`plan`, `planStream`) is refused; the other calls still work. Gateway code `search_limit_reached`.
-- **`SpiderErrorCode.agreementInactive`**: the project has no active agreement, so every call made with the key
-  is refused. Gateway code `agreement_inactive`.
-- The response body's code identifies both, whatever the HTTP status, on every surface: routing (including a
-  plan stream refused before it starts), stop search and realtime. The error carries the body's message,
-  `httpStatus` and `serverCode`. A 403 without one of these codes is still `unauthorized`. An exhaustive
-  `switch` on `SpiderErrorCode` needs the two new cases.
+- **`SpiderErrorCode.queryRetired`** for a persisted query the API no longer serves (HTTP 410). It used to
+  arrive as `unauthorized`. An exhaustive `switch` on `SpiderErrorCode` needs the new case.
+- **`SpiderErrorCode.searchLimitReached`** when the project has used the searches its plan includes. Trip
+  planning (`plan`, `planStream`) is refused and the other calls still work; the message is
+  `search limit reached`.
+- **`SpiderErrorCode.agreementInactive`** when the project has no active agreement. Every call made with the
+  key is refused; the message is `agreement is not active`.
+  Both come from the response body's code whatever the HTTP status, on every surface (including a plan stream
+  refused before it starts), with `httpStatus` and `serverCode` set. A 403 without one stays `unauthorized`.
+  An exhaustive `switch` on `SpiderErrorCode` needs both cases.
+- **Display fields.** `Leg`: `routeGtfsId`, `routeColor`, `routeTextColor`, `fromPlatformCode`,
+  `toPlatformCode`, `fromZoneId`, `toZoneId`. `Departure`: `routeGtfsId`, `routeColor`, `routeTextColor`,
+  `stopGtfsId`, `platformCode`, `wheelchairAccessible`. `TripDetails`: `routeGtfsId`, `routeColor`,
+  `routeTextColor`, `wheelchairAccessible`. `TripStop`: `platformCode`, `zoneId`. Colours are the feed's GTFS
+  hex without `#`.
+- **`Departure.serviceDate` and `TripDetails.serviceDate`** (ISO `YYYY-MM-DD`), to scope a realtime delay
+  lookup or a `trip(serviceDate:)` call.
+- **`PlanStreamDone.routingErrors`**, like `Route.routingErrors`. A `locationNotFound` names
+  `InputField.from`, `to` or `via`.
+- **Stops:** `Stop.code`, `Stop.locationType`, `Stop.wheelchairBoarding`, `Stop.modes`, and
+  `StopFilter.modes` (stops served by at least one of the modes). Search text also matches a stop's code, town
+  and district.
+
+### Removed
+
+- `SpiderContractMismatchError`: a gateway declaring another contract major is no longer an error, so every
+  call reports its failures through `SpiderResult`.
+- The departures filter that dropped rows whose headsign equals the stop name.
 
 ## 0.7.1 - 2026-09-25
 
