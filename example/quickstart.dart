@@ -43,8 +43,8 @@ Future<void> handleResult(SpiderClient client) async {
 
 /// React to a failure by branching on its typed `SpiderErrorCode`. The codes are
 /// camelCase: network, timeout, unauthorized, badRequest, notFound, server,
-/// rateLimited, queryRetired, decoding, unknown. The switch is exhaustive — no
-/// `default` needed.
+/// rateLimited, queryRetired, searchLimitReached, agreementInactive, decoding,
+/// unknown. The switch is exhaustive — no `default` needed.
 Future<void> handleErrors(SpiderClient client) async {
   // [START handleErrors]
   final result = await client.routing.plan(PlanOptions(
@@ -65,6 +65,10 @@ Future<void> handleErrors(SpiderClient client) async {
         print('Rate limited — back off, then retry');
       case SpiderErrorCode.queryRetired:
         print('The API no longer serves this query: ${error.message}');
+      case SpiderErrorCode.searchLimitReached:
+        print('Trip planning is unavailable: ${error.message}');
+      case SpiderErrorCode.agreementInactive:
+        print('The API is unavailable for this project: ${error.message}');
       case SpiderErrorCode.timeout:
         print('Request timed out — retry');
       case SpiderErrorCode.network:

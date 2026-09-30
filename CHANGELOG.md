@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.0.0 - Unreleased
+
+Targets Spider API contract `1.0`.
+
+### Added
+
+- **`SpiderErrorCode.searchLimitReached`**: the project has used the searches its plan includes, so trip
+  planning (`plan`, `planStream`) is refused; the other calls still work. Gateway code `search_limit_reached`.
+- **`SpiderErrorCode.agreementInactive`**: the project has no active agreement, so every call made with the key
+  is refused. Gateway code `agreement_inactive`.
+- The response body's code identifies both, whatever the HTTP status, on every surface: routing (including a
+  plan stream refused before it starts), stop search and realtime. The error carries the body's message,
+  `httpStatus` and `serverCode`. A 403 without one of these codes is still `unauthorized`. An exhaustive
+  `switch` on `SpiderErrorCode` needs the two new cases.
+
 ## 0.7.1 - 2026-09-25
 
 Targets Spider API contract `0.7`.

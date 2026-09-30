@@ -310,9 +310,23 @@ bool _isEventStream(Map<String, String> headers) {
 const _queryRetired = 'query_retired';
 const _persistedQueryRejected = 'persisted_query_rejected';
 
+// Gateway `error` codes for a request the project's plan refuses (403), with each one's message when the body
+// carries none. Only the body code identifies them, never the status.
+const _planLimits = {
+  'search_limit_reached': (
+    TransportErrorKind.searchLimitReached,
+    'search limit reached'
+  ),
+  'agreement_inactive': (
+    TransportErrorKind.agreementInactive,
+    'agreement is not active'
+  ),
+};
+
 TransportError _routingHttpError(PersistedOp op, int status, String body) {
   final gatewayError = _gatewayError(body);
-  if (gatewayError == _queryRetired || status == 410) {
+  if (gatewayError == _queryRetired ||
+      (status == 410 && !_planLimits.containsKey(gatewayError))) {
     return TransportError(TransportErrorKind.queryRetired,
         'routing ${op.path} -> $status: persisted query is retired',
         httpStatus: status, serverCode: _queryRetired);
@@ -325,10 +339,18 @@ TransportError _routingHttpError(PersistedOp op, int status, String body) {
 
 /// The [TransportError] for a non-2xx response ([where] is e.g. `GET /realtime/vehicles`): the error
 /// envelope's message (else the raw body), [serverCode] or the envelope's `code`, and for a 400 the field its
-/// message names.
+/// message names. A gateway plan-limit `error` code maps to its own kind, with the body's message, whatever
+/// the status.
 TransportError httpFailure(String where, int status, String body,
     {String? serverCode}) {
   final env = _parseErrorEnvelope(body);
+  final gatewayError = _gatewayError(body);
+  final planLimit = _planLimits[gatewayError];
+  if (planLimit != null) {
+    final (kind, defaultMessage) = planLimit;
+    return TransportError(kind, env.message ?? defaultMessage,
+        httpStatus: status, serverCode: gatewayError);
+  }
   return TransportError(TransportErrorKind.http,
       '$where -> $status: ${env.message ?? _trunc(body)}',
       httpStatus: status,

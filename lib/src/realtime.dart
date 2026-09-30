@@ -278,11 +278,13 @@ class SpiderRealtime {
     try {
       final path = '/realtime/vehicles/by-trip/${Uri.encodeComponent(tripId)}';
       final resp = await _transport.getRaw(path);
-      if (resp.statusCode == 404) {
-        return const Success(LiveVehicleUpdate(null, _emptyFreshness));
-      }
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
-        throw httpFailure('GET $path', resp.statusCode, resp.body);
+        final failure = httpFailure('GET $path', resp.statusCode, resp.body);
+        // A 404 means no vehicle is reporting, unless its body names a plan-limit refusal.
+        if (resp.statusCode == 404 && failure.kind == TransportErrorKind.http) {
+          return const Success(LiveVehicleUpdate(null, _emptyFreshness));
+        }
+        throw failure;
       }
       final json = jsonDecode(resp.body) as Map<String, dynamic>;
       final vehicle = json['vehicle'];
