@@ -130,22 +130,14 @@ class Transport {
   }
 
   Future<D> postJson<D>(String path, Map<String, dynamic> body,
-      D Function(Map<String, dynamic>) fromJson,
-      {String Function(String)? errorMessage}) async {
+      D Function(Map<String, dynamic>) fromJson) async {
     final resp = await _send(SpiderHttpRequest(
         'POST',
         Uri.parse('$baseUrl$path'),
         _contractHeaders(json: true),
         jsonEncode(body)));
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      final env = _parseErrorEnvelope(resp.body);
-      final message =
-          errorMessage?.call(resp.body) ?? env.message ?? _trunc(resp.body);
-      throw TransportError(
-          TransportErrorKind.http, 'POST $path -> ${resp.statusCode}: $message',
-          httpStatus: resp.statusCode,
-          serverCode: env.code,
-          field: _fieldNamedBy(resp.statusCode, env.message ?? resp.body));
+      throw httpFailure('POST $path', resp.statusCode, resp.body);
     }
     return fromJson(_decodeJson(resp.body, 'POST $path'));
   }
@@ -161,13 +153,7 @@ class Transport {
       {Map<String, String> query = const {}}) async {
     final resp = await getRaw(path, query: query);
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      final env = _parseErrorEnvelope(resp.body);
-      final detail = env.message ?? _trunc(resp.body);
-      throw TransportError(
-          TransportErrorKind.http, 'GET $path -> ${resp.statusCode}: $detail',
-          httpStatus: resp.statusCode,
-          serverCode: env.code,
-          field: _fieldNamedBy(resp.statusCode, env.message ?? resp.body));
+      throw httpFailure('GET $path', resp.statusCode, resp.body);
     }
     return fromJson(_decodeJson(resp.body, 'GET $path'));
   }
@@ -331,16 +317,23 @@ TransportError _routingHttpError(PersistedOp op, int status, String body) {
         'routing ${op.path} -> $status: persisted query is retired',
         httpStatus: status, serverCode: _queryRetired);
   }
-  if (status == 403 && gatewayError == _persistedQueryRejected) {
-    return TransportError(TransportErrorKind.http,
-        'routing ${op.path} -> 403: unknown persisted-query id',
-        httpStatus: status, serverCode: _persistedQueryRejected);
-  }
+  return httpFailure('routing ${op.path}', status, body,
+      serverCode: status == 403 && gatewayError == _persistedQueryRejected
+          ? _persistedQueryRejected
+          : null);
+}
+
+/// The [TransportError] for a non-2xx response ([where] is e.g. `GET /realtime/vehicles`): the error
+/// envelope's message (else the raw body), [serverCode] or the envelope's `code`, and for a 400 the field its
+/// message names.
+TransportError httpFailure(String where, int status, String body,
+    {String? serverCode}) {
   final env = _parseErrorEnvelope(body);
-  final detail = env.message ?? _trunc(body);
-  return TransportError(
-      TransportErrorKind.http, 'routing ${op.path} -> $status: $detail',
-      httpStatus: status, serverCode: env.code);
+  return TransportError(TransportErrorKind.http,
+      '$where -> $status: ${env.message ?? _trunc(body)}',
+      httpStatus: status,
+      serverCode: serverCode ?? env.code,
+      field: _fieldNamedBy(status, env.message ?? body));
 }
 
 String? _gatewayError(String body) {
@@ -378,8 +371,10 @@ ErrorEnvelope _parseErrorEnvelope(String text) {
   return const ErrorEnvelope(null, null);
 }
 
-// Stop search and realtime start a 400 message with the field it names ("limit is out of range").
-final _fieldMessage = RegExp(r'^([A-Za-z_]\w*) (?:is|must) ');
+// A 400 names the offending field in a fixed message shape: "<field> is out of range", "<field> is required"
+// or "<field> is invalid".
+final _fieldMessage =
+    RegExp(r'^([A-Za-z_]\w*) is (?:out of range|required|invalid)$');
 
 String? _fieldNamedBy(int status, String message) =>
     status == 400 ? _fieldMessage.firstMatch(message.trim())?.group(1) : null;

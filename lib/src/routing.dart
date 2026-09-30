@@ -16,7 +16,8 @@ import 'transport.dart';
 /// One leg of an itinerary (a single vehicle ride or walk). The realtime fields carry live schedule
 /// deviation when the feed reports it: [startEstimated]/[endEstimated] are the estimated boarding/alighting
 /// times, [startDelay]/[endDelay] the deviation from schedule, and [serviceDate] the GTFS service date
-/// (`YYYY-MM-DD`) that scopes a realtime delay lookup for this trip instance.
+/// (`YYYY-MM-DD`) that scopes a realtime delay lookup for this trip instance. The route, platform and zone
+/// fields are the feed's values for display, passed through as the feed gives them; null when it has none.
 class Leg {
   final TransitMode? mode;
   final String startScheduled;
@@ -32,8 +33,27 @@ class Leg {
   final String? toName;
   final String? fromGtfsId;
   final String? toGtfsId;
+
+  /// The platform or track code (GTFS `platform_code`) at the boarding stop.
+  final String? fromPlatformCode;
+
+  /// The platform or track code (GTFS `platform_code`) at the alighting stop.
+  final String? toPlatformCode;
+
+  /// The fare zone (GTFS `zone_id`) of the boarding stop.
+  final String? fromZoneId;
+
+  /// The fare zone (GTFS `zone_id`) of the alighting stop.
+  final String? toZoneId;
+  final String? routeGtfsId;
   final String? routeShortName;
   final String? routeLongName;
+
+  /// The route colour: the raw GTFS hex without `#` (e.g. `"FF0000"`).
+  final String? routeColor;
+
+  /// The colour for text drawn on [routeColor]: the raw GTFS hex without `#` (e.g. `"FFFFFF"`).
+  final String? routeTextColor;
   final String? headsign;
   final double? distanceMeters;
   final double? durationSeconds;
@@ -58,8 +78,15 @@ class Leg {
     this.toName,
     this.fromGtfsId,
     this.toGtfsId,
+    this.fromPlatformCode,
+    this.toPlatformCode,
+    this.fromZoneId,
+    this.toZoneId,
+    this.routeGtfsId,
     this.routeShortName,
     this.routeLongName,
+    this.routeColor,
+    this.routeTextColor,
     this.headsign,
     this.distanceMeters,
     this.durationSeconds,
@@ -142,7 +169,8 @@ class Route {
   }) : _request = request;
 }
 
-/// A single departure from a stop.
+/// A single departure from a stop. The route, stop and platform fields are the feed's values for display,
+/// passed through as the feed gives them; null when it has none.
 class Departure {
   final int scheduledTimeEpochMs;
   final int? realtimeTimeEpochMs;
@@ -150,9 +178,26 @@ class Departure {
   final RealtimeState? realtimeState;
   final String? headsign;
   final String? tripGtfsId;
+  final String? routeGtfsId;
   final String? routeShortName;
   final String? routeLongName;
+
+  /// The route colour: the raw GTFS hex without `#` (e.g. `"FF0000"`).
+  final String? routeColor;
+
+  /// The colour for text drawn on [routeColor]: the raw GTFS hex without `#` (e.g. `"FFFFFF"`).
+  final String? routeTextColor;
   final TransitMode? mode;
+
+  /// The stop the vehicle leaves from: for a station, the platform within it.
+  final String? stopGtfsId;
+
+  /// The platform or track code (GTFS `platform_code`) of [stopGtfsId].
+  final String? platformCode;
+
+  /// Whether the trip's vehicle takes a wheelchair (GTFS `wheelchair_accessible`); null when the feed has no
+  /// information.
+  final WheelchairBoarding? wheelchairAccessible;
 
   /// The GTFS service date (`YYYY-MM-DD`) this departure's trip runs on — pass it with [tripGtfsId] to
   /// [SpiderRouting.trip] and to the realtime delays lookup. An after-midnight departure can carry the
@@ -165,9 +210,15 @@ class Departure {
     this.realtimeState,
     this.headsign,
     this.tripGtfsId,
+    this.routeGtfsId,
     this.routeShortName,
     this.routeLongName,
+    this.routeColor,
+    this.routeTextColor,
     this.mode,
+    this.stopGtfsId,
+    this.platformCode,
+    this.wheelchairAccessible,
     required this.serviceDate,
   });
 }
@@ -184,6 +235,12 @@ class TripStop {
   final int? realtimeDepartureEpochMs;
   final bool isRealtime;
   final WheelchairBoarding? wheelchairBoarding;
+
+  /// The platform or track code (GTFS `platform_code`), when the feed gives one.
+  final String? platformCode;
+
+  /// The fare zone (GTFS `zone_id`), when the feed gives one.
+  final String? zoneId;
   const TripStop({
     required this.gtfsId,
     required this.name,
@@ -195,18 +252,32 @@ class TripStop {
     this.realtimeDepartureEpochMs,
     required this.isRealtime,
     this.wheelchairBoarding,
+    this.platformCode,
+    this.zoneId,
   });
 }
 
-/// A single trip's route, stops, and geometry.
+/// A single trip's route, stops, and geometry. The route fields are the feed's values for display, passed
+/// through as the feed gives them; null when it has none.
 class TripDetails {
   final String gtfsId;
+  final String? routeGtfsId;
   final String? routeShortName;
   final String? routeLongName;
+
+  /// The route colour: the raw GTFS hex without `#` (e.g. `"FF0000"`).
+  final String? routeColor;
+
+  /// The colour for text drawn on [routeColor]: the raw GTFS hex without `#` (e.g. `"FFFFFF"`).
+  final String? routeTextColor;
   final TransitMode? mode;
   final String? headsign;
   final String? directionId;
   final BikesAllowed? bikesAllowed;
+
+  /// Whether the trip's vehicle takes a wheelchair (GTFS `wheelchair_accessible`); null when the feed has no
+  /// information.
+  final WheelchairBoarding? wheelchairAccessible;
 
   /// The GTFS service date (`YYYY-MM-DD`) of this trip instance — the value to pass to the realtime delays
   /// lookup. Null when the trip has no stop times on the requested date.
@@ -215,12 +286,16 @@ class TripDetails {
   final List<LatLon> geometry;
   const TripDetails({
     required this.gtfsId,
+    this.routeGtfsId,
     this.routeShortName,
     this.routeLongName,
+    this.routeColor,
+    this.routeTextColor,
     this.mode,
     this.headsign,
     this.directionId,
     this.bikesAllowed,
+    this.wheelchairAccessible,
     this.serviceDate,
     required this.stops,
     required this.geometry,
@@ -738,8 +813,15 @@ Leg _mapLeg(wire.Leg w) {
     toName: w.to.name,
     fromGtfsId: w.from.stop?.gtfsId,
     toGtfsId: w.to.stop?.gtfsId,
+    fromPlatformCode: w.from.stop?.platformCode,
+    toPlatformCode: w.to.stop?.platformCode,
+    fromZoneId: w.from.stop?.zoneId,
+    toZoneId: w.to.stop?.zoneId,
+    routeGtfsId: w.route?.gtfsId,
     routeShortName: w.route?.shortName,
     routeLongName: w.route?.longName,
+    routeColor: w.route?.color,
+    routeTextColor: w.route?.textColor,
     headsign: w.headsign,
     distanceMeters: w.distance,
     durationSeconds: w.duration,
@@ -794,7 +876,8 @@ List<Departure> _mapDepartures(wire.StopDeparturesStop2 stop) {
     final serviceDay = st.serviceDay;
     final scheduledOffset = st.scheduledDeparture;
     if (serviceDay == null || scheduledOffset == null) continue;
-    final route = st.trip?.route;
+    final trip = st.trip;
+    final route = trip?.route;
     final rt = st.realtimeDeparture;
     out.add(Departure(
       scheduledTimeEpochMs: (serviceDay + scheduledOffset) * 1000,
@@ -802,10 +885,17 @@ List<Departure> _mapDepartures(wire.StopDeparturesStop2 stop) {
       isRealtime: st.realtime ?? false,
       realtimeState: RealtimeState.fromWire(st.realtimeState?.wire),
       headsign: st.headsign,
-      tripGtfsId: st.trip?.gtfsId,
+      tripGtfsId: trip?.gtfsId,
+      routeGtfsId: route?.gtfsId,
       routeShortName: route?.shortName,
       routeLongName: route?.longName,
+      routeColor: route?.color,
+      routeTextColor: route?.textColor,
       mode: TransitMode.fromWire(route?.mode?.wire),
+      stopGtfsId: st.stop?.gtfsId,
+      platformCode: st.stop?.platformCode,
+      wheelchairAccessible:
+          WheelchairBoarding.fromWire(trip?.wheelchairAccessible?.wire),
       serviceDate: serviceDateOf(serviceDay),
     ));
   }
@@ -834,17 +924,24 @@ TripDetails _mapTrip(wire.TripTrip w) {
       isRealtime: st.realtime ?? false,
       wheelchairBoarding:
           WheelchairBoarding.fromWire(s.wheelchairBoarding?.wire),
+      platformCode: s.platformCode,
+      zoneId: s.zoneId,
     ));
   }
   final points = w.tripGeometry?.points;
   return TripDetails(
     gtfsId: w.gtfsId,
+    routeGtfsId: w.route.gtfsId,
     routeShortName: w.route.shortName,
     routeLongName: w.route.longName,
+    routeColor: w.route.color,
+    routeTextColor: w.route.textColor,
     mode: TransitMode.fromWire(w.route.mode?.wire),
     headsign: w.tripHeadsign,
     directionId: w.directionId,
     bikesAllowed: BikesAllowed.fromWire(w.bikesAllowed?.wire),
+    wheelchairAccessible:
+        WheelchairBoarding.fromWire(w.wheelchairAccessible?.wire),
     serviceDate: serviceDay == null ? null : serviceDateOf(serviceDay),
     stops: stops,
     geometry: points != null ? decodePolyline(points) : const [],

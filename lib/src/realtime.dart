@@ -238,14 +238,9 @@ class ServiceAlerts {
 }
 
 const _emptyFreshness = FeedFreshness();
-const _maxTripIds = 50;
 
 // A fixed platform limit per request, counted across every service-date group.
-SpiderError? _invalidTripIds(int count) => count == 0
-    ? invalidInput('tripIds', missing: true)
-    : count > _maxTripIds
-        ? invalidInput('tripIds')
-        : null;
+const _maxTripIds = 50;
 
 /// The realtime surface: live vehicle positions, schedule deviations, and service alerts. Poll-based —
 /// see the `poll*` methods (extension below) for change-detecting streams.
@@ -253,11 +248,13 @@ class SpiderRealtime {
   final Transport _transport;
   SpiderRealtime(this._transport);
 
-  /// Live positions for 1–50 trips. No trip ids, or more than 50, fails with [SpiderErrorCode.badRequest]
-  /// (field `tripIds`) without a request.
+  /// Live positions for up to 50 trips. No trip ids returns empty positions without a request; more than 50
+  /// fails with [SpiderErrorCode.badRequest] (field `tripIds`) without a request.
   Future<SpiderResult<VehiclePositions>> vehicles(List<String> tripIds) async {
-    final invalid = _invalidTripIds(tripIds.length);
-    if (invalid != null) return Failure(invalid);
+    if (tripIds.isEmpty) {
+      return const Success(VehiclePositions([], [], _emptyFreshness));
+    }
+    if (tripIds.length > _maxTripIds) return Failure(invalidInput('tripIds'));
     try {
       final json = await _transport.getJson('/realtime/vehicles', _identity,
           query: {'tripIds': tripIds.join(',')});
@@ -285,11 +282,7 @@ class SpiderRealtime {
         return const Success(LiveVehicleUpdate(null, _emptyFreshness));
       }
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
-        final detail =
-            resp.body.length > 300 ? resp.body.substring(0, 300) : resp.body;
-        throw TransportError(
-            TransportErrorKind.http, 'GET $path -> ${resp.statusCode}: $detail',
-            httpStatus: resp.statusCode);
+        throw httpFailure('GET $path', resp.statusCode, resp.body);
       }
       final json = jsonDecode(resp.body) as Map<String, dynamic>;
       final vehicle = json['vehicle'];
@@ -305,17 +298,18 @@ class SpiderRealtime {
   /// Live delays, resolved per `(tripId, serviceDate)` instance: group trip ids by the GTFS service date
   /// (`YYYY-MM-DD`) they run on — pass each plan leg's or departure's `serviceDate` through. Grouping is
   /// required because the same trip id runs on many dates (and two instances can overlap around midnight).
-  /// Takes 1–50 trip ids, counted across all dates. A malformed date, or no trip ids or more than 50, fails with
-  /// [SpiderErrorCode.badRequest] (field `serviceDate` or `tripIds`) without a request.
+  /// Takes up to 50 trip ids, counted across all dates; with none it returns no delays without a request. A
+  /// malformed date, or more than 50 trip ids, fails with [SpiderErrorCode.badRequest] (field `serviceDate` or
+  /// `tripIds`) without a request.
   Future<SpiderResult<TripDelays>> delaysByServiceDate(
       Map<String, List<String>> byServiceDate) async {
     for (final serviceDate in byServiceDate.keys) {
       final invalid = invalidServiceDate(serviceDate);
       if (invalid != null) return Failure(invalid);
     }
-    final invalid = _invalidTripIds(
-        byServiceDate.values.fold(0, (sum, ids) => sum + ids.length));
-    if (invalid != null) return Failure(invalid);
+    final count = byServiceDate.values.fold(0, (sum, ids) => sum + ids.length);
+    if (count == 0) return const Success(TripDelays([], _emptyFreshness));
+    if (count > _maxTripIds) return Failure(invalidInput('tripIds'));
     try {
       final body = {
         'queries': byServiceDate.entries

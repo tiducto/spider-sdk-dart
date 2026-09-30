@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'enums.dart';
 import 'errors.dart';
 import 'result.dart';
@@ -17,7 +16,7 @@ class Stop {
   final int? locationType;
 
   /// Whether a rider in a wheelchair can board here, from the stop's own GTFS `wheelchair_boarding`; null
-  /// when the feed has no information.
+  /// when the feed has no information, [WheelchairBoarding.unknown] for a code GTFS doesn't define.
   final WheelchairBoarding? wheelchairBoarding;
 
   /// The modes of the routes serving the stop, each once (a station's cover all its platforms); empty when no
@@ -93,7 +92,8 @@ class StopFilter {
   /// Sort results by distance from [near], nearest first. Requires [near].
   final bool? sortByDistance;
 
-  /// Restrict to stops served by at least one of these modes. Empty = any mode.
+  /// Restrict to stops served by at least one of these modes. Empty = any mode; [TransitMode.unknown] is
+  /// ignored.
   final List<TransitMode> modes;
 
   /// The most hits to return, 1–50 (default 20). Outside that range the search fails with
@@ -134,8 +134,7 @@ class SpiderStops {
     final body = _buildSearchRequest(filter);
     try {
       final stops = await _transport.postJson(
-          '/stops/search', body, _parseSearchResponse,
-          errorMessage: _extractStopError);
+          '/stops/search', body, _parseSearchResponse);
       return Success(stops);
     } catch (e) {
       return Failure(toSpiderError(e));
@@ -152,8 +151,7 @@ class SpiderStops {
         'limit': 1,
       };
       final stops = await _transport.postJson(
-          '/stops/search', body, _parseSearchResponse,
-          errorMessage: _extractStopError);
+          '/stops/search', body, _parseSearchResponse);
       return Success(stops.isEmpty ? null : stops.first);
     } catch (e) {
       return Failure(toSpiderError(e));
@@ -210,11 +208,7 @@ Stop _toStop(Map<String, dynamic> hit) => Stop(
       name: hit['name'] as String,
       code: hit['code'] as String?,
       locationType: (hit['locationType'] as num?)?.toInt(),
-      wheelchairBoarding: switch (hit['wheelchairBoarding']) {
-        1 => WheelchairBoarding.possible,
-        2 => WheelchairBoarding.notPossible,
-        _ => null,
-      },
+      wheelchairBoarding: _wheelchairFromGtfs(hit['wheelchairBoarding']),
       modes: (hit['modes'] as List<dynamic>? ?? const [])
           .map((m) => TransitMode.fromWire(m as String)!)
           .toList(),
@@ -226,6 +220,14 @@ Stop _toStop(Map<String, dynamic> hit) => Stop(
       city: hit['city'] as String?,
       suburb: hit['suburb'] as String?,
     );
+
+// The stop doc carries GTFS `wheelchair_boarding` as its numeric code; 0 is "no information".
+WheelchairBoarding? _wheelchairFromGtfs(Object? code) => switch (code) {
+      null || 0 => null,
+      1 => WheelchairBoarding.possible,
+      2 => WheelchairBoarding.notPossible,
+      _ => WheelchairBoarding.unknown,
+    };
 
 // Composes the search-index filter expression: `city = "…" AND modes IN ["…"] AND _geoRadius(…) AND …`.
 // Attribute names are bare identifiers (the filter syntax doesn't quote them); only string values are double-quoted,
@@ -246,9 +248,9 @@ String? _buildFilterExpression(StopFilter filter) {
     if (value == null || value.isEmpty) continue;
     clauses.add('${pair.key} = "${_escapeFilter(value)}"');
   }
-  if (filter.modes.isNotEmpty) {
-    final modes = filter.modes.map((m) => '"${m.wire}"');
-    clauses.add('modes IN [${modes.join(', ')}]');
+  final modes = filter.modes.where((m) => m != TransitMode.unknown);
+  if (modes.isNotEmpty) {
+    clauses.add('modes IN [${modes.map((m) => '"${m.wire}"').join(', ')}]');
   }
   final near = filter.near;
   if (near != null && filter.radiusMeters != null) {
@@ -275,15 +277,3 @@ List<String>? _buildSort(StopFilter filter) {
 // Escape backslashes then double-quotes (order matters) for a search-index filter literal.
 String _escapeFilter(String value) =>
     value.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
-
-String _extractStopError(String text) {
-  try {
-    final obj = jsonDecode(text);
-    if (obj is Map<String, dynamic> && obj['message'] is String) {
-      return obj['message'] as String;
-    }
-  } catch (_) {
-    // fall through
-  }
-  return text.length > 300 ? text.substring(0, 300) : text;
-}

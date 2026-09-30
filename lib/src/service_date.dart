@@ -25,7 +25,5 @@ SpiderError? invalidServiceDate(String value) {
       return null;
     }
   }
-  return SpiderError(SpiderErrorCode.badRequest,
-      'serviceDate must be an ISO-8601 date (YYYY-MM-DD), got "$value"',
-      field: 'serviceDate');
+  return invalidInput('serviceDate', malformed: true);
 }

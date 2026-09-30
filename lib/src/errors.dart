@@ -26,7 +26,8 @@ class SpiderError implements Exception {
   final String? serverCode;
 
   /// For a [SpiderErrorCode.badRequest] (an input the SDK rejects before sending, or one the server rejects as
-  /// missing, invalid or out of range), the offending input field when one is named. Null otherwise.
+  /// missing, invalid or out of range), the offending input when one is named, by its wire name (e.g.
+  /// `maxWindow` for `maxWindowMinutes`, `timeRange` for `timeRangeSeconds`). Null otherwise.
   final String? field;
   final Object? cause;
 
@@ -67,10 +68,11 @@ class ErrorEnvelope {
   const ErrorEnvelope(this.code, this.message);
 }
 
-/// A [SpiderErrorCode.badRequest] the SDK raises before sending: it names [field] only, never the limit.
-SpiderError invalidInput(String field, {bool missing = false}) => SpiderError(
+/// A [SpiderErrorCode.badRequest] the SDK raises before sending. [field] is the wire name, and the message
+/// names only it (`<field> is out of range`, or `<field> is invalid` when [malformed]), never the value or limit.
+SpiderError invalidInput(String field, {bool malformed = false}) => SpiderError(
     SpiderErrorCode.badRequest,
-    missing ? '$field is required' : '$field is out of range',
+    malformed ? '$field is invalid' : '$field is out of range',
     field: field);
 
 /// Maps any thrown error into the public [SpiderError] taxonomy. Mirrors the TS SDK's `toSpiderError`.

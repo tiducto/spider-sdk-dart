@@ -80,9 +80,9 @@ const planBody = '''
     "start":"2026-08-21T10:00:00Z","end":"2026-08-21T10:30:00Z","duration":1800,"waitingTime":120,"numberOfTransfers":1,"accessibilityScore":0.9,
     "legs":[{
       "start":{"scheduledTime":"2026-08-21T10:00:00Z"},"end":{"scheduledTime":"2026-08-21T10:15:00Z"},
-      "from":{"name":"A","stop":{"gtfsId":"S1","wheelchairBoarding":"POSSIBLE"}},
-      "to":{"name":"B","stop":{"gtfsId":"S2","wheelchairBoarding":"NOT_POSSIBLE"}},
-      "mode":"BUS","route":{"gtfsId":"1:R12","shortName":"12","longName":"Line 12"},"headsign":"Downtown",
+      "from":{"name":"A","stop":{"gtfsId":"S1","wheelchairBoarding":"POSSIBLE","platformCode":"1","zoneId":"P"}},
+      "to":{"name":"B","stop":{"gtfsId":"S2","wheelchairBoarding":"NOT_POSSIBLE","platformCode":"B2","zoneId":"0"}},
+      "mode":"BUS","route":{"gtfsId":"1:R12","shortName":"12","longName":"Line 12","color":"FF0000","textColor":"FFFFFF"},"headsign":"Downtown",
       "distance":1500.0,"duration":900.0,"accessibilityScore":1.0,
       "trip":{"gtfsId":"T1","bikesAllowed":"ALLOWED"},
       "legGeometry":{"points":"_p~iF~ps|U_ulLnnqC_mqNvxq`@"}
@@ -111,6 +111,13 @@ void main() {
       expect(leg.toWheelchair, WheelchairBoarding.notPossible);
       expect(leg.bikesAllowed, BikesAllowed.allowed);
       expect(leg.geometry.length, 3);
+      expect(leg.routeGtfsId, '1:R12');
+      expect(leg.routeColor, 'FF0000');
+      expect(leg.routeTextColor, 'FFFFFF');
+      expect(leg.fromPlatformCode, '1');
+      expect(leg.toPlatformCode, 'B2');
+      expect(leg.fromZoneId, 'P');
+      expect(leg.toZoneId, '0');
       expect(route.pageInfo.hasNextPage, true);
 
       final req = mock.requests[0];
@@ -385,8 +392,39 @@ void main() {
       expect(error.code, SpiderErrorCode.unauthorized);
       expect(error.httpStatus, 403);
       expect(error.serverCode, 'persisted_query_rejected');
-      expect(error.message, contains('unknown persisted-query id'));
+      expect(error.message,
+          'routing plan -> 403: unknown persisted-query id: abc');
       expect(error.message.toLowerCase(), isNot(contains('update')));
+    });
+
+    test('a routing 400 is a badRequest naming the field its message names',
+        () async {
+      final (client, _) = makeClient((_) =>
+          resp('{"message":"searchWindow is out of range"}', status: 400));
+      final result = await client.routing.plan(stopsAB);
+      final error = (result as Failure<Route>).error;
+      expect(error.code, SpiderErrorCode.badRequest);
+      expect(error.httpStatus, 400);
+      expect(error.field, 'searchWindow');
+    });
+
+    test('a 400 names a field only in the fixed message shapes', () async {
+      for (final (message, field) in [
+        ('limit is out of range', 'limit'),
+        ('limit is required', 'limit'),
+        ('body is invalid', 'body'),
+        ('limit must be an integer', null),
+        ('limit is out of range: 0', null),
+        ('missing or unreadable body', null),
+      ]) {
+        final (client, _) = makeClient((_) => resp(
+            jsonEncode({'error': 'bad_request', 'message': message}),
+            status: 400));
+        final result = await client.stops.search(const StopFilter(name: 'M'));
+        final error = (result as Failure<List<Stop>>).error;
+        expect(error.code, SpiderErrorCode.badRequest, reason: message);
+        expect(error.field, field, reason: message);
+      }
     });
 
     test('any other 403 keeps the gateway message', () async {
@@ -423,6 +461,32 @@ void main() {
       expect(departures[1].headsign, 'main square');
       // 24:40 on the 15th's timetable runs on the 16th's clock but keeps the 15th's service date.
       expect(departures[1].serviceDate, '2026-07-15');
+    });
+
+    test('departures maps the route, stop and accessibility display fields',
+        () async {
+      const body = '''
+      {"data":{"asStation":{"gtfsId":"1:ST","name":"Central","stoptimesWithoutPatterns":[
+        {"serviceDay":1784066400,"scheduledDeparture":36000,"stop":{"gtfsId":"1:ST-P2","platformCode":"2"},"trip":{"gtfsId":"T1","wheelchairAccessible":"NOT_POSSIBLE","route":{"gtfsId":"1:R12","shortName":"12","color":"FF0000","textColor":"FFFFFF"}}},
+        {"serviceDay":1784066400,"scheduledDeparture":36600,"trip":{"gtfsId":"T2","wheelchairAccessible":"NO_INFORMATION","route":{"gtfsId":"1:R5"}}}
+      ]}}}''';
+      final (client, _) = makeClient((_) => resp(body));
+      final result = await client.routing.departures('1:ST');
+      final departures = (result as Success<List<Departure>>).value;
+      final full = departures[0];
+      expect(full.routeGtfsId, '1:R12');
+      expect(full.routeColor, 'FF0000');
+      expect(full.routeTextColor, 'FFFFFF');
+      expect(full.stopGtfsId, '1:ST-P2');
+      expect(full.platformCode, '2');
+      expect(full.wheelchairAccessible, WheelchairBoarding.notPossible);
+      final bare = departures[1];
+      expect(bare.routeGtfsId, '1:R5');
+      expect(bare.routeColor, isNull);
+      expect(bare.routeTextColor, isNull);
+      expect(bare.stopGtfsId, isNull);
+      expect(bare.platformCode, isNull);
+      expect(bare.wheelchairAccessible, isNull);
     });
 
     test('departures always sends the default count and a 24 h time range',
@@ -482,6 +546,34 @@ void main() {
           '2026-08-21');
     });
 
+    test('trip maps the route, accessibility and stop display fields',
+        () async {
+      const body = '''
+      {"data":{"trip":{"gtfsId":"T1","wheelchairAccessible":"POSSIBLE","route":{"gtfsId":"1:R12","shortName":"12","color":"00A0E2","textColor":"000000"},"stoptimesForDate":[
+        {"serviceDay":1787263200,"scheduledArrival":36000,"stop":{"gtfsId":"S1","name":"A","platformCode":"3","zoneId":"P"}},
+        {"serviceDay":1787263200,"scheduledArrival":36600,"stop":{"gtfsId":"S2","name":"B"}}
+      ]}}}''';
+      final (client, _) = makeClient((_) => resp(body));
+      final trip =
+          ((await client.routing.trip('T1')) as Success<TripDetails>).value;
+      expect(trip.routeGtfsId, '1:R12');
+      expect(trip.routeColor, '00A0E2');
+      expect(trip.routeTextColor, '000000');
+      expect(trip.wheelchairAccessible, WheelchairBoarding.possible);
+      expect(trip.stops[0].platformCode, '3');
+      expect(trip.stops[0].zoneId, 'P');
+      expect(trip.stops[1].platformCode, isNull);
+      expect(trip.stops[1].zoneId, isNull);
+
+      final (bareClient, _) = makeClient((_) => resp(
+          '{"data":{"trip":{"gtfsId":"T1","route":{"gtfsId":"1:R12"},"stoptimesForDate":[]}}}'));
+      final bare =
+          ((await bareClient.routing.trip('T1')) as Success<TripDetails>).value;
+      expect(bare.routeColor, isNull);
+      expect(bare.routeTextColor, isNull);
+      expect(bare.wheelchairAccessible, isNull);
+    });
+
     test('trip rejects a malformed service date without a request', () async {
       for (final date in ['20260821', '2026-02-30', '2026-8-21', 'today']) {
         final (client, mock) = makeClient((_) => resp('{}'));
@@ -489,6 +581,7 @@ void main() {
         final error = (result as Failure<TripDetails>).error;
         expect(error.code, SpiderErrorCode.badRequest, reason: date);
         expect(error.field, 'serviceDate');
+        expect(error.message, 'serviceDate is invalid');
         expect(mock.requests, isEmpty);
       }
     });
@@ -521,7 +614,8 @@ void main() {
       const body = '{"hits":['
           '{"gtfsId":"1:U1","name":"Station","code":"ZV","locationType":1,"wheelchairBoarding":1},'
           '{"gtfsId":"1:U2","name":"Stop","wheelchairBoarding":2},'
-          '{"gtfsId":"1:U3","name":"Bare","wheelchairBoarding":0}'
+          '{"gtfsId":"1:U3","name":"Bare","wheelchairBoarding":0},'
+          '{"gtfsId":"1:U4","name":"Odd","wheelchairBoarding":7}'
           ']}';
       final (client, _) = makeClient((_) => resp(body));
       final result = await client.stops.search(const StopFilter(name: 'S'));
@@ -533,6 +627,7 @@ void main() {
       expect(stops[1].locationType, isNull);
       expect(stops[1].wheelchairBoarding, WheelchairBoarding.notPossible);
       expect(stops[2].wheelchairBoarding, isNull);
+      expect(stops[3].wheelchairBoarding, WheelchairBoarding.unknown);
     });
 
     test('search with only a name omits the filter and sends limit 20',
@@ -565,6 +660,16 @@ void main() {
           city: 'Example City', modes: [TransitMode.rail, TransitMode.tram]));
       expect(bodyOf(mock.requests.single)['filter'],
           'city = "Example City" AND modes IN ["RAIL", "TRAM"]');
+    });
+
+    test('a modes filter ignores unknown', () async {
+      final (client, mock) = makeClient((_) => resp('{"hits":[]}'));
+      await client.stops.search(const StopFilter(
+          name: 'M', modes: [TransitMode.unknown, TransitMode.rail]));
+      await client.stops
+          .search(const StopFilter(name: 'M', modes: [TransitMode.unknown]));
+      expect(bodyOf(mock.requests[0])['filter'], 'modes IN ["RAIL"]');
+      expect(bodyOf(mock.requests[1]).containsKey('filter'), false);
     });
 
     test('search rejects a limit outside 1–50 without a request', () async {
@@ -703,24 +808,30 @@ void main() {
       expect(vehicle.stopId, '1:S1');
     });
 
-    test('vehicles takes 1–50 trip ids and rejects others without a request',
+    test('vehicles with no trip ids is an empty success without a request',
         () async {
-      for (final (count, message) in [
-        (0, 'tripIds is required'),
-        (51, 'tripIds is out of range')
-      ]) {
-        final (client, mock) = makeClient((_) => resp('{}'));
-        final result = await client.realtime
-            .vehicles(List.generate(count, (i) => '1:T$i'));
-        final error = (result as Failure<VehiclePositions>).error;
-        expect(error.code, SpiderErrorCode.badRequest, reason: '$count');
-        expect(error.field, 'tripIds');
-        expect(error.message, message);
-        expect(mock.requests, isEmpty);
-      }
-      final (client, mock) = makeClient((_) => resp('{"vehicles":[]}'));
-      await client.realtime.vehicles(List.generate(50, (i) => '1:T$i'));
-      expect(mock.requests, hasLength(1));
+      final (client, mock) = makeClient((_) => resp('{}'));
+      final result = await client.realtime.vehicles(const []);
+      final positions = (result as Success<VehiclePositions>).value;
+      expect(positions.vehicles, isEmpty);
+      expect(positions.missing, isEmpty);
+      expect(positions.freshness.feedTimestampEpochMs, isNull);
+      expect(mock.requests, isEmpty);
+    });
+
+    test('vehicles takes up to 50 trip ids and rejects more without a request',
+        () async {
+      final (client, mock) = makeClient((_) => resp('{}'));
+      final result =
+          await client.realtime.vehicles(List.generate(51, (i) => '1:T$i'));
+      final error = (result as Failure<VehiclePositions>).error;
+      expect(error.code, SpiderErrorCode.badRequest);
+      expect(error.field, 'tripIds');
+      expect(error.message, 'tripIds is out of range');
+      expect(mock.requests, isEmpty);
+      final (okClient, okMock) = makeClient((_) => resp('{"vehicles":[]}'));
+      await okClient.realtime.vehicles(List.generate(50, (i) => '1:T$i'));
+      expect(okMock.requests, hasLength(1));
     });
 
     test('a realtime 400 is a badRequest naming the field', () async {
@@ -730,6 +841,15 @@ void main() {
       final error = (result as Failure<VehiclePositions>).error;
       expect(error.code, SpiderErrorCode.badRequest);
       expect(error.field, 'tripIds');
+    });
+
+    test('a vehicleForTrip 400 is a badRequest naming the field', () async {
+      final (client, _) =
+          makeClient((_) => resp('tripId is invalid', status: 400));
+      final result = await client.realtime.vehicleForTrip('T1');
+      final error = (result as Failure<LiveVehicleUpdate>).error;
+      expect(error.code, SpiderErrorCode.badRequest);
+      expect(error.field, 'tripId');
     });
 
     test('vehicleForTrip 404 is a soft null', () async {
@@ -765,19 +885,36 @@ void main() {
       expect(delays.delayFor('T1', '2026-07-16'), isNull);
     });
 
-    test('delays counts trip ids across all service dates', () async {
-      List<String> ids(int n, String p) => List.generate(n, (i) => '$p$i');
-      for (final (groups, field) in [
-        (<String, List<String>>{'2026-07-15': []}, 'tripIds'),
-        ({'2026-07-15': ids(30, 'A'), '2026-07-16': ids(21, 'B')}, 'tripIds'),
+    test('delays with no trip ids is an empty success without a request',
+        () async {
+      for (final groups in [
+        <String, List<String>>{},
+        {'2026-07-15': <String>[]},
+        {'2026-07-15': <String>[], '2026-07-16': <String>[]},
       ]) {
         final (client, mock) = makeClient((_) => resp('{}'));
         final result = await client.realtime.delaysByServiceDate(groups);
-        final error = (result as Failure<TripDelays>).error;
-        expect(error.code, SpiderErrorCode.badRequest);
-        expect(error.field, field);
+        final delays = (result as Success<TripDelays>).value;
+        expect(delays.groups, isEmpty);
+        expect(delays.freshness.feedTimestampEpochMs, isNull);
         expect(mock.requests, isEmpty);
       }
+      final (client, mock) = makeClient((_) => resp('{}'));
+      final result = await client.realtime.delays(const [], '2026-07-15');
+      expect(result, isA<Success<TripDelays>>());
+      expect(mock.requests, isEmpty);
+    });
+
+    test('delays counts trip ids across all service dates', () async {
+      List<String> ids(int n, String p) => List.generate(n, (i) => '$p$i');
+      final (overClient, overMock) = makeClient((_) => resp('{}'));
+      final over = await overClient.realtime.delaysByServiceDate(
+          {'2026-07-15': ids(30, 'A'), '2026-07-16': ids(21, 'B')});
+      final error = (over as Failure<TripDelays>).error;
+      expect(error.code, SpiderErrorCode.badRequest);
+      expect(error.field, 'tripIds');
+      expect(error.message, 'tripIds is out of range');
+      expect(overMock.requests, isEmpty);
       final (client, mock) = makeClient((_) => resp('{"results":[]}'));
       final result = await client.realtime.delaysByServiceDate(
           {'2026-07-15': ids(25, 'A'), '2026-07-16': ids(25, 'B')});
@@ -794,7 +931,7 @@ void main() {
       final error = (result as Failure<TripDelays>).error;
       expect(error.code, SpiderErrorCode.badRequest);
       expect(error.field, 'serviceDate');
-      expect(error.message, contains('20260716'));
+      expect(error.message, 'serviceDate is invalid');
       expect(mock.requests, isEmpty);
     });
   });
@@ -835,10 +972,15 @@ void main() {
       expect(TransitMode.fromWire('BUS'), TransitMode.bus);
       expect(TransitMode.fromWire('SOMETHING_NEW'), TransitMode.unknown);
       expect(TransitMode.fromWire(null), isNull);
+      expect(
+          WheelchairBoarding.fromWire('POSSIBLE'), WheelchairBoarding.possible);
       expect(WheelchairBoarding.fromWire('NO_INFORMATION'), isNull);
-      expect(WheelchairBoarding.fromWire('SOMETHING_NEW'), isNull);
+      expect(WheelchairBoarding.fromWire(null), isNull);
+      expect(WheelchairBoarding.fromWire('SOMETHING_NEW'),
+          WheelchairBoarding.unknown);
       expect(BikesAllowed.fromWire('ALLOWED'), BikesAllowed.allowed);
-      expect(BikesAllowed.fromWire('SOMETHING_NEW'), isNull);
+      expect(BikesAllowed.fromWire('NO_INFORMATION'), isNull);
+      expect(BikesAllowed.fromWire('SOMETHING_NEW'), BikesAllowed.unknown);
       expect(OccupancyStatus.fromWire('NO_DATA_AVAILABLE'), isNull);
       expect(OccupancyStatus.fromWire('WEIRD'), OccupancyStatus.unknown);
       expect(RealtimeState.fromWire('UPDATED'), RealtimeState.updated);
@@ -869,6 +1011,34 @@ void main() {
           .single;
       expect(leg.mode, TransitMode.unknown);
       expect(leg.realtimeState, RealtimeState.unknown);
+    });
+
+    test('wheelchair and bikes decode unknown and NO_INFORMATION in the models',
+        () async {
+      const data = '{"results":[{"numberOfTransfers":0,"legs":['
+          '{"start":{"scheduledTime":"t"},"end":{"scheduledTime":"t"},'
+          '"from":{"name":"A","stop":{"gtfsId":"1:A","wheelchairBoarding":"RAMP_ONLY"}},'
+          '"to":{"name":"B","stop":{"gtfsId":"1:B","wheelchairBoarding":"NO_INFORMATION"}},'
+          '"trip":{"gtfsId":"1:T","bikesAllowed":"FOLDING_ONLY"}},'
+          '{"start":{"scheduledTime":"t"},"end":{"scheduledTime":"t"},'
+          '"from":{"name":"B"},"to":{"name":"C"},'
+          '"trip":{"gtfsId":"1:T2","bikesAllowed":"NO_INFORMATION"}}'
+          ']}]}';
+      final legs = (parsePlanStreamRecord('chunk', data) as PlanStreamResult)
+          .itineraries
+          .single
+          .legs;
+      expect(legs[0].fromWheelchair, WheelchairBoarding.unknown);
+      expect(legs[0].toWheelchair, isNull);
+      expect(legs[0].bikesAllowed, BikesAllowed.unknown);
+      expect(legs[1].bikesAllowed, isNull);
+
+      final (client, _) = makeClient((_) => resp(
+          '{"data":{"trip":{"gtfsId":"T1","wheelchairAccessible":"SOMETHING_NEW",'
+          '"route":{"gtfsId":"R1"},"stoptimesForDate":[]}}}'));
+      final trip =
+          ((await client.routing.trip('T1')) as Success<TripDetails>).value;
+      expect(trip.wheelchairAccessible, WheelchairBoarding.unknown);
     });
 
     test('polyline decodes the Google example', () {
@@ -928,6 +1098,12 @@ void main() {
       expect(leg.serviceDate, '2026-07-15');
       expect(leg.fromGtfsId, '1:A');
       expect(leg.toGtfsId, '1:B');
+      expect(leg.routeGtfsId, '1:R12');
+      // Absent display fields stay null.
+      expect(leg.routeColor, isNull);
+      expect(leg.routeTextColor, isNull);
+      expect(leg.fromPlatformCode, isNull);
+      expect(leg.toZoneId, isNull);
     });
 
     // The `pageInfo` frame is the terminal event: it maps to PlanStreamDone carrying the continuation cursors.
@@ -1250,6 +1426,7 @@ void main() {
       final error = (events.single as PlanStreamFailure).error;
       expect(error.code, SpiderErrorCode.unauthorized);
       expect(error.serverCode, 'persisted_query_rejected');
+      expect(error.message, contains('unknown persisted-query id: abc'));
     });
   });
 }
