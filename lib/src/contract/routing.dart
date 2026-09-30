@@ -128,10 +128,14 @@ enum WheelchairBoarding {
 class Stop {
   final String gtfsId;
   final WheelchairBoarding? wheelchairBoarding;
+  final String? platformCode;
+  final String? zoneId;
 
   const Stop({
     required this.gtfsId,
     this.wheelchairBoarding,
+    this.platformCode,
+    this.zoneId,
   });
 
   factory Stop.fromJson(Map<String, dynamic> json) => Stop(
@@ -139,12 +143,16 @@ class Stop {
         wheelchairBoarding: json['wheelchairBoarding'] == null
             ? null
             : WheelchairBoarding.fromWire(json['wheelchairBoarding'] as String),
+        platformCode: json['platformCode'] as String?,
+        zoneId: json['zoneId'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
         'gtfsId': gtfsId,
         if (wheelchairBoarding != null)
           'wheelchairBoarding': wheelchairBoarding!.toJson(),
+        if (platformCode != null) 'platformCode': platformCode!,
+        if (zoneId != null) 'zoneId': zoneId!,
       };
 }
 
@@ -171,22 +179,34 @@ class Place {
 }
 
 class Route {
+  final String gtfsId;
   final String? shortName;
   final String? longName;
+  final String? color;
+  final String? textColor;
 
   const Route({
+    required this.gtfsId,
     this.shortName,
     this.longName,
+    this.color,
+    this.textColor,
   });
 
   factory Route.fromJson(Map<String, dynamic> json) => Route(
+        gtfsId: json['gtfsId'] as String,
         shortName: json['shortName'] as String?,
         longName: json['longName'] as String?,
+        color: json['color'] as String?,
+        textColor: json['textColor'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
+        'gtfsId': gtfsId,
         if (shortName != null) 'shortName': shortName!,
         if (longName != null) 'longName': longName!,
+        if (color != null) 'color': color!,
+        if (textColor != null) 'textColor': textColor!,
       };
 }
 
@@ -1943,11 +1963,11 @@ class PlanConnectionStreamVariables {
   final PlanDateTimeInput dateTime;
   final PlanLabeledLocationInput origin;
   final PlanLabeledLocationInput destination;
+  final int targetResults;
+  final String maxWindow;
   final List<PlanViaLocationInput>? via;
   final PlanModesInput? modes;
   final PlanPreferencesInput? preferences;
-  final int? targetResults;
-  final String? maxWindow;
   final String? before;
   final String? after;
 
@@ -1955,11 +1975,11 @@ class PlanConnectionStreamVariables {
     required this.dateTime,
     required this.origin,
     required this.destination,
+    required this.targetResults,
+    required this.maxWindow,
     this.via,
     this.modes,
     this.preferences,
-    this.targetResults,
-    this.maxWindow,
     this.before,
     this.after,
   });
@@ -1972,6 +1992,8 @@ class PlanConnectionStreamVariables {
             json['origin'] as Map<String, dynamic>),
         destination: PlanLabeledLocationInput.fromJson(
             json['destination'] as Map<String, dynamic>),
+        targetResults: (json['targetResults'] as num).toInt(),
+        maxWindow: json['maxWindow'] as String,
         via: (json['via'] as List<dynamic>?)
             ?.map(
                 (e) => PlanViaLocationInput.fromJson(e as Map<String, dynamic>))
@@ -1983,8 +2005,6 @@ class PlanConnectionStreamVariables {
             ? null
             : PlanPreferencesInput.fromJson(
                 json['preferences'] as Map<String, dynamic>),
-        targetResults: (json['targetResults'] as num?)?.toInt(),
-        maxWindow: json['maxWindow'] as String?,
         before: json['before'] as String?,
         after: json['after'] as String?,
       );
@@ -1993,194 +2013,253 @@ class PlanConnectionStreamVariables {
         'dateTime': dateTime.toJson(),
         'origin': origin.toJson(),
         'destination': destination.toJson(),
+        'targetResults': targetResults,
+        'maxWindow': maxWindow,
         if (via != null) 'via': via!.map((e) => e.toJson()).toList(),
         if (modes != null) 'modes': modes!.toJson(),
         if (preferences != null) 'preferences': preferences!.toJson(),
-        if (targetResults != null) 'targetResults': targetResults!,
-        if (maxWindow != null) 'maxWindow': maxWindow!,
         if (before != null) 'before': before!,
         if (after != null) 'after': after!,
       };
 }
 
-class StopDeparturesRoute {
+class TripRoute {
+  final String gtfsId;
   final String? shortName;
   final String? longName;
   final TransitMode? mode;
+  final String? color;
+  final String? textColor;
 
-  const StopDeparturesRoute({
+  const TripRoute({
+    required this.gtfsId,
     this.shortName,
     this.longName,
     this.mode,
+    this.color,
+    this.textColor,
   });
 
-  factory StopDeparturesRoute.fromJson(Map<String, dynamic> json) =>
-      StopDeparturesRoute(
+  factory TripRoute.fromJson(Map<String, dynamic> json) => TripRoute(
+        gtfsId: json['gtfsId'] as String,
         shortName: json['shortName'] as String?,
         longName: json['longName'] as String?,
         mode: json['mode'] == null
             ? null
             : TransitMode.fromWire(json['mode'] as String),
-      );
-
-  Map<String, dynamic> toJson() => {
-        if (shortName != null) 'shortName': shortName!,
-        if (longName != null) 'longName': longName!,
-        if (mode != null) 'mode': mode!.toJson(),
-      };
-}
-
-class StopDeparturesTrip {
-  final String gtfsId;
-  final StopDeparturesRoute route;
-  final BikesAllowed? bikesAllowed;
-
-  const StopDeparturesTrip({
-    required this.gtfsId,
-    required this.route,
-    this.bikesAllowed,
-  });
-
-  factory StopDeparturesTrip.fromJson(Map<String, dynamic> json) =>
-      StopDeparturesTrip(
-        gtfsId: json['gtfsId'] as String,
-        route:
-            StopDeparturesRoute.fromJson(json['route'] as Map<String, dynamic>),
-        bikesAllowed: json['bikesAllowed'] == null
-            ? null
-            : BikesAllowed.fromWire(json['bikesAllowed'] as String),
+        color: json['color'] as String?,
+        textColor: json['textColor'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
         'gtfsId': gtfsId,
-        'route': route.toJson(),
-        if (bikesAllowed != null) 'bikesAllowed': bikesAllowed!.toJson(),
+        if (shortName != null) 'shortName': shortName!,
+        if (longName != null) 'longName': longName!,
+        if (mode != null) 'mode': mode!.toJson(),
+        if (color != null) 'color': color!,
+        if (textColor != null) 'textColor': textColor!,
       };
 }
 
-class Stoptime {
-  final int? serviceDay;
-  final int? scheduledDeparture;
-  final int? realtimeDeparture;
-  final bool? realtime;
-  final RealtimeState? realtimeState;
-  final String? headsign;
-  final StopDeparturesTrip? trip;
-
-  const Stoptime({
-    this.serviceDay,
-    this.scheduledDeparture,
-    this.realtimeDeparture,
-    this.realtime,
-    this.realtimeState,
-    this.headsign,
-    this.trip,
-  });
-
-  factory Stoptime.fromJson(Map<String, dynamic> json) => Stoptime(
-        serviceDay: (json['serviceDay'] as num?)?.toInt(),
-        scheduledDeparture: (json['scheduledDeparture'] as num?)?.toInt(),
-        realtimeDeparture: (json['realtimeDeparture'] as num?)?.toInt(),
-        realtime: json['realtime'] as bool?,
-        realtimeState: json['realtimeState'] == null
-            ? null
-            : RealtimeState.fromWire(json['realtimeState'] as String),
-        headsign: json['headsign'] as String?,
-        trip: json['trip'] == null
-            ? null
-            : StopDeparturesTrip.fromJson(json['trip'] as Map<String, dynamic>),
-      );
-
-  Map<String, dynamic> toJson() => {
-        if (serviceDay != null) 'serviceDay': serviceDay!,
-        if (scheduledDeparture != null)
-          'scheduledDeparture': scheduledDeparture!,
-        if (realtimeDeparture != null) 'realtimeDeparture': realtimeDeparture!,
-        if (realtime != null) 'realtime': realtime!,
-        if (realtimeState != null) 'realtimeState': realtimeState!.toJson(),
-        if (headsign != null) 'headsign': headsign!,
-        if (trip != null) 'trip': trip!.toJson(),
-      };
-}
-
-class StopDeparturesStop {
+class TripStop {
   final String gtfsId;
   final String name;
+  final double? lat;
+  final double? lon;
   final WheelchairBoarding? wheelchairBoarding;
-  final List<Stoptime>? stoptimesWithoutPatterns;
+  final String? platformCode;
+  final String? zoneId;
 
-  const StopDeparturesStop({
+  const TripStop({
     required this.gtfsId,
     required this.name,
+    this.lat,
+    this.lon,
     this.wheelchairBoarding,
-    this.stoptimesWithoutPatterns,
+    this.platformCode,
+    this.zoneId,
   });
 
-  factory StopDeparturesStop.fromJson(Map<String, dynamic> json) =>
-      StopDeparturesStop(
+  factory TripStop.fromJson(Map<String, dynamic> json) => TripStop(
         gtfsId: json['gtfsId'] as String,
         name: json['name'] as String,
+        lat: (json['lat'] as num?)?.toDouble(),
+        lon: (json['lon'] as num?)?.toDouble(),
         wheelchairBoarding: json['wheelchairBoarding'] == null
             ? null
             : WheelchairBoarding.fromWire(json['wheelchairBoarding'] as String),
-        stoptimesWithoutPatterns:
-            (json['stoptimesWithoutPatterns'] as List<dynamic>?)
-                ?.map((e) => Stoptime.fromJson(e as Map<String, dynamic>))
-                .toList(),
+        platformCode: json['platformCode'] as String?,
+        zoneId: json['zoneId'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
         'gtfsId': gtfsId,
         'name': name,
+        if (lat != null) 'lat': lat!,
+        if (lon != null) 'lon': lon!,
         if (wheelchairBoarding != null)
           'wheelchairBoarding': wheelchairBoarding!.toJson(),
-        if (stoptimesWithoutPatterns != null)
-          'stoptimesWithoutPatterns':
-              stoptimesWithoutPatterns!.map((e) => e.toJson()).toList(),
+        if (platformCode != null) 'platformCode': platformCode!,
+        if (zoneId != null) 'zoneId': zoneId!,
       };
 }
 
-class StopDeparturesData {
-  final StopDeparturesStop? asStop;
-  final StopDeparturesStop? asStation;
+class Stoptime {
+  final int? serviceDay;
+  final int? scheduledArrival;
+  final int? scheduledDeparture;
+  final int? realtimeArrival;
+  final int? realtimeDeparture;
+  final bool? realtime;
+  final RealtimeState? realtimeState;
+  final TripStop? stop;
 
-  const StopDeparturesData({
-    this.asStop,
-    this.asStation,
+  const Stoptime({
+    this.serviceDay,
+    this.scheduledArrival,
+    this.scheduledDeparture,
+    this.realtimeArrival,
+    this.realtimeDeparture,
+    this.realtime,
+    this.realtimeState,
+    this.stop,
   });
 
-  factory StopDeparturesData.fromJson(Map<String, dynamic> json) =>
-      StopDeparturesData(
-        asStop: json['asStop'] == null
+  factory Stoptime.fromJson(Map<String, dynamic> json) => Stoptime(
+        serviceDay: (json['serviceDay'] as num?)?.toInt(),
+        scheduledArrival: (json['scheduledArrival'] as num?)?.toInt(),
+        scheduledDeparture: (json['scheduledDeparture'] as num?)?.toInt(),
+        realtimeArrival: (json['realtimeArrival'] as num?)?.toInt(),
+        realtimeDeparture: (json['realtimeDeparture'] as num?)?.toInt(),
+        realtime: json['realtime'] as bool?,
+        realtimeState: json['realtimeState'] == null
             ? null
-            : StopDeparturesStop.fromJson(
-                json['asStop'] as Map<String, dynamic>),
-        asStation: json['asStation'] == null
+            : RealtimeState.fromWire(json['realtimeState'] as String),
+        stop: json['stop'] == null
             ? null
-            : StopDeparturesStop.fromJson(
-                json['asStation'] as Map<String, dynamic>),
+            : TripStop.fromJson(json['stop'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
-        if (asStop != null) 'asStop': asStop!.toJson(),
-        if (asStation != null) 'asStation': asStation!.toJson(),
+        if (serviceDay != null) 'serviceDay': serviceDay!,
+        if (scheduledArrival != null) 'scheduledArrival': scheduledArrival!,
+        if (scheduledDeparture != null)
+          'scheduledDeparture': scheduledDeparture!,
+        if (realtimeArrival != null) 'realtimeArrival': realtimeArrival!,
+        if (realtimeDeparture != null) 'realtimeDeparture': realtimeDeparture!,
+        if (realtime != null) 'realtime': realtime!,
+        if (realtimeState != null) 'realtimeState': realtimeState!.toJson(),
+        if (stop != null) 'stop': stop!.toJson(),
       };
 }
 
-class StopDeparturesResponse {
-  final StopDeparturesData? data;
+class TripGeometry {
+  final String? points;
+  final int? length;
+
+  const TripGeometry({
+    this.points,
+    this.length,
+  });
+
+  factory TripGeometry.fromJson(Map<String, dynamic> json) => TripGeometry(
+        points: json['points'] as String?,
+        length: (json['length'] as num?)?.toInt(),
+      );
+
+  Map<String, dynamic> toJson() => {
+        if (points != null) 'points': points!,
+        if (length != null) 'length': length!,
+      };
+}
+
+class TripTrip {
+  final String gtfsId;
+  final TripRoute route;
+  final String? directionId;
+  final String? tripHeadsign;
+  final BikesAllowed? bikesAllowed;
+  final WheelchairBoarding? wheelchairAccessible;
+  final List<Stoptime>? stoptimesForDate;
+  final TripGeometry? tripGeometry;
+
+  const TripTrip({
+    required this.gtfsId,
+    required this.route,
+    this.directionId,
+    this.tripHeadsign,
+    this.bikesAllowed,
+    this.wheelchairAccessible,
+    this.stoptimesForDate,
+    this.tripGeometry,
+  });
+
+  factory TripTrip.fromJson(Map<String, dynamic> json) => TripTrip(
+        gtfsId: json['gtfsId'] as String,
+        route: TripRoute.fromJson(json['route'] as Map<String, dynamic>),
+        directionId: json['directionId'] as String?,
+        tripHeadsign: json['tripHeadsign'] as String?,
+        bikesAllowed: json['bikesAllowed'] == null
+            ? null
+            : BikesAllowed.fromWire(json['bikesAllowed'] as String),
+        wheelchairAccessible: json['wheelchairAccessible'] == null
+            ? null
+            : WheelchairBoarding.fromWire(
+                json['wheelchairAccessible'] as String),
+        stoptimesForDate: (json['stoptimesForDate'] as List<dynamic>?)
+            ?.map((e) => Stoptime.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        tripGeometry: json['tripGeometry'] == null
+            ? null
+            : TripGeometry.fromJson(
+                json['tripGeometry'] as Map<String, dynamic>),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'gtfsId': gtfsId,
+        'route': route.toJson(),
+        if (directionId != null) 'directionId': directionId!,
+        if (tripHeadsign != null) 'tripHeadsign': tripHeadsign!,
+        if (bikesAllowed != null) 'bikesAllowed': bikesAllowed!.toJson(),
+        if (wheelchairAccessible != null)
+          'wheelchairAccessible': wheelchairAccessible!.toJson(),
+        if (stoptimesForDate != null)
+          'stoptimesForDate': stoptimesForDate!.map((e) => e.toJson()).toList(),
+        if (tripGeometry != null) 'tripGeometry': tripGeometry!.toJson(),
+      };
+}
+
+class TripData {
+  final TripTrip? trip;
+
+  const TripData({
+    this.trip,
+  });
+
+  factory TripData.fromJson(Map<String, dynamic> json) => TripData(
+        trip: json['trip'] == null
+            ? null
+            : TripTrip.fromJson(json['trip'] as Map<String, dynamic>),
+      );
+
+  Map<String, dynamic> toJson() => {
+        if (trip != null) 'trip': trip!.toJson(),
+      };
+}
+
+class TripResponse {
+  final TripData? data;
   final List<GraphQLError>? errors;
 
-  const StopDeparturesResponse({
+  const TripResponse({
     this.data,
     this.errors,
   });
 
-  factory StopDeparturesResponse.fromJson(Map<String, dynamic> json) =>
-      StopDeparturesResponse(
+  factory TripResponse.fromJson(Map<String, dynamic> json) => TripResponse(
         data: json['data'] == null
             ? null
-            : StopDeparturesData.fromJson(json['data'] as Map<String, dynamic>),
+            : TripData.fromJson(json['data'] as Map<String, dynamic>),
         errors: (json['errors'] as List<dynamic>?)
             ?.map((e) => GraphQLError.fromJson(e as Map<String, dynamic>))
             .toList(),
@@ -2192,33 +2271,23 @@ class StopDeparturesResponse {
       };
 }
 
-class StopDeparturesVariables {
+class TripVariables {
   final String id;
-  final int? numberOfDepartures;
-  final int? startTime;
-  final int? timeRange;
+  final String? serviceDate;
 
-  const StopDeparturesVariables({
+  const TripVariables({
     required this.id,
-    this.numberOfDepartures,
-    this.startTime,
-    this.timeRange,
+    this.serviceDate,
   });
 
-  factory StopDeparturesVariables.fromJson(Map<String, dynamic> json) =>
-      StopDeparturesVariables(
+  factory TripVariables.fromJson(Map<String, dynamic> json) => TripVariables(
         id: json['id'] as String,
-        numberOfDepartures: (json['numberOfDepartures'] as num?)?.toInt(),
-        startTime: (json['startTime'] as num?)?.toInt(),
-        timeRange: (json['timeRange'] as num?)?.toInt(),
+        serviceDate: json['serviceDate'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
         'id': id,
-        if (numberOfDepartures != null)
-          'numberOfDepartures': numberOfDepartures!,
-        if (startTime != null) 'startTime': startTime!,
-        if (timeRange != null) 'timeRange': timeRange!,
+        if (serviceDate != null) 'serviceDate': serviceDate!,
       };
 }
 
@@ -2327,215 +2396,233 @@ class PlanConnectionVariables {
       };
 }
 
-class TripRoute {
+class StopDeparturesStop {
+  final String gtfsId;
+  final String? platformCode;
+
+  const StopDeparturesStop({
+    required this.gtfsId,
+    this.platformCode,
+  });
+
+  factory StopDeparturesStop.fromJson(Map<String, dynamic> json) =>
+      StopDeparturesStop(
+        gtfsId: json['gtfsId'] as String,
+        platformCode: json['platformCode'] as String?,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'gtfsId': gtfsId,
+        if (platformCode != null) 'platformCode': platformCode!,
+      };
+}
+
+class StopDeparturesRoute {
+  final String gtfsId;
   final String? shortName;
   final String? longName;
   final TransitMode? mode;
+  final String? color;
+  final String? textColor;
 
-  const TripRoute({
+  const StopDeparturesRoute({
+    required this.gtfsId,
     this.shortName,
     this.longName,
     this.mode,
+    this.color,
+    this.textColor,
   });
 
-  factory TripRoute.fromJson(Map<String, dynamic> json) => TripRoute(
+  factory StopDeparturesRoute.fromJson(Map<String, dynamic> json) =>
+      StopDeparturesRoute(
+        gtfsId: json['gtfsId'] as String,
         shortName: json['shortName'] as String?,
         longName: json['longName'] as String?,
         mode: json['mode'] == null
             ? null
             : TransitMode.fromWire(json['mode'] as String),
-      );
-
-  Map<String, dynamic> toJson() => {
-        if (shortName != null) 'shortName': shortName!,
-        if (longName != null) 'longName': longName!,
-        if (mode != null) 'mode': mode!.toJson(),
-      };
-}
-
-class TripStop {
-  final String gtfsId;
-  final String name;
-  final double? lat;
-  final double? lon;
-  final WheelchairBoarding? wheelchairBoarding;
-
-  const TripStop({
-    required this.gtfsId,
-    required this.name,
-    this.lat,
-    this.lon,
-    this.wheelchairBoarding,
-  });
-
-  factory TripStop.fromJson(Map<String, dynamic> json) => TripStop(
-        gtfsId: json['gtfsId'] as String,
-        name: json['name'] as String,
-        lat: (json['lat'] as num?)?.toDouble(),
-        lon: (json['lon'] as num?)?.toDouble(),
-        wheelchairBoarding: json['wheelchairBoarding'] == null
-            ? null
-            : WheelchairBoarding.fromWire(json['wheelchairBoarding'] as String),
+        color: json['color'] as String?,
+        textColor: json['textColor'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
         'gtfsId': gtfsId,
-        'name': name,
-        if (lat != null) 'lat': lat!,
-        if (lon != null) 'lon': lon!,
-        if (wheelchairBoarding != null)
-          'wheelchairBoarding': wheelchairBoarding!.toJson(),
+        if (shortName != null) 'shortName': shortName!,
+        if (longName != null) 'longName': longName!,
+        if (mode != null) 'mode': mode!.toJson(),
+        if (color != null) 'color': color!,
+        if (textColor != null) 'textColor': textColor!,
       };
 }
 
-class TripStoptime {
-  final int? serviceDay;
-  final int? scheduledArrival;
-  final int? scheduledDeparture;
-  final int? realtimeArrival;
-  final int? realtimeDeparture;
-  final bool? realtime;
-  final RealtimeState? realtimeState;
-  final TripStop? stop;
-
-  const TripStoptime({
-    this.serviceDay,
-    this.scheduledArrival,
-    this.scheduledDeparture,
-    this.realtimeArrival,
-    this.realtimeDeparture,
-    this.realtime,
-    this.realtimeState,
-    this.stop,
-  });
-
-  factory TripStoptime.fromJson(Map<String, dynamic> json) => TripStoptime(
-        serviceDay: (json['serviceDay'] as num?)?.toInt(),
-        scheduledArrival: (json['scheduledArrival'] as num?)?.toInt(),
-        scheduledDeparture: (json['scheduledDeparture'] as num?)?.toInt(),
-        realtimeArrival: (json['realtimeArrival'] as num?)?.toInt(),
-        realtimeDeparture: (json['realtimeDeparture'] as num?)?.toInt(),
-        realtime: json['realtime'] as bool?,
-        realtimeState: json['realtimeState'] == null
-            ? null
-            : RealtimeState.fromWire(json['realtimeState'] as String),
-        stop: json['stop'] == null
-            ? null
-            : TripStop.fromJson(json['stop'] as Map<String, dynamic>),
-      );
-
-  Map<String, dynamic> toJson() => {
-        if (serviceDay != null) 'serviceDay': serviceDay!,
-        if (scheduledArrival != null) 'scheduledArrival': scheduledArrival!,
-        if (scheduledDeparture != null)
-          'scheduledDeparture': scheduledDeparture!,
-        if (realtimeArrival != null) 'realtimeArrival': realtimeArrival!,
-        if (realtimeDeparture != null) 'realtimeDeparture': realtimeDeparture!,
-        if (realtime != null) 'realtime': realtime!,
-        if (realtimeState != null) 'realtimeState': realtimeState!.toJson(),
-        if (stop != null) 'stop': stop!.toJson(),
-      };
-}
-
-class TripGeometry {
-  final String? points;
-  final int? length;
-
-  const TripGeometry({
-    this.points,
-    this.length,
-  });
-
-  factory TripGeometry.fromJson(Map<String, dynamic> json) => TripGeometry(
-        points: json['points'] as String?,
-        length: (json['length'] as num?)?.toInt(),
-      );
-
-  Map<String, dynamic> toJson() => {
-        if (points != null) 'points': points!,
-        if (length != null) 'length': length!,
-      };
-}
-
-class TripTrip {
+class StopDeparturesTrip {
   final String gtfsId;
-  final TripRoute route;
-  final String? directionId;
-  final String? tripHeadsign;
+  final StopDeparturesRoute route;
   final BikesAllowed? bikesAllowed;
-  final List<TripStoptime>? stoptimesForDate;
-  final TripGeometry? tripGeometry;
+  final WheelchairBoarding? wheelchairAccessible;
 
-  const TripTrip({
+  const StopDeparturesTrip({
     required this.gtfsId,
     required this.route,
-    this.directionId,
-    this.tripHeadsign,
     this.bikesAllowed,
-    this.stoptimesForDate,
-    this.tripGeometry,
+    this.wheelchairAccessible,
   });
 
-  factory TripTrip.fromJson(Map<String, dynamic> json) => TripTrip(
+  factory StopDeparturesTrip.fromJson(Map<String, dynamic> json) =>
+      StopDeparturesTrip(
         gtfsId: json['gtfsId'] as String,
-        route: TripRoute.fromJson(json['route'] as Map<String, dynamic>),
-        directionId: json['directionId'] as String?,
-        tripHeadsign: json['tripHeadsign'] as String?,
+        route:
+            StopDeparturesRoute.fromJson(json['route'] as Map<String, dynamic>),
         bikesAllowed: json['bikesAllowed'] == null
             ? null
             : BikesAllowed.fromWire(json['bikesAllowed'] as String),
-        stoptimesForDate: (json['stoptimesForDate'] as List<dynamic>?)
-            ?.map((e) => TripStoptime.fromJson(e as Map<String, dynamic>))
-            .toList(),
-        tripGeometry: json['tripGeometry'] == null
+        wheelchairAccessible: json['wheelchairAccessible'] == null
             ? null
-            : TripGeometry.fromJson(
-                json['tripGeometry'] as Map<String, dynamic>),
+            : WheelchairBoarding.fromWire(
+                json['wheelchairAccessible'] as String),
       );
 
   Map<String, dynamic> toJson() => {
         'gtfsId': gtfsId,
         'route': route.toJson(),
-        if (directionId != null) 'directionId': directionId!,
-        if (tripHeadsign != null) 'tripHeadsign': tripHeadsign!,
         if (bikesAllowed != null) 'bikesAllowed': bikesAllowed!.toJson(),
-        if (stoptimesForDate != null)
-          'stoptimesForDate': stoptimesForDate!.map((e) => e.toJson()).toList(),
-        if (tripGeometry != null) 'tripGeometry': tripGeometry!.toJson(),
+        if (wheelchairAccessible != null)
+          'wheelchairAccessible': wheelchairAccessible!.toJson(),
       };
 }
 
-class TripData {
-  final TripTrip? trip;
+class StopDeparturesStoptime {
+  final int? serviceDay;
+  final int? scheduledDeparture;
+  final int? realtimeDeparture;
+  final bool? realtime;
+  final RealtimeState? realtimeState;
+  final String? headsign;
+  final StopDeparturesStop? stop;
+  final StopDeparturesTrip? trip;
 
-  const TripData({
+  const StopDeparturesStoptime({
+    this.serviceDay,
+    this.scheduledDeparture,
+    this.realtimeDeparture,
+    this.realtime,
+    this.realtimeState,
+    this.headsign,
+    this.stop,
     this.trip,
   });
 
-  factory TripData.fromJson(Map<String, dynamic> json) => TripData(
+  factory StopDeparturesStoptime.fromJson(Map<String, dynamic> json) =>
+      StopDeparturesStoptime(
+        serviceDay: (json['serviceDay'] as num?)?.toInt(),
+        scheduledDeparture: (json['scheduledDeparture'] as num?)?.toInt(),
+        realtimeDeparture: (json['realtimeDeparture'] as num?)?.toInt(),
+        realtime: json['realtime'] as bool?,
+        realtimeState: json['realtimeState'] == null
+            ? null
+            : RealtimeState.fromWire(json['realtimeState'] as String),
+        headsign: json['headsign'] as String?,
+        stop: json['stop'] == null
+            ? null
+            : StopDeparturesStop.fromJson(json['stop'] as Map<String, dynamic>),
         trip: json['trip'] == null
             ? null
-            : TripTrip.fromJson(json['trip'] as Map<String, dynamic>),
+            : StopDeparturesTrip.fromJson(json['trip'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
+        if (serviceDay != null) 'serviceDay': serviceDay!,
+        if (scheduledDeparture != null)
+          'scheduledDeparture': scheduledDeparture!,
+        if (realtimeDeparture != null) 'realtimeDeparture': realtimeDeparture!,
+        if (realtime != null) 'realtime': realtime!,
+        if (realtimeState != null) 'realtimeState': realtimeState!.toJson(),
+        if (headsign != null) 'headsign': headsign!,
+        if (stop != null) 'stop': stop!.toJson(),
         if (trip != null) 'trip': trip!.toJson(),
       };
 }
 
-class TripResponse {
-  final TripData? data;
+class StopDeparturesStop2 {
+  final String gtfsId;
+  final String name;
+  final WheelchairBoarding? wheelchairBoarding;
+  final List<StopDeparturesStoptime>? stoptimesWithoutPatterns;
+
+  const StopDeparturesStop2({
+    required this.gtfsId,
+    required this.name,
+    this.wheelchairBoarding,
+    this.stoptimesWithoutPatterns,
+  });
+
+  factory StopDeparturesStop2.fromJson(Map<String, dynamic> json) =>
+      StopDeparturesStop2(
+        gtfsId: json['gtfsId'] as String,
+        name: json['name'] as String,
+        wheelchairBoarding: json['wheelchairBoarding'] == null
+            ? null
+            : WheelchairBoarding.fromWire(json['wheelchairBoarding'] as String),
+        stoptimesWithoutPatterns:
+            (json['stoptimesWithoutPatterns'] as List<dynamic>?)
+                ?.map((e) =>
+                    StopDeparturesStoptime.fromJson(e as Map<String, dynamic>))
+                .toList(),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'gtfsId': gtfsId,
+        'name': name,
+        if (wheelchairBoarding != null)
+          'wheelchairBoarding': wheelchairBoarding!.toJson(),
+        if (stoptimesWithoutPatterns != null)
+          'stoptimesWithoutPatterns':
+              stoptimesWithoutPatterns!.map((e) => e.toJson()).toList(),
+      };
+}
+
+class StopDeparturesData {
+  final StopDeparturesStop2? asStop;
+  final StopDeparturesStop2? asStation;
+
+  const StopDeparturesData({
+    this.asStop,
+    this.asStation,
+  });
+
+  factory StopDeparturesData.fromJson(Map<String, dynamic> json) =>
+      StopDeparturesData(
+        asStop: json['asStop'] == null
+            ? null
+            : StopDeparturesStop2.fromJson(
+                json['asStop'] as Map<String, dynamic>),
+        asStation: json['asStation'] == null
+            ? null
+            : StopDeparturesStop2.fromJson(
+                json['asStation'] as Map<String, dynamic>),
+      );
+
+  Map<String, dynamic> toJson() => {
+        if (asStop != null) 'asStop': asStop!.toJson(),
+        if (asStation != null) 'asStation': asStation!.toJson(),
+      };
+}
+
+class StopDeparturesResponse {
+  final StopDeparturesData? data;
   final List<GraphQLError>? errors;
 
-  const TripResponse({
+  const StopDeparturesResponse({
     this.data,
     this.errors,
   });
 
-  factory TripResponse.fromJson(Map<String, dynamic> json) => TripResponse(
+  factory StopDeparturesResponse.fromJson(Map<String, dynamic> json) =>
+      StopDeparturesResponse(
         data: json['data'] == null
             ? null
-            : TripData.fromJson(json['data'] as Map<String, dynamic>),
+            : StopDeparturesData.fromJson(json['data'] as Map<String, dynamic>),
         errors: (json['errors'] as List<dynamic>?)
             ?.map((e) => GraphQLError.fromJson(e as Map<String, dynamic>))
             .toList(),
@@ -2547,23 +2634,32 @@ class TripResponse {
       };
 }
 
-class TripVariables {
+class StopDeparturesVariables {
   final String id;
-  final String? serviceDate;
+  final int numberOfDepartures;
+  final int timeRange;
+  final int? startTime;
 
-  const TripVariables({
+  const StopDeparturesVariables({
     required this.id,
-    this.serviceDate,
+    required this.numberOfDepartures,
+    required this.timeRange,
+    this.startTime,
   });
 
-  factory TripVariables.fromJson(Map<String, dynamic> json) => TripVariables(
+  factory StopDeparturesVariables.fromJson(Map<String, dynamic> json) =>
+      StopDeparturesVariables(
         id: json['id'] as String,
-        serviceDate: json['serviceDate'] as String?,
+        numberOfDepartures: (json['numberOfDepartures'] as num).toInt(),
+        timeRange: (json['timeRange'] as num).toInt(),
+        startTime: (json['startTime'] as num?)?.toInt(),
       );
 
   Map<String, dynamic> toJson() => {
         'id': id,
-        if (serviceDate != null) 'serviceDate': serviceDate!,
+        'numberOfDepartures': numberOfDepartures,
+        'timeRange': timeRange,
+        if (startTime != null) 'startTime': startTime!,
       };
 }
 

@@ -23,11 +23,16 @@ final class PlanStreamResult extends PlanStreamEvent {
 /// [RoutePageInfo.hasPreviousPage].
 final class PlanStreamDone extends PlanStreamEvent {
   final RoutePageInfo pageInfo;
-  const PlanStreamDone(this.pageInfo);
+
+  /// Why the search found fewer or no itineraries (e.g. an unknown stop, or a date outside the feed), shaped
+  /// like [Route.routingErrors]; empty when there is nothing to report.
+  final List<RoutingError> routingErrors;
+  const PlanStreamDone(this.pageInfo, {this.routingErrors = const []});
 }
 
-/// Terminal failure — a transport/HTTP problem, a decoding error, or a server `error` event (e.g. an invalid
-/// request). [error] is the same [SpiderError] taxonomy the one-shot calls return.
+/// Terminal failure — an input the SDK or the server rejects ([SpiderErrorCode.badRequest] naming the field),
+/// a transport/HTTP problem, or a decoding error. [error] is the same [SpiderError] taxonomy the one-shot calls
+/// return.
 final class PlanStreamFailure extends PlanStreamEvent {
   final SpiderError error;
   const PlanStreamFailure(this.error);

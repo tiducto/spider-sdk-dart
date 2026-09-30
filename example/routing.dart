@@ -228,7 +228,8 @@ Future<void> streamTrip(SpiderClient client) async {
     departAt: DateTime.now(),
   );
 
-  await for (final event in client.routing.planStream(options)) {
+  await for (final event in client.routing
+      .planStream(options, targetResults: 5, maxWindowMinutes: 120)) {
     switch (event) {
       case PlanStreamResult(:final itineraries):
         for (final itinerary in itineraries) {
@@ -255,7 +256,8 @@ Future<void> streamTripContinue(SpiderClient client) async {
   // Stream the first window, keeping the terminal page to continue from.
   String? endCursor;
   var hasNextPage = false;
-  await for (final event in client.routing.planStream(options)) {
+  await for (final event in client.routing
+      .planStream(options, targetResults: 5, maxWindowMinutes: 120)) {
     if (event case PlanStreamDone(:final pageInfo)) {
       hasNextPage = pageInfo.hasNextPage;
       endCursor = pageInfo.endCursor;
@@ -264,8 +266,8 @@ Future<void> streamTripContinue(SpiderClient client) async {
 
   // Continue forward only when the terminal page says there is more, using its endCursor.
   if (hasNextPage && endCursor != null) {
-    await for (final more
-        in client.routing.planStreamNext(options, after: endCursor)) {
+    await for (final more in client.routing.planStreamNext(options,
+        targetResults: 5, maxWindowMinutes: 120, after: endCursor)) {
       if (more case PlanStreamResult(:final itineraries)) {
         for (final itinerary in itineraries) {
           print('later: ${itinerary.start} → ${itinerary.end}');
@@ -287,7 +289,8 @@ Future<void> streamTripPrevious(SpiderClient client) async {
   // Stream the first window, keeping the terminal page to page backwards from.
   String? startCursor;
   var hasPreviousPage = false;
-  await for (final event in client.routing.planStream(options)) {
+  await for (final event in client.routing
+      .planStream(options, targetResults: 5, maxWindowMinutes: 120)) {
     if (event case PlanStreamDone(:final pageInfo)) {
       hasPreviousPage = pageInfo.hasPreviousPage;
       startCursor = pageInfo.startCursor;
@@ -296,8 +299,8 @@ Future<void> streamTripPrevious(SpiderClient client) async {
 
   // Page backward only when the terminal page says there is an earlier window, using its startCursor.
   if (hasPreviousPage && startCursor != null) {
-    await for (final earlier
-        in client.routing.planStreamPrevious(options, before: startCursor)) {
+    await for (final earlier in client.routing.planStreamPrevious(options,
+        targetResults: 5, maxWindowMinutes: 120, before: startCursor)) {
       if (earlier case PlanStreamResult(:final itineraries)) {
         for (final itinerary in itineraries) {
           print('earlier: ${itinerary.start} → ${itinerary.end}');

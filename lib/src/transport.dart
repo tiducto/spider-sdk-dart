@@ -80,7 +80,7 @@ class RetryConfig {
 }
 
 /// Translates SDK calls into HTTP against the gateway: identity headers, the persisted-query body shape,
-/// the contract-version response check, and the retry/backoff loop.
+/// and the retry/backoff loop.
 class Transport {
   final String baseUrl;
   final String apiKey;
@@ -113,30 +113,13 @@ class Transport {
       _contractHeaders(json: true),
       jsonEncode({'id': op.id, 'variables': variables}),
     ));
-    checkContract(resp.headers[contractHeader]);
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      final env = _parseErrorEnvelope(resp.body);
-      final detail = env.message ?? _trunc(resp.body);
-      throw TransportError(TransportErrorKind.http,
-          'routing ${op.path} -> ${resp.statusCode}: $detail',
-          httpStatus: resp.statusCode, serverCode: env.code);
+      throw _routingHttpError(op, resp.statusCode, resp.body);
     }
     final decoded = _decodeJson(resp.body, 'routing ${op.path}');
     final errors = decoded['errors'];
     if (errors is List && errors.isNotEmpty) {
-      // A BAD_REQUEST extension (over-cap searchWindow, bad via, missing required field) → typed badRequest;
-      // anything else stays a generic upstream (→ server).
-      for (final e in errors) {
-        final ext = e is Map ? e['extensions'] : null;
-        if (ext is Map && ext['code'] == 'BAD_REQUEST') {
-          throw TransportError(TransportErrorKind.badRequest,
-              (e as Map)['message']?.toString() ?? 'bad request',
-              field: ext['field'] as String?);
-        }
-      }
-      final joined = errors.map((e) => (e as Map)['message']).join(', ');
-      throw TransportError(
-          TransportErrorKind.upstream, 'routing ${op.path} errors: $joined');
+      throw graphqlErrorsToTransportError(errors, 'routing ${op.path}');
     }
     final data = decoded['data'];
     if (data == null) {
@@ -147,44 +130,30 @@ class Transport {
   }
 
   Future<D> postJson<D>(String path, Map<String, dynamic> body,
-      D Function(Map<String, dynamic>) fromJson,
-      {String Function(String)? errorMessage}) async {
+      D Function(Map<String, dynamic>) fromJson) async {
     final resp = await _send(SpiderHttpRequest(
         'POST',
         Uri.parse('$baseUrl$path'),
         _contractHeaders(json: true),
         jsonEncode(body)));
-    checkContract(resp.headers[contractHeader]);
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      final env = _parseErrorEnvelope(resp.body);
-      final message =
-          errorMessage?.call(resp.body) ?? env.message ?? _trunc(resp.body);
-      throw TransportError(
-          TransportErrorKind.http, 'POST $path -> ${resp.statusCode}: $message',
-          httpStatus: resp.statusCode, serverCode: env.code);
+      throw httpFailure('POST $path', resp.statusCode, resp.body);
     }
     return fromJson(_decodeJson(resp.body, 'POST $path'));
   }
 
   Future<SpiderHttpResponse> getRaw(String path,
-      {Map<String, String> query = const {}}) async {
+      {Map<String, String> query = const {}}) {
     final uri = Uri.parse('$baseUrl$path')
         .replace(queryParameters: query.isEmpty ? null : query);
-    final resp =
-        await _send(SpiderHttpRequest('GET', uri, _contractHeaders(), null));
-    checkContract(resp.headers[contractHeader]);
-    return resp;
+    return _send(SpiderHttpRequest('GET', uri, _contractHeaders(), null));
   }
 
   Future<D> getJson<D>(String path, D Function(Map<String, dynamic>) fromJson,
       {Map<String, String> query = const {}}) async {
     final resp = await getRaw(path, query: query);
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      final env = _parseErrorEnvelope(resp.body);
-      final detail = env.message ?? _trunc(resp.body);
-      throw TransportError(
-          TransportErrorKind.http, 'GET $path -> ${resp.statusCode}: $detail',
-          httpStatus: resp.statusCode, serverCode: env.code);
+      throw httpFailure('GET $path', resp.statusCode, resp.body);
     }
     return fromJson(_decodeJson(resp.body, 'GET $path'));
   }
@@ -193,7 +162,7 @@ class Transport {
   /// TLS connection real calls travel over. Carries only the client `apikey` — stamped centrally by [_send], which
   /// the keyed `/ping` route authenticates — and no contract/identity headers, since `/ping` is gateway
   /// infrastructure, not a contract operation. The response (any status) is ignored; the round trip is the point.
-  /// Bounded by [timeout]; the warmup transport is retry-free, so this runs no retry (and no contract check).
+  /// Bounded by [timeout]; the warmup transport is retry-free, so this runs no retry.
   Future<void> ping() async {
     await _send(
         SpiderHttpRequest('GET', Uri.parse('$baseUrl/ping'), const {}, null));
@@ -201,9 +170,10 @@ class Transport {
 
   /// Opens a Server-Sent Events stream for persisted-query [op]: `POST {baseUrl}/routing/{op.path}` with the
   /// `{ id, variables }` body and the SDK's contract/identity headers, requesting `text/event-stream`. Yields
-  /// one [SpiderSseEvent] per finished SSE record. A non-2xx response throws a [TransportError] before any
-  /// event is yielded, so it maps to the same taxonomy as the buffered calls. The apikey is stamped here — SSE
-  /// bypasses the buffered, retrying [_send] path, so it opens a single, un-retried streaming connection.
+  /// one [SpiderSseEvent] per finished SSE record. A non-2xx response, or a 2xx that isn't an event stream,
+  /// throws a [TransportError] before any event is yielded, so it maps to the same taxonomy as the buffered
+  /// calls. The apikey is stamped here — SSE bypasses the buffered, retrying [_send] path, so it opens a
+  /// single, un-retried streaming connection.
   Stream<SpiderSseEvent> sse(
       PersistedOp op, Map<String, dynamic> variables) async* {
     final headers = {
@@ -223,11 +193,18 @@ class Transport {
       } catch (_) {
         // The error body is best-effort detail; its absence doesn't change the status mapping.
       }
-      final env = _parseErrorEnvelope(body);
-      final detail = env.message ?? _trunc(body);
-      throw TransportError(TransportErrorKind.http,
-          'routing ${op.path} -> ${response.statusCode}: $detail',
-          httpStatus: response.statusCode, serverCode: env.code);
+      throw _routingHttpError(op, response.statusCode, body);
+    }
+    if (!_isEventStream(response.headers)) {
+      // The gateway answers a request it rejects before routing (e.g. a missing required variable) with the
+      // batch GraphQL error body, so it maps exactly like the batch call.
+      final body = await utf8.decodeStream(response.body);
+      final errors = _decodeJson(body, 'routing ${op.path}')['errors'];
+      if (errors is List && errors.isNotEmpty) {
+        throw graphqlErrorsToTransportError(errors, 'routing ${op.path}');
+      }
+      throw TransportError(TransportErrorKind.upstream,
+          'routing ${op.path} returned no event stream: ${_trunc(body)}');
     }
     yield* _parseSse(response.body);
   }
@@ -308,6 +285,69 @@ class Transport {
 
 const _defaultSseEvent = 'message';
 
+/// Maps a GraphQL `errors` array: a `BAD_REQUEST` extension becomes a typed badRequest naming its field;
+/// anything else is a generic upstream failure (→ server).
+TransportError graphqlErrorsToTransportError(
+    List<dynamic> errors, String where) {
+  for (final e in errors) {
+    final ext = e is Map ? e['extensions'] : null;
+    if (ext is Map && ext['code'] == 'BAD_REQUEST') {
+      return TransportError(TransportErrorKind.badRequest,
+          (e as Map)['message']?.toString() ?? 'bad request',
+          field: ext['field'] as String?);
+    }
+  }
+  final joined = errors.map((e) => e is Map ? e['message'] : e).join(', ');
+  return TransportError(TransportErrorKind.upstream, '$where errors: $joined');
+}
+
+bool _isEventStream(Map<String, String> headers) {
+  final type = headers['content-type'];
+  return type == null || type.toLowerCase().contains('text/event-stream');
+}
+
+// Gateway `error` codes for a persisted-query id it won't run: retired (410) or never registered (403).
+const _queryRetired = 'query_retired';
+const _persistedQueryRejected = 'persisted_query_rejected';
+
+TransportError _routingHttpError(PersistedOp op, int status, String body) {
+  final gatewayError = _gatewayError(body);
+  if (gatewayError == _queryRetired || status == 410) {
+    return TransportError(TransportErrorKind.queryRetired,
+        'routing ${op.path} -> $status: persisted query is retired',
+        httpStatus: status, serverCode: _queryRetired);
+  }
+  return httpFailure('routing ${op.path}', status, body,
+      serverCode: status == 403 && gatewayError == _persistedQueryRejected
+          ? _persistedQueryRejected
+          : null);
+}
+
+/// The [TransportError] for a non-2xx response ([where] is e.g. `GET /realtime/vehicles`): the error
+/// envelope's message (else the raw body), [serverCode] or the envelope's `code`, and for a 400 the field its
+/// message names.
+TransportError httpFailure(String where, int status, String body,
+    {String? serverCode}) {
+  final env = _parseErrorEnvelope(body);
+  return TransportError(TransportErrorKind.http,
+      '$where -> $status: ${env.message ?? _trunc(body)}',
+      httpStatus: status,
+      serverCode: serverCode ?? env.code,
+      field: _fieldNamedBy(status, env.message ?? body));
+}
+
+String? _gatewayError(String body) {
+  try {
+    final obj = jsonDecode(body);
+    if (obj is Map<String, dynamic> && obj['error'] is String) {
+      return obj['error'] as String;
+    }
+  } catch (_) {
+    // not the gateway's JSON rejection
+  }
+  return null;
+}
+
 Map<String, dynamic> _decodeJson(String body, String where) {
   try {
     return jsonDecode(body) as Map<String, dynamic>;
@@ -330,6 +370,14 @@ ErrorEnvelope _parseErrorEnvelope(String text) {
   }
   return const ErrorEnvelope(null, null);
 }
+
+// A 400 names the offending field in a fixed message shape: "<field> is out of range", "<field> is required"
+// or "<field> is invalid".
+final _fieldMessage =
+    RegExp(r'^([A-Za-z_]\w*) is (?:out of range|required|invalid)$');
+
+String? _fieldNamedBy(int status, String message) =>
+    status == 400 ? _fieldMessage.firstMatch(message.trim())?.group(1) : null;
 
 String _trunc(String s) => s.length > 300 ? s.substring(0, 300) : s;
 

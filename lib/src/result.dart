@@ -1,7 +1,6 @@
 import 'errors.dart';
 
-/// The result of every SDK call. Ordinary failures never throw — they surface as [Failure]. The one
-/// exception is a major contract mismatch, which throws [SpiderContractMismatchError] out of the call.
+/// The result of every SDK call. Ordinary failures never throw — they surface as [Failure].
 sealed class SpiderResult<T> {
   const SpiderResult();
 

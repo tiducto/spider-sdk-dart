@@ -10,6 +10,10 @@ enum SpiderErrorCode {
   notFound,
   server,
   rateLimited,
+
+  /// The persisted query behind this call is retired: the API no longer serves it (gateway `query_retired`,
+  /// HTTP 410).
+  queryRetired,
   decoding,
   unknown
 }
@@ -21,8 +25,9 @@ class SpiderError implements Exception {
   final int? httpStatus;
   final String? serverCode;
 
-  /// For a [SpiderErrorCode.badRequest] (a server validation failure — over-cap `searchWindow`, malformed
-  /// `via`, or a missing required field), the offending input field when the server names one. Null otherwise.
+  /// For a [SpiderErrorCode.badRequest] (an input the SDK rejects before sending, or one the server rejects as
+  /// missing, invalid or out of range), the offending input when one is named, by its wire name (e.g.
+  /// `maxWindow` for `maxWindowMinutes`, `timeRange` for `timeRangeSeconds`). Null otherwise.
   final String? field;
   final Object? cause;
 
@@ -33,22 +38,8 @@ class SpiderError implements Exception {
   String toString() => 'SpiderError(${code.name}: $message)';
 }
 
-/// Thrown (never returned) when the gateway declares a different MAJOR contract version than this SDK speaks.
-class SpiderContractMismatchError implements Exception {
-  final String expected;
-  final String actual;
-
-  const SpiderContractMismatchError(this.expected, this.actual);
-
-  String get message =>
-      'Spider contract mismatch: this SDK speaks $expected but the gateway declared $actual';
-
-  @override
-  String toString() => message;
-}
-
 // Internal transport errors, mapped to SpiderError by [toSpiderError].
-enum TransportErrorKind { http, noData, upstream, badRequest }
+enum TransportErrorKind { http, noData, upstream, badRequest, queryRetired }
 
 class TransportError implements Exception {
   final TransportErrorKind kind;
@@ -56,7 +47,7 @@ class TransportError implements Exception {
   final int? httpStatus;
   final String? serverCode;
 
-  /// Set only for [TransportErrorKind.badRequest]: the offending input field the server named, if any.
+  /// The offending input field the server named, if any: for [TransportErrorKind.badRequest], or an HTTP 400.
   final String? field;
 
   const TransportError(this.kind, this.message,
@@ -77,6 +68,13 @@ class ErrorEnvelope {
   const ErrorEnvelope(this.code, this.message);
 }
 
+/// A [SpiderErrorCode.badRequest] the SDK raises before sending. [field] is the wire name, and the message
+/// names only it (`<field> is out of range`, or `<field> is invalid` when [malformed]), never the value or limit.
+SpiderError invalidInput(String field, {bool malformed = false}) => SpiderError(
+    SpiderErrorCode.badRequest,
+    malformed ? '$field is invalid' : '$field is out of range',
+    field: field);
+
 /// Maps any thrown error into the public [SpiderError] taxonomy. Mirrors the TS SDK's `toSpiderError`.
 SpiderError toSpiderError(Object error) {
   if (error is TransportError) {
@@ -84,6 +82,7 @@ SpiderError toSpiderError(Object error) {
       case TransportErrorKind.http:
         final status = error.httpStatus ?? 0;
         final code = switch (status) {
+          400 => SpiderErrorCode.badRequest,
           401 || 403 => SpiderErrorCode.unauthorized,
           404 => SpiderErrorCode.notFound,
           408 || 504 => SpiderErrorCode.timeout,
@@ -92,7 +91,12 @@ SpiderError toSpiderError(Object error) {
           _ => SpiderErrorCode.unknown,
         };
         return SpiderError(code, error.message,
-            httpStatus: status, serverCode: error.serverCode);
+            httpStatus: status,
+            serverCode: error.serverCode,
+            field: error.field);
+      case TransportErrorKind.queryRetired:
+        return SpiderError(SpiderErrorCode.queryRetired, error.message,
+            httpStatus: error.httpStatus, serverCode: error.serverCode);
       case TransportErrorKind.noData:
         return SpiderError(SpiderErrorCode.notFound, error.message);
       case TransportErrorKind.badRequest:
