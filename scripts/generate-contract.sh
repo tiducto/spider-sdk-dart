@@ -103,10 +103,27 @@ if [[ ! -f "$WORK_DIR/gen/models.dart" ]]; then
 fi
 cp "$WORK_DIR/gen/models.dart" "$CONTRACT_DIR/routing.dart"
 
-# Normalize formatting of everything generated in this run.
-if command -v dart >/dev/null 2>&1; then
-    dart format "$CONTRACT_DIR/routing.dart" "$CONTRACT_DIR/persisted_queries.dart" "$CONTRACT_DIR/contract_version.dart" >/dev/null
+# Format everything generated in this run the way the build checks it: `dart pub get` first, since the
+# package's language version picks the format style. The contract sync runs without a Dart SDK, so fetch
+# the stable one (what the build uses) when none is on PATH.
+DART="$(command -v dart || true)"
+if [[ -z "$DART" ]]; then
+    case "$(uname -s)-$(uname -m)" in
+        Linux-x86_64) DART_PLATFORM=linux-x64 ;;
+        Linux-aarch64) DART_PLATFORM=linux-arm64 ;;
+        Darwin-arm64) DART_PLATFORM=macos-arm64 ;;
+        Darwin-x86_64) DART_PLATFORM=macos-x64 ;;
+        *) echo "ERROR: no dart on PATH and no Dart SDK download for $(uname -sm)" >&2; exit 1 ;;
+    esac
+    echo "==> No dart on PATH; fetching the stable Dart SDK ($DART_PLATFORM)"
+    curl -fsSL "https://storage.googleapis.com/dart-archive/channels/stable/release/latest/sdk/dartsdk-$DART_PLATFORM-release.zip" \
+        -o "$WORK_DIR/dart-sdk.zip"
+    unzip -q "$WORK_DIR/dart-sdk.zip" -d "$WORK_DIR"
+    DART="$WORK_DIR/dart-sdk/bin/dart"
 fi
+echo "==> Formatting the generated Dart"
+( cd "$REPO_ROOT" && "$DART" pub get >/dev/null \
+    && "$DART" format "$CONTRACT_DIR/routing.dart" "$CONTRACT_DIR/persisted_queries.dart" "$CONTRACT_DIR/contract_version.dart" >/dev/null )
 
 echo "==> Done. Wire models -> lib/src/contract/routing.dart"
 echo "    The stops + realtime wire types are hand-written (lib/src/stops.dart + lib/src/realtime.dart), not generated."
