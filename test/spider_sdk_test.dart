@@ -258,6 +258,23 @@ void main() {
       expect(vars.containsKey('last'), false);
     });
 
+    test('planNext and planPrevious repeat the reliability', () async {
+      const both =
+          '{"data":{"planConnection":{"edges":[],"pageInfo":{"hasNextPage":true,"hasPreviousPage":true,"startCursor":"c0","endCursor":"c1"},"routingErrors":[]}}}';
+      final (client, mock) = makeClient((_) => resp(both));
+      final first = await client.routing.plan(const PlanOptions(
+          origin: Location.stop('A'),
+          destination: Location.stop('B'),
+          reliability: Reliability.safe));
+      final route = (first as Success<Route>).value;
+      await client.routing.planNext(route);
+      await client.routing.planPrevious(route);
+      expect(mock.requests.map((r) => varsOf(r)['reliability']).toList(),
+          ['SAFE', 'SAFE', 'SAFE']);
+      expect(varsOf(mock.requests[1])['after'], 'c1');
+      expect(varsOf(mock.requests[2])['before'], 'c0');
+    });
+
     test('http error becomes a failure with a mapped code', () async {
       final (client, _) = makeClient(
           (_) => resp('{"code":"boom","message":"nope"}', status: 503));
@@ -542,6 +559,14 @@ void main() {
               .value;
       expect(departures.map((d) => d.typicalDelay).toList(),
           [const Duration(seconds: 45), null, null]);
+
+      final (stationClient, _) = makeClient((_) => resp(
+          '{"data":{"asStation":{"gtfsId":"1:ST","name":"Central","stoptimesWithoutPatterns":['
+          '{"serviceDay":1784066400,"scheduledDeparture":36000,"typicalDelay":0}]}}}'));
+      final fromStation = ((await stationClient.routing.departures('1:ST'))
+              as Success<List<Departure>>)
+          .value;
+      expect(fromStation.single.typicalDelay, Duration.zero);
     });
 
     test('departures always sends the default count and a 24 h time range',
@@ -1473,6 +1498,26 @@ void main() {
           bodyOf(mock.requests.single)['variables'] as Map<String, dynamic>;
       expect(vars['before'], 'c-prev');
       expect(vars.containsKey('after'), false);
+    });
+
+    test('planStreamNext and planStreamPrevious send the reliability',
+        () async {
+      const options = PlanOptions(
+          origin: Location.stop('A'),
+          destination: Location.stop('B'),
+          reliability: Reliability.standard);
+      final (client, mock) = makeStreamClient(200,
+          'event: pageInfo\ndata: {"hasNextPage":false,"hasPreviousPage":false}\n\n');
+      await client.routing
+          .planStreamNext(options,
+              targetResults: 5, maxWindowMinutes: 120, after: 'c-next')
+          .toList();
+      await client.routing
+          .planStreamPrevious(options,
+              targetResults: 5, maxWindowMinutes: 120, before: 'c-prev')
+          .toList();
+      expect(mock.requests.map((r) => varsOf(r)['reliability']).toList(),
+          ['STANDARD', 'STANDARD']);
     });
 
     test('planStream surfaces a non-2xx as a terminal failure', () async {
