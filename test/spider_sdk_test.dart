@@ -184,6 +184,46 @@ void main() {
           true);
     });
 
+    test('plan sends reliability only when set', () async {
+      for (final (reliability, expected) in [
+        (Reliability.standard, 'STANDARD'),
+        (Reliability.safe, 'SAFE'),
+        (Reliability.verySafe, 'VERY_SAFE'),
+      ]) {
+        final (client, mock) = makeClient((_) => resp(planBody));
+        await client.routing.plan(PlanOptions(
+            origin: const Location.stop('S1'),
+            destination: const Location.stop('S2'),
+            reliability: reliability));
+        expect(varsOf(mock.requests.single)['reliability'], expected);
+      }
+      final (client, mock) = makeClient((_) => resp(planBody));
+      await client.routing.plan(stopsAB);
+      expect(varsOf(mock.requests.single).containsKey('reliability'), false);
+    });
+
+    test('plan maps the typical arrival delay and the interline flag',
+        () async {
+      const body = '''
+      {"data":{"planConnection":{"edges":[{"cursor":"c1","node":{"numberOfTransfers":0,"legs":[
+        {"start":{"scheduledTime":"2026-08-21T10:00:00Z"},"end":{"scheduledTime":"2026-08-21T10:15:00Z"},"from":{"name":"A"},"to":{"name":"B"},"mode":"BUS","typicalArrivalDelay":90,"interlineWithPreviousLeg":false},
+        {"start":{"scheduledTime":"2026-08-21T10:15:00Z"},"end":{"scheduledTime":"2026-08-21T10:30:00Z"},"from":{"name":"B"},"to":{"name":"C"},"mode":"BUS","typicalArrivalDelay":null,"interlineWithPreviousLeg":true},
+        {"start":{"scheduledTime":"2026-08-21T10:30:00Z"},"end":{"scheduledTime":"2026-08-21T10:35:00Z"},"from":{"name":"C"},"to":{"name":"D"},"mode":"WALK","interlineWithPreviousLeg":null}
+      ]}}],"pageInfo":{"hasNextPage":false,"hasPreviousPage":false},"routingErrors":[]}}}''';
+      final (client, _) = makeClient((_) => resp(body));
+      final result = await client.routing.plan(const PlanOptions(
+          origin: Location.stop('A'),
+          destination: Location.stop('D'),
+          reliability: Reliability.standard));
+      final legs = (result as Success<Route>).value.edges.single.itinerary.legs;
+      expect(legs[0].typicalArrivalDelay, const Duration(seconds: 90));
+      expect(legs[0].interlineWithPreviousLeg, false);
+      expect(legs[1].typicalArrivalDelay, isNull);
+      expect(legs[1].interlineWithPreviousLeg, true);
+      expect(legs[2].typicalArrivalDelay, isNull);
+      expect(legs[2].interlineWithPreviousLeg, false);
+    });
+
     test('plan with arriveBy sets latestArrival', () async {
       final (client, mock) = makeClient((_) => resp(planBody));
       await client.routing.plan(PlanOptions(
@@ -216,6 +256,23 @@ void main() {
       expect(vars.containsKey('first'), false);
       expect(vars.containsKey('before'), false);
       expect(vars.containsKey('last'), false);
+    });
+
+    test('planNext and planPrevious repeat the reliability', () async {
+      const both =
+          '{"data":{"planConnection":{"edges":[],"pageInfo":{"hasNextPage":true,"hasPreviousPage":true,"startCursor":"c0","endCursor":"c1"},"routingErrors":[]}}}';
+      final (client, mock) = makeClient((_) => resp(both));
+      final first = await client.routing.plan(const PlanOptions(
+          origin: Location.stop('A'),
+          destination: Location.stop('B'),
+          reliability: Reliability.safe));
+      final route = (first as Success<Route>).value;
+      await client.routing.planNext(route);
+      await client.routing.planPrevious(route);
+      expect(mock.requests.map((r) => varsOf(r)['reliability']).toList(),
+          ['SAFE', 'SAFE', 'SAFE']);
+      expect(varsOf(mock.requests[1])['after'], 'c1');
+      expect(varsOf(mock.requests[2])['before'], 'c0');
     });
 
     test('http error becomes a failure with a mapped code', () async {
@@ -489,6 +546,29 @@ void main() {
       expect(bare.wheelchairAccessible, isNull);
     });
 
+    test('departures maps the typical delay, null when unknown', () async {
+      const body = '''
+      {"data":{"asStop":{"gtfsId":"S","name":"S","stoptimesWithoutPatterns":[
+        {"serviceDay":1784066400,"scheduledDeparture":36000,"typicalDelay":45},
+        {"serviceDay":1784066400,"scheduledDeparture":36600,"typicalDelay":null},
+        {"serviceDay":1784066400,"scheduledDeparture":37200}
+      ]}}}''';
+      final (client, _) = makeClient((_) => resp(body));
+      final departures =
+          ((await client.routing.departures('S')) as Success<List<Departure>>)
+              .value;
+      expect(departures.map((d) => d.typicalDelay).toList(),
+          [const Duration(seconds: 45), null, null]);
+
+      final (stationClient, _) = makeClient((_) => resp(
+          '{"data":{"asStation":{"gtfsId":"1:ST","name":"Central","stoptimesWithoutPatterns":['
+          '{"serviceDay":1784066400,"scheduledDeparture":36000,"typicalDelay":0}]}}}'));
+      final fromStation = ((await stationClient.routing.departures('1:ST'))
+              as Success<List<Departure>>)
+          .value;
+      expect(fromStation.single.typicalDelay, Duration.zero);
+    });
+
     test('departures always sends the default count and a 24 h time range',
         () async {
       final (client, mock) = makeClient(
@@ -572,6 +652,20 @@ void main() {
       expect(bare.routeColor, isNull);
       expect(bare.routeTextColor, isNull);
       expect(bare.wheelchairAccessible, isNull);
+    });
+
+    test('trip maps the typical delay per stop, null when unknown', () async {
+      const body = '''
+      {"data":{"trip":{"gtfsId":"T1","route":{"gtfsId":"1:R12"},"stoptimesForDate":[
+        {"serviceDay":1787263200,"scheduledArrival":36000,"typicalDelay":30,"stop":{"gtfsId":"S1","name":"A"}},
+        {"serviceDay":1787263200,"scheduledArrival":36600,"typicalDelay":null,"stop":{"gtfsId":"S2","name":"B"}},
+        {"serviceDay":1787263200,"scheduledArrival":37200,"stop":{"gtfsId":"S3","name":"C"}}
+      ]}}}''';
+      final (client, _) = makeClient((_) => resp(body));
+      final trip =
+          ((await client.routing.trip('T1')) as Success<TripDetails>).value;
+      expect(trip.stops.map((s) => s.typicalDelay).toList(),
+          [const Duration(seconds: 30), null, null]);
     });
 
     test('trip rejects a malformed service date without a request', () async {
@@ -1070,10 +1164,12 @@ void main() {
                   "mode": "BUS",
                   "start": { "scheduledTime": "2026-07-15T08:00:00Z", "estimated": { "time": "2026-07-15T08:01:00Z", "delay": "PT60S" } },
                   "end":   { "scheduledTime": "2026-07-15T08:30:00Z", "estimated": { "time": "2026-07-15T08:32:00Z", "delay": "PT120S" } },
+                  "typicalArrivalDelay": 150,
                   "realtimeState": "UPDATED", "realTime": true, "serviceDate": "2026-07-15",
                   "from": { "name": "Origin", "stop": { "gtfsId": "1:A" } },
                   "to":   { "name": "Dest",   "stop": { "gtfsId": "1:B" } },
-                  "route": { "gtfsId": "1:R12", "shortName": "12" }, "trip": { "gtfsId": "1:T" }
+                  "route": { "gtfsId": "1:R12", "shortName": "12" }, "trip": { "gtfsId": "1:T" },
+                  "interlineWithPreviousLeg": true
                 }
               ]
             }
@@ -1092,6 +1188,8 @@ void main() {
       expect(leg.mode, TransitMode.bus);
       expect(leg.startDelay, const Duration(seconds: 60));
       expect(leg.endDelay, const Duration(seconds: 120));
+      expect(leg.typicalArrivalDelay, const Duration(seconds: 150));
+      expect(leg.interlineWithPreviousLeg, true);
       expect(leg.startEstimated, '2026-07-15T08:01:00Z');
       expect(leg.isRealtime, true);
       expect(leg.realtimeState, RealtimeState.updated);
@@ -1162,8 +1260,8 @@ void main() {
       expect(parsePlanStreamRecord('weird', '{ "x": 1 }'), isNull);
     });
 
-    // Pins the stream request wire shape (targetResults/maxWindow + via, nulls omitted) so a contract regen
-    // can't silently rename or reorder the fields the SDK sends to /routing/plan-stream.
+    // Pins the stream request wire shape (targetResults/maxWindow + via + reliability, nulls omitted) so a
+    // contract regen can't silently rename or reorder the fields the SDK sends to /routing/plan-stream.
     test('stream variables serialize to the plan-stream wire shape', () {
       final variables = wire.PlanConnectionStreamVariables(
         dateTime:
@@ -1183,6 +1281,7 @@ void main() {
         ],
         targetResults: 5,
         maxWindow: 'PT3H',
+        reliability: wire.Reliability.safe,
       );
       expect(variables.toJson(), {
         'dateTime': {'earliestDeparture': '2026-07-15T08:00:00Z'},
@@ -1205,6 +1304,7 @@ void main() {
         ],
         'targetResults': 5,
         'maxWindow': 'PT3H',
+        'reliability': 'SAFE',
       });
     });
 
@@ -1236,9 +1336,11 @@ void main() {
 
       expect(events.length, 2);
       expect(events[0], isA<PlanStreamResult>());
-      expect(
-          (events[0] as PlanStreamResult).itineraries.single.legs.single.mode,
-          TransitMode.bus);
+      final leg =
+          (events[0] as PlanStreamResult).itineraries.single.legs.single;
+      expect(leg.mode, TransitMode.bus);
+      expect(leg.typicalArrivalDelay, isNull);
+      expect(leg.interlineWithPreviousLeg, false);
       final done = events[1] as PlanStreamDone;
       expect(done.pageInfo.endCursor, 'c-next');
       expect(done.pageInfo.hasNextPage, true);
@@ -1253,8 +1355,24 @@ void main() {
       final vars = body['variables'] as Map<String, dynamic>;
       expect(vars.containsKey('after'), false);
       expect(vars.containsKey('before'), false);
+      expect(vars.containsKey('reliability'), false);
       expect(vars['targetResults'], 4);
       expect(vars['maxWindow'], 'PT180M');
+    });
+
+    test('planStream sends reliability when set', () async {
+      final (client, mock) = makeStreamClient(200,
+          'event: pageInfo\ndata: {"hasNextPage":false,"hasPreviousPage":false}\n\n');
+      await client.routing
+          .planStream(
+              const PlanOptions(
+                  origin: Location.stop('A'),
+                  destination: Location.stop('B'),
+                  reliability: Reliability.verySafe),
+              targetResults: 5,
+              maxWindowMinutes: 120)
+          .toList();
+      expect(varsOf(mock.requests.single)['reliability'], 'VERY_SAFE');
     });
 
     test('planStream rejects a max window under 2 h without a request',
@@ -1380,6 +1498,26 @@ void main() {
           bodyOf(mock.requests.single)['variables'] as Map<String, dynamic>;
       expect(vars['before'], 'c-prev');
       expect(vars.containsKey('after'), false);
+    });
+
+    test('planStreamNext and planStreamPrevious send the reliability',
+        () async {
+      const options = PlanOptions(
+          origin: Location.stop('A'),
+          destination: Location.stop('B'),
+          reliability: Reliability.standard);
+      final (client, mock) = makeStreamClient(200,
+          'event: pageInfo\ndata: {"hasNextPage":false,"hasPreviousPage":false}\n\n');
+      await client.routing
+          .planStreamNext(options,
+              targetResults: 5, maxWindowMinutes: 120, after: 'c-next')
+          .toList();
+      await client.routing
+          .planStreamPrevious(options,
+              targetResults: 5, maxWindowMinutes: 120, before: 'c-prev')
+          .toList();
+      expect(mock.requests.map((r) => varsOf(r)['reliability']).toList(),
+          ['STANDARD', 'STANDARD']);
     });
 
     test('planStream surfaces a non-2xx as a terminal failure', () async {

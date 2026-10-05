@@ -274,6 +274,9 @@ class Leg {
   final Place from;
   final Place to;
   final Mode? mode;
+
+  /// Delay in seconds applied to this leg's arrival at the requested `reliability`; null when omitted or unknown.
+  final int? typicalArrivalDelay;
   final RealtimeState? realtimeState;
   final bool? realTime;
   final String? serviceDate;
@@ -283,6 +286,7 @@ class Leg {
   final double? duration;
   final double? accessibilityScore;
   final Trip? trip;
+  final bool? interlineWithPreviousLeg;
   final Geometry? legGeometry;
 
   const Leg({
@@ -291,6 +295,7 @@ class Leg {
     required this.from,
     required this.to,
     this.mode,
+    this.typicalArrivalDelay,
     this.realtimeState,
     this.realTime,
     this.serviceDate,
@@ -300,6 +305,7 @@ class Leg {
     this.duration,
     this.accessibilityScore,
     this.trip,
+    this.interlineWithPreviousLeg,
     this.legGeometry,
   });
 
@@ -310,6 +316,7 @@ class Leg {
         to: Place.fromJson(json['to'] as Map<String, dynamic>),
         mode:
             json['mode'] == null ? null : Mode.fromWire(json['mode'] as String),
+        typicalArrivalDelay: (json['typicalArrivalDelay'] as num?)?.toInt(),
         realtimeState: json['realtimeState'] == null
             ? null
             : RealtimeState.fromWire(json['realtimeState'] as String),
@@ -325,6 +332,7 @@ class Leg {
         trip: json['trip'] == null
             ? null
             : Trip.fromJson(json['trip'] as Map<String, dynamic>),
+        interlineWithPreviousLeg: json['interlineWithPreviousLeg'] as bool?,
         legGeometry: json['legGeometry'] == null
             ? null
             : Geometry.fromJson(json['legGeometry'] as Map<String, dynamic>),
@@ -336,6 +344,8 @@ class Leg {
         'from': from.toJson(),
         'to': to.toJson(),
         if (mode != null) 'mode': mode!.toJson(),
+        if (typicalArrivalDelay != null)
+          'typicalArrivalDelay': typicalArrivalDelay!,
         if (realtimeState != null) 'realtimeState': realtimeState!.toJson(),
         if (realTime != null) 'realTime': realTime!,
         if (serviceDate != null) 'serviceDate': serviceDate!,
@@ -346,6 +356,8 @@ class Leg {
         if (accessibilityScore != null)
           'accessibilityScore': accessibilityScore!,
         if (trip != null) 'trip': trip!.toJson(),
+        if (interlineWithPreviousLeg != null)
+          'interlineWithPreviousLeg': interlineWithPreviousLeg!,
         if (legGeometry != null) 'legGeometry': legGeometry!.toJson(),
       };
 }
@@ -1959,6 +1971,27 @@ class TransferPreferencesInput {
       };
 }
 
+/// Planning level: `STANDARD` plans arrivals with the p50 delay, `SAFE` p70, `VERY_SAFE` p90; omitted plans on the timetable.
+enum Reliability {
+  standard('STANDARD'),
+  safe('SAFE'),
+  verySafe('VERY_SAFE'),
+  unknown('UNKNOWN');
+
+  const Reliability(this.wire);
+
+  final String wire;
+
+  static Reliability fromWire(String? value) {
+    for (final e in Reliability.values) {
+      if (e.wire == value) return e;
+    }
+    return Reliability.unknown;
+  }
+
+  String toJson() => wire;
+}
+
 class PlanConnectionStreamVariables {
   final PlanDateTimeInput dateTime;
   final PlanLabeledLocationInput origin;
@@ -1968,6 +2001,9 @@ class PlanConnectionStreamVariables {
   final List<PlanViaLocationInput>? via;
   final PlanModesInput? modes;
   final PlanPreferencesInput? preferences;
+
+  /// Delay-aware planning level; omitted plans on the timetable.
+  final Reliability? reliability;
   final String? before;
   final String? after;
 
@@ -1980,6 +2016,7 @@ class PlanConnectionStreamVariables {
     this.via,
     this.modes,
     this.preferences,
+    this.reliability,
     this.before,
     this.after,
   });
@@ -2005,6 +2042,9 @@ class PlanConnectionStreamVariables {
             ? null
             : PlanPreferencesInput.fromJson(
                 json['preferences'] as Map<String, dynamic>),
+        reliability: json['reliability'] == null
+            ? null
+            : Reliability.fromWire(json['reliability'] as String),
         before: json['before'] as String?,
         after: json['after'] as String?,
       );
@@ -2018,6 +2058,7 @@ class PlanConnectionStreamVariables {
         if (via != null) 'via': via!.map((e) => e.toJson()).toList(),
         if (modes != null) 'modes': modes!.toJson(),
         if (preferences != null) 'preferences': preferences!.toJson(),
+        if (reliability != null) 'reliability': reliability!.toJson(),
         if (before != null) 'before': before!,
         if (after != null) 'after': after!,
       };
@@ -2112,6 +2153,9 @@ class Stoptime {
   final int? realtimeDeparture;
   final bool? realtime;
   final RealtimeState? realtimeState;
+
+  /// Typical (p50) delay at this stop in seconds for this trip on the service date's day type; null when unknown.
+  final int? typicalDelay;
   final TripStop? stop;
 
   const Stoptime({
@@ -2122,6 +2166,7 @@ class Stoptime {
     this.realtimeDeparture,
     this.realtime,
     this.realtimeState,
+    this.typicalDelay,
     this.stop,
   });
 
@@ -2135,6 +2180,7 @@ class Stoptime {
         realtimeState: json['realtimeState'] == null
             ? null
             : RealtimeState.fromWire(json['realtimeState'] as String),
+        typicalDelay: (json['typicalDelay'] as num?)?.toInt(),
         stop: json['stop'] == null
             ? null
             : TripStop.fromJson(json['stop'] as Map<String, dynamic>),
@@ -2149,6 +2195,7 @@ class Stoptime {
         if (realtimeDeparture != null) 'realtimeDeparture': realtimeDeparture!,
         if (realtime != null) 'realtime': realtime!,
         if (realtimeState != null) 'realtimeState': realtimeState!.toJson(),
+        if (typicalDelay != null) 'typicalDelay': typicalDelay!,
         if (stop != null) 'stop': stop!.toJson(),
       };
 }
@@ -2291,111 +2338,6 @@ class TripVariables {
       };
 }
 
-class PlanConnectionData {
-  final PlanConnection? planConnection;
-
-  const PlanConnectionData({
-    this.planConnection,
-  });
-
-  factory PlanConnectionData.fromJson(Map<String, dynamic> json) =>
-      PlanConnectionData(
-        planConnection: json['planConnection'] == null
-            ? null
-            : PlanConnection.fromJson(
-                json['planConnection'] as Map<String, dynamic>),
-      );
-
-  Map<String, dynamic> toJson() => {
-        if (planConnection != null) 'planConnection': planConnection!.toJson(),
-      };
-}
-
-class PlanConnectionResponse {
-  final PlanConnectionData? data;
-  final List<GraphQLError>? errors;
-
-  const PlanConnectionResponse({
-    this.data,
-    this.errors,
-  });
-
-  factory PlanConnectionResponse.fromJson(Map<String, dynamic> json) =>
-      PlanConnectionResponse(
-        data: json['data'] == null
-            ? null
-            : PlanConnectionData.fromJson(json['data'] as Map<String, dynamic>),
-        errors: (json['errors'] as List<dynamic>?)
-            ?.map((e) => GraphQLError.fromJson(e as Map<String, dynamic>))
-            .toList(),
-      );
-
-  Map<String, dynamic> toJson() => {
-        if (data != null) 'data': data!.toJson(),
-        if (errors != null) 'errors': errors!.map((e) => e.toJson()).toList(),
-      };
-}
-
-class PlanConnectionVariables {
-  final PlanDateTimeInput dateTime;
-  final PlanLabeledLocationInput origin;
-  final PlanLabeledLocationInput destination;
-  final String searchWindow;
-  final List<PlanViaLocationInput>? via;
-  final PlanModesInput? modes;
-  final PlanPreferencesInput? preferences;
-  final String? before;
-  final String? after;
-
-  const PlanConnectionVariables({
-    required this.dateTime,
-    required this.origin,
-    required this.destination,
-    required this.searchWindow,
-    this.via,
-    this.modes,
-    this.preferences,
-    this.before,
-    this.after,
-  });
-
-  factory PlanConnectionVariables.fromJson(Map<String, dynamic> json) =>
-      PlanConnectionVariables(
-        dateTime: PlanDateTimeInput.fromJson(
-            json['dateTime'] as Map<String, dynamic>),
-        origin: PlanLabeledLocationInput.fromJson(
-            json['origin'] as Map<String, dynamic>),
-        destination: PlanLabeledLocationInput.fromJson(
-            json['destination'] as Map<String, dynamic>),
-        searchWindow: json['searchWindow'] as String,
-        via: (json['via'] as List<dynamic>?)
-            ?.map(
-                (e) => PlanViaLocationInput.fromJson(e as Map<String, dynamic>))
-            .toList(),
-        modes: json['modes'] == null
-            ? null
-            : PlanModesInput.fromJson(json['modes'] as Map<String, dynamic>),
-        preferences: json['preferences'] == null
-            ? null
-            : PlanPreferencesInput.fromJson(
-                json['preferences'] as Map<String, dynamic>),
-        before: json['before'] as String?,
-        after: json['after'] as String?,
-      );
-
-  Map<String, dynamic> toJson() => {
-        'dateTime': dateTime.toJson(),
-        'origin': origin.toJson(),
-        'destination': destination.toJson(),
-        'searchWindow': searchWindow,
-        if (via != null) 'via': via!.map((e) => e.toJson()).toList(),
-        if (modes != null) 'modes': modes!.toJson(),
-        if (preferences != null) 'preferences': preferences!.toJson(),
-        if (before != null) 'before': before!,
-        if (after != null) 'after': after!,
-      };
-}
-
 class StopDeparturesStop {
   final String gtfsId;
   final String? platformCode;
@@ -2498,6 +2440,9 @@ class StopDeparturesStoptime {
   final int? realtimeDeparture;
   final bool? realtime;
   final RealtimeState? realtimeState;
+
+  /// Typical (p50) delay at this stop in seconds for this trip on the service date's day type; null when unknown.
+  final int? typicalDelay;
   final String? headsign;
   final StopDeparturesStop? stop;
   final StopDeparturesTrip? trip;
@@ -2508,6 +2453,7 @@ class StopDeparturesStoptime {
     this.realtimeDeparture,
     this.realtime,
     this.realtimeState,
+    this.typicalDelay,
     this.headsign,
     this.stop,
     this.trip,
@@ -2522,6 +2468,7 @@ class StopDeparturesStoptime {
         realtimeState: json['realtimeState'] == null
             ? null
             : RealtimeState.fromWire(json['realtimeState'] as String),
+        typicalDelay: (json['typicalDelay'] as num?)?.toInt(),
         headsign: json['headsign'] as String?,
         stop: json['stop'] == null
             ? null
@@ -2538,6 +2485,7 @@ class StopDeparturesStoptime {
         if (realtimeDeparture != null) 'realtimeDeparture': realtimeDeparture!,
         if (realtime != null) 'realtime': realtime!,
         if (realtimeState != null) 'realtimeState': realtimeState!.toJson(),
+        if (typicalDelay != null) 'typicalDelay': typicalDelay!,
         if (headsign != null) 'headsign': headsign!,
         if (stop != null) 'stop': stop!.toJson(),
         if (trip != null) 'trip': trip!.toJson(),
@@ -2660,6 +2608,119 @@ class StopDeparturesVariables {
         'numberOfDepartures': numberOfDepartures,
         'timeRange': timeRange,
         if (startTime != null) 'startTime': startTime!,
+      };
+}
+
+class PlanConnectionData {
+  final PlanConnection? planConnection;
+
+  const PlanConnectionData({
+    this.planConnection,
+  });
+
+  factory PlanConnectionData.fromJson(Map<String, dynamic> json) =>
+      PlanConnectionData(
+        planConnection: json['planConnection'] == null
+            ? null
+            : PlanConnection.fromJson(
+                json['planConnection'] as Map<String, dynamic>),
+      );
+
+  Map<String, dynamic> toJson() => {
+        if (planConnection != null) 'planConnection': planConnection!.toJson(),
+      };
+}
+
+class PlanConnectionResponse {
+  final PlanConnectionData? data;
+  final List<GraphQLError>? errors;
+
+  const PlanConnectionResponse({
+    this.data,
+    this.errors,
+  });
+
+  factory PlanConnectionResponse.fromJson(Map<String, dynamic> json) =>
+      PlanConnectionResponse(
+        data: json['data'] == null
+            ? null
+            : PlanConnectionData.fromJson(json['data'] as Map<String, dynamic>),
+        errors: (json['errors'] as List<dynamic>?)
+            ?.map((e) => GraphQLError.fromJson(e as Map<String, dynamic>))
+            .toList(),
+      );
+
+  Map<String, dynamic> toJson() => {
+        if (data != null) 'data': data!.toJson(),
+        if (errors != null) 'errors': errors!.map((e) => e.toJson()).toList(),
+      };
+}
+
+class PlanConnectionVariables {
+  final PlanDateTimeInput dateTime;
+  final PlanLabeledLocationInput origin;
+  final PlanLabeledLocationInput destination;
+  final String searchWindow;
+  final List<PlanViaLocationInput>? via;
+  final PlanModesInput? modes;
+  final PlanPreferencesInput? preferences;
+
+  /// Delay-aware planning level; omitted plans on the timetable.
+  final Reliability? reliability;
+  final String? before;
+  final String? after;
+
+  const PlanConnectionVariables({
+    required this.dateTime,
+    required this.origin,
+    required this.destination,
+    required this.searchWindow,
+    this.via,
+    this.modes,
+    this.preferences,
+    this.reliability,
+    this.before,
+    this.after,
+  });
+
+  factory PlanConnectionVariables.fromJson(Map<String, dynamic> json) =>
+      PlanConnectionVariables(
+        dateTime: PlanDateTimeInput.fromJson(
+            json['dateTime'] as Map<String, dynamic>),
+        origin: PlanLabeledLocationInput.fromJson(
+            json['origin'] as Map<String, dynamic>),
+        destination: PlanLabeledLocationInput.fromJson(
+            json['destination'] as Map<String, dynamic>),
+        searchWindow: json['searchWindow'] as String,
+        via: (json['via'] as List<dynamic>?)
+            ?.map(
+                (e) => PlanViaLocationInput.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        modes: json['modes'] == null
+            ? null
+            : PlanModesInput.fromJson(json['modes'] as Map<String, dynamic>),
+        preferences: json['preferences'] == null
+            ? null
+            : PlanPreferencesInput.fromJson(
+                json['preferences'] as Map<String, dynamic>),
+        reliability: json['reliability'] == null
+            ? null
+            : Reliability.fromWire(json['reliability'] as String),
+        before: json['before'] as String?,
+        after: json['after'] as String?,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'dateTime': dateTime.toJson(),
+        'origin': origin.toJson(),
+        'destination': destination.toJson(),
+        'searchWindow': searchWindow,
+        if (via != null) 'via': via!.map((e) => e.toJson()).toList(),
+        if (modes != null) 'modes': modes!.toJson(),
+        if (preferences != null) 'preferences': preferences!.toJson(),
+        if (reliability != null) 'reliability': reliability!.toJson(),
+        if (before != null) 'before': before!,
+        if (after != null) 'after': after!,
       };
 }
 

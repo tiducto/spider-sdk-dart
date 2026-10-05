@@ -26,6 +26,10 @@ class Leg {
   final String? endEstimated;
   final Duration? startDelay;
   final Duration? endDelay;
+
+  /// The typical delay planned into this leg's arrival at the requested [PlanOptions.reliability]; null when no
+  /// reliability was requested or the trip has no delay history.
+  final Duration? typicalArrivalDelay;
   final bool isRealtime;
   final RealtimeState? realtimeState;
   final String? serviceDate;
@@ -58,6 +62,10 @@ class Leg {
   final double? distanceMeters;
   final double? durationSeconds;
   final String? tripGtfsId;
+
+  /// Whether the rider stays on the same vehicle from the previous leg (it continues as another trip, often
+  /// under another line); such a change isn't counted in [Itinerary.numberOfTransfers].
+  final bool interlineWithPreviousLeg;
   final BikesAllowed? bikesAllowed;
   final double? accessibilityScore;
   final WheelchairBoarding? fromWheelchair;
@@ -71,6 +79,7 @@ class Leg {
     this.endEstimated,
     this.startDelay,
     this.endDelay,
+    this.typicalArrivalDelay,
     this.isRealtime = false,
     this.realtimeState,
     this.serviceDate,
@@ -91,6 +100,7 @@ class Leg {
     this.distanceMeters,
     this.durationSeconds,
     this.tripGtfsId,
+    this.interlineWithPreviousLeg = false,
     this.bikesAllowed,
     this.accessibilityScore,
     this.fromWheelchair,
@@ -176,6 +186,10 @@ class Departure {
   final int? realtimeTimeEpochMs;
   final bool isRealtime;
   final RealtimeState? realtimeState;
+
+  /// The typical (median) delay at this stop for this trip on the service date's day type; null when there is
+  /// no delay history.
+  final Duration? typicalDelay;
   final String? headsign;
   final String? tripGtfsId;
   final String? routeGtfsId;
@@ -208,6 +222,7 @@ class Departure {
     this.realtimeTimeEpochMs,
     required this.isRealtime,
     this.realtimeState,
+    this.typicalDelay,
     this.headsign,
     this.tripGtfsId,
     this.routeGtfsId,
@@ -234,6 +249,10 @@ class TripStop {
   final int? realtimeArrivalEpochMs;
   final int? realtimeDepartureEpochMs;
   final bool isRealtime;
+
+  /// The typical (median) delay at this stop for this trip on the service date's day type; null when there is
+  /// no delay history.
+  final Duration? typicalDelay;
   final WheelchairBoarding? wheelchairBoarding;
 
   /// The platform or track code (GTFS `platform_code`), when the feed gives one.
@@ -251,6 +270,7 @@ class TripStop {
     this.realtimeArrivalEpochMs,
     this.realtimeDepartureEpochMs,
     required this.isRealtime,
+    this.typicalDelay,
     this.wheelchairBoarding,
     this.platformCode,
     this.zoneId,
@@ -319,6 +339,10 @@ class PlanOptions {
   final int? maxTransfers;
   final int? searchWindowMinutes;
   final bool wheelchairAccessible;
+
+  /// Plans each arrival with the trip's typical delay at this level ([Leg.typicalArrivalDelay]); null plans on
+  /// the timetable.
+  final Reliability? reliability;
   const PlanOptions({
     required this.origin,
     required this.destination,
@@ -329,6 +353,7 @@ class PlanOptions {
     this.maxTransfers,
     this.searchWindowMinutes,
     this.wheelchairAccessible = false,
+    this.reliability,
   });
 }
 
@@ -344,6 +369,7 @@ class _PlanRequest {
   final int? maxTransfers;
   final int searchWindowMinutes;
   final bool wheelchairAccessible;
+  final Reliability? reliability;
   const _PlanRequest({
     required this.origin,
     required this.destination,
@@ -354,6 +380,7 @@ class _PlanRequest {
     this.maxTransfers,
     required this.searchWindowMinutes,
     required this.wheelchairAccessible,
+    this.reliability,
   });
 }
 
@@ -540,6 +567,7 @@ class SpiderRouting {
       preferences: _preferencesInput(request),
       targetResults: targetResults,
       maxWindow: 'PT${maxWindowMinutes}M',
+      reliability: _reliabilityInput(request.reliability),
       before: before,
       after: after,
     ).toJson();
@@ -569,6 +597,7 @@ class SpiderRouting {
       searchWindowMinutes:
           options.searchWindowMinutes ?? _defaultSearchWindowMinutes,
       wheelchairAccessible: options.wheelchairAccessible,
+      reliability: options.reliability,
     );
   }
 
@@ -595,6 +624,7 @@ class SpiderRouting {
       modes: _modesInput(request.allowedTransitModes),
       preferences: _preferencesInput(request),
       searchWindow: 'PT${request.searchWindowMinutes}M',
+      reliability: _reliabilityInput(request.reliability),
       before: before,
       after: after,
     ).toJson();
@@ -707,6 +737,9 @@ wire.PlanPreferencesInput? _preferencesInput(_PlanRequest request) {
       accessibility: accessibility, transit: transit);
 }
 
+wire.Reliability? _reliabilityInput(Reliability? reliability) =>
+    reliability == null ? null : wire.Reliability.fromWire(reliability.wire);
+
 // MARK: plan-stream record parsing
 
 /// Parses one finished SSE record (its `event` name + accumulated `data`) into a [PlanStreamEvent]; returns
@@ -806,6 +839,7 @@ Leg _mapLeg(wire.Leg w) {
     endEstimated: w.end.estimated?.time,
     startDelay: _durationFromWire(w.start.estimated?.delay),
     endDelay: _durationFromWire(w.end.estimated?.delay),
+    typicalArrivalDelay: _durationFromSeconds(w.typicalArrivalDelay),
     isRealtime: w.realTime ?? false,
     realtimeState: RealtimeState.fromWire(w.realtimeState?.wire),
     serviceDate: w.serviceDate,
@@ -826,6 +860,7 @@ Leg _mapLeg(wire.Leg w) {
     distanceMeters: w.distance,
     durationSeconds: w.duration,
     tripGtfsId: w.trip?.gtfsId,
+    interlineWithPreviousLeg: w.interlineWithPreviousLeg ?? false,
     bikesAllowed: BikesAllowed.fromWire(w.trip?.bikesAllowed?.wire),
     accessibilityScore: w.accessibilityScore,
     fromWheelchair:
@@ -849,6 +884,9 @@ Duration? _durationFromWire(String? raw) {
       : Duration(
           microseconds: (seconds * Duration.microsecondsPerSecond).round());
 }
+
+Duration? _durationFromSeconds(int? seconds) =>
+    seconds == null ? null : Duration(seconds: seconds);
 
 final _isoDurationPattern = RegExp(
     r'^(-)?P(?:T(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?)?$');
@@ -884,6 +922,7 @@ List<Departure> _mapDepartures(wire.StopDeparturesStop2 stop) {
       realtimeTimeEpochMs: rt != null ? (serviceDay + rt) * 1000 : null,
       isRealtime: st.realtime ?? false,
       realtimeState: RealtimeState.fromWire(st.realtimeState?.wire),
+      typicalDelay: _durationFromSeconds(st.typicalDelay),
       headsign: st.headsign,
       tripGtfsId: trip?.gtfsId,
       routeGtfsId: route?.gtfsId,
@@ -922,6 +961,7 @@ TripDetails _mapTrip(wire.TripTrip w) {
       realtimeArrivalEpochMs: at(st.realtimeArrival),
       realtimeDepartureEpochMs: at(st.realtimeDeparture),
       isRealtime: st.realtime ?? false,
+      typicalDelay: _durationFromSeconds(st.typicalDelay),
       wheelchairBoarding:
           WheelchairBoarding.fromWire(s.wheelchairBoarding?.wire),
       platformCode: s.platformCode,

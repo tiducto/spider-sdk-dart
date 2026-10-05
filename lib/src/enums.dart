@@ -174,3 +174,14 @@ enum InputField {
     return InputField.unknown;
   }
 }
+
+/// How much typical delay a plan budgets for at each arrival: [standard] the median (p50), [safe] the 70th
+/// percentile, [verySafe] the 90th.
+enum Reliability {
+  standard('STANDARD'),
+  safe('SAFE'),
+  verySafe('VERY_SAFE');
+
+  const Reliability(this.wire);
+  final String wire;
+}
