@@ -205,6 +205,7 @@ Future<void> planWithOptions(SpiderClient client) async {
     maxTransfers: 1,
     searchWindowMinutes: 120,
     allowedTransitModes: const [TransitMode.tram, TransitMode.bus],
+    reliability: Reliability.safe,
   ));
 
   if (result case Success(:final value)) {
