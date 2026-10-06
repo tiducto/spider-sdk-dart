@@ -460,7 +460,7 @@ class SpiderRouting {
         timeRange: timeRangeSeconds,
       ).toJson();
       final response = await _transport.postJson(
-          '/routing/departures', body, wire.DeparturesResponse.fromJson);
+          '/routing/v1/departures', body, wire.DeparturesResponse.fromJson);
       final stop = response.stop;
       if (stop == null) {
         throw TransportError(TransportErrorKind.noData,
@@ -484,7 +484,7 @@ class SpiderRouting {
       final body =
           wire.TripRequest(id: tripId, serviceDate: serviceDate).toJson();
       final response = await _transport.postJson(
-          '/routing/trip', body, wire.TripResponse.fromJson);
+          '/routing/v1/trip', body, wire.TripResponse.fromJson);
       final trip = response.trip;
       if (trip == null) {
         throw TransportError(TransportErrorKind.noData,
@@ -580,7 +580,8 @@ class SpiderRouting {
         after: after,
       ).toJson();
       // Reads to the end even after the terminal event, so the stream closes on its own `done`.
-      await for (final frame in _transport.sse('/routing/plan-stream', body)) {
+      await for (final frame
+          in _transport.sse('/routing/v1/plan-stream', body)) {
         if (terminal != null) continue;
         final event = parsePlanStreamRecord(frame.event, frame.data);
         if (event == null) continue;
@@ -594,7 +595,7 @@ class SpiderRouting {
     if (terminal == null) {
       yield PlanStreamFailure(toSpiderError(TransportError(
           TransportErrorKind.upstream,
-          'POST /routing/plan-stream ended without pageInfo')));
+          'POST /routing/v1/plan-stream ended without pageInfo')));
     }
   }
 
@@ -645,7 +646,7 @@ class SpiderRouting {
       after: after,
     ).toJson();
     final plan = await _transport.postJson(
-        '/routing/plan', body, wire.PlanTripResponse.fromJson);
+        '/routing/v1/plan', body, wire.PlanTripResponse.fromJson);
     final edges = plan.itineraries
         .map((i) => RouteEdge(_noCursor, _mapItinerary(i)))
         .toList();

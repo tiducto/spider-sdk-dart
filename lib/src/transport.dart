@@ -258,7 +258,7 @@ const _planLimits = {
   ),
 };
 
-/// The [TransportError] for a non-2xx response ([where] is e.g. `GET /realtime/vehicles`): the error
+/// The [TransportError] for a non-2xx response ([where] is e.g. `GET /realtime/v1/vehicles`): the error
 /// envelope's message (else the raw body), its `code`, and for a 400 the field it names. The body's `code`
 /// (else the gateway's `error`) decides whatever the status: a plan-limit code maps to its own kind, with the
 /// body's trimmed message or its fixed wording when that is blank; `query_retired`, like any 410, is

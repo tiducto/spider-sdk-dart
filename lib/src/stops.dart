@@ -134,7 +134,7 @@ class SpiderStops {
     final body = _buildSearchRequest(filter);
     try {
       final stops = await _transport.postJson(
-          '/stops/search', body, _parseSearchResponse);
+          '/stops/v1/search', body, _parseSearchResponse);
       return Success(stops);
     } catch (e) {
       return Failure(toSpiderError(e));
@@ -151,7 +151,7 @@ class SpiderStops {
         'limit': 1,
       };
       final stops = await _transport.postJson(
-          '/stops/search', body, _parseSearchResponse);
+          '/stops/v1/search', body, _parseSearchResponse);
       return Success(stops.isEmpty ? null : stops.first);
     } catch (e) {
       return Failure(toSpiderError(e));

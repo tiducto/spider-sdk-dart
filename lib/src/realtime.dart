@@ -256,7 +256,7 @@ class SpiderRealtime {
     }
     if (tripIds.length > _maxTripIds) return Failure(invalidInput('tripIds'));
     try {
-      final json = await _transport.getJson('/realtime/vehicles', _identity,
+      final json = await _transport.getJson('/realtime/v1/vehicles', _identity,
           query: {'tripIds': tripIds.join(',')});
       final vehicles = (json['vehicles'] as List<dynamic>? ?? const [])
           .map((v) => _mapVehicle(v as Map<String, dynamic>))
@@ -276,7 +276,8 @@ class SpiderRealtime {
   /// The live vehicle for a single trip. A 404 is a normal "no vehicle currently reporting", not an error.
   Future<SpiderResult<LiveVehicleUpdate>> vehicleForTrip(String tripId) async {
     try {
-      final path = '/realtime/vehicles/by-trip/${Uri.encodeComponent(tripId)}';
+      final path =
+          '/realtime/v1/vehicles/by-trip/${Uri.encodeComponent(tripId)}';
       final resp = await _transport.getRaw(path);
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
         final failure = httpFailure('GET $path', resp.statusCode, resp.body);
@@ -319,7 +320,7 @@ class SpiderRealtime {
             .toList(),
       };
       final json =
-          await _transport.postJson('/realtime/delays', body, _identity);
+          await _transport.postJson('/realtime/v1/delays', body, _identity);
       final groups = (json['results'] as List<dynamic>? ?? const [])
           .map((g) => _mapDelayGroup(g as Map<String, dynamic>))
           .toList();
@@ -337,7 +338,7 @@ class SpiderRealtime {
   /// All active service alerts for the environment.
   Future<SpiderResult<ServiceAlerts>> alerts() async {
     try {
-      final json = await _transport.getJson('/realtime/alerts', _identity);
+      final json = await _transport.getJson('/realtime/v1/alerts', _identity);
       final alerts = (json['alerts'] as List<dynamic>? ?? const [])
           .map((a) => _mapAlert(a as Map<String, dynamic>))
           .toList();

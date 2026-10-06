@@ -123,7 +123,7 @@ void main() {
       expect(route.pageInfo.hasNextPage, true);
 
       final req = mock.requests[0];
-      expect(req.uri.path, '/routing/plan');
+      expect(req.uri.path, '/routing/v1/plan');
       expect(req.method, 'POST');
       expect(req.headers['apikey'], 'secret-key');
       expect(req.headers['x-spider-contract-version'], contractVersion);
@@ -367,7 +367,7 @@ void main() {
       expect(error.serverCode, 'bad_request');
       expect(error.field, 'preferences.street.bicycle');
       expect(error.message,
-          'POST /routing/plan -> 400: preferences.street.bicycle is not allowed');
+          'POST /routing/v1/plan -> 400: preferences.street.bicycle is not allowed');
     });
 
     test('the body field wins over the field the message names', () async {
@@ -656,13 +656,13 @@ void main() {
 
     test(
         'departures posts the default count and a 24 h time range to '
-        '/routing/departures', () async {
+        '/routing/v1/departures', () async {
       final (client, mock) =
           makeClient((_) => resp('{"stop":{"gtfsId":"S","name":"S"}}'));
       await client.routing.departures('S');
       final req = mock.requests.single;
       expect(req.method, 'POST');
-      expect(req.uri.path, '/routing/departures');
+      expect(req.uri.path, '/routing/v1/departures');
       expect(req.headers['content-type'], 'application/json');
       expect(bodyOf(req),
           {'id': 'S', 'numberOfDepartures': 30, 'timeRange': 86400});
@@ -711,7 +711,7 @@ void main() {
       expect(result, isA<Success<TripDetails>>());
       final req = mock.requests.single;
       expect(req.method, 'POST');
-      expect(req.uri.path, '/routing/trip');
+      expect(req.uri.path, '/routing/v1/trip');
       expect(bodyOf(req), {'id': 'T1'});
     });
 
@@ -815,6 +815,8 @@ void main() {
       final stops = (result as Success<List<Stop>>).value;
       expect(stops.length, 1);
       expect(stops[0].city, 'Example City');
+      expect(mock.requests[0].method, 'POST');
+      expect(mock.requests[0].uri.path, '/stops/v1/search');
       final body2 = bodyOf(mock.requests[0]);
       expect(body2['q'], 'Main');
       expect(body2['filter'], r'country = "CZ" AND city = "Br\"no"');
@@ -1006,6 +1008,23 @@ void main() {
       expect(mock.requests[0].uri.queryParameters['tripIds'], 'T1,T9');
     });
 
+    test('each call targets its /v1 path', () async {
+      final calls = <(String, String), Future<Object?> Function(SpiderClient)>{
+        ('GET', '/realtime/v1/vehicles'): (c) => c.realtime.vehicles(['T1']),
+        ('GET', '/realtime/v1/vehicles/by-trip/T1'): (c) =>
+            c.realtime.vehicleForTrip('T1'),
+        ('POST', '/realtime/v1/delays'): (c) =>
+            c.realtime.delays(['T1'], '2026-07-15'),
+        ('GET', '/realtime/v1/alerts'): (c) => c.realtime.alerts(),
+      };
+      for (final MapEntry(key: (method, path), value: call) in calls.entries) {
+        final (client, mock) = makeClient((_) => resp('{}'));
+        await call(client);
+        final req = mock.requests.single;
+        expect((req.method, req.uri.path), (method, path));
+      }
+    });
+
     test('vehicles keeps feed-prefixed ids as the service sends them',
         () async {
       const body =
@@ -1078,7 +1097,7 @@ void main() {
 
       final req = mock.requests[0];
       expect(req.method, 'POST');
-      expect(req.uri.path, '/realtime/delays');
+      expect(req.uri.path, '/realtime/v1/delays');
       expect(bodyOf(req)['queries'], [
         {
           'serviceDate': '2026-07-15',
@@ -1467,7 +1486,7 @@ void main() {
 
       final req = mock.requests.single;
       expect(req.method, 'POST');
-      expect(req.uri.path, '/routing/plan-stream');
+      expect(req.uri.path, '/routing/v1/plan-stream');
       expect(req.headers['apikey'], 'secret-key');
       expect(req.headers['accept'], 'text/event-stream');
       expect(req.headers['content-type'], 'application/json');
