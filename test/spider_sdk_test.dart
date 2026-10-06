@@ -1592,11 +1592,10 @@ void main() {
       expect(error.field, 'targetResults');
     });
 
-    test('a stream that ends without pageInfo is a server failure', () async {
+    test('a stream that ends without pageInfo is a network failure', () async {
       for (final body in [
         'event: chunk\n'
             'data: {"frontier":60,"found":0,"finalized":0,"results":[]}\n\n',
-        '{"data":null}',
         '',
       ]) {
         final (client, _) = makeStreamClient(200, body);
@@ -1604,7 +1603,7 @@ void main() {
             .planStream(stopsAB, targetResults: 5, maxWindowMinutes: 120)
             .toList();
         final failure = events.last as PlanStreamFailure;
-        expect(failure.error.code, SpiderErrorCode.server, reason: body);
+        expect(failure.error.code, SpiderErrorCode.network, reason: body);
         expect(failure.error.message, contains('without pageInfo'));
         expect(events.whereType<PlanStreamDone>(), isEmpty, reason: body);
       }

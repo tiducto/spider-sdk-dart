@@ -500,8 +500,8 @@ class SpiderRouting {
   /// forward, emitting them as they finalize instead of one batched page. Cold and cancellable: listening
   /// starts the request, cancelling the subscription stops the sweep. Each [PlanStreamResult] carries
   /// itineraries with realtime delays already applied to their legs; a terminal [PlanStreamDone] then carries
-  /// the continuation paging info (or a terminal [PlanStreamFailure]; a stream that ends without its paging info
-  /// is one, [SpiderErrorCode.server]).
+  /// the continuation paging info (or a terminal [PlanStreamFailure]; a stream cut before its paging info is one,
+  /// [SpiderErrorCode.network], like a dropped connection).
   ///
   /// [targetResults] is how many itineraries the sweep aims for, from 1 up to the environment's result count.
   /// [maxWindowMinutes] caps how far the sweep searches: at least 120 (2 h), up to the environment's maximum
@@ -593,9 +593,8 @@ class SpiderRouting {
       return;
     }
     if (terminal == null) {
-      yield PlanStreamFailure(toSpiderError(TransportError(
-          TransportErrorKind.upstream,
-          'POST /routing/v1/plan-stream ended without pageInfo')));
+      yield const PlanStreamFailure(SpiderError(SpiderErrorCode.network,
+          'POST /routing/v1/plan-stream ended without pageInfo'));
     }
   }
 
