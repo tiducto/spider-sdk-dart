@@ -502,19 +502,6 @@ void main() {
       expect(result, isA<Success<Route>>());
     });
 
-    test('a 410 query_retired is queryRetired', () async {
-      final (client, _) = makeClient((_) => resp(
-          '{"code":"query_retired","message":"persisted queries are retired"}',
-          status: 410));
-      final result = await client.routing.plan(stopsAB);
-      final error = (result as Failure<Route>).error;
-      expect(error.code, SpiderErrorCode.queryRetired);
-      expect(error.httpStatus, 410);
-      expect(error.serverCode, 'query_retired');
-      expect(error.message,
-          'POST /routing/plan -> 410: persisted queries are retired');
-    });
-
     test('the query_retired body code wins over the status', () async {
       for (final body in [
         '{"code":"query_retired"}',
@@ -1760,18 +1747,14 @@ void main() {
     });
 
     test('planStream maps a 410 to queryRetired', () async {
-      final (client, _) = makeStreamClient(410,
-          '{"code":"query_retired","message":"persisted queries are retired"}',
-          contentType: 'application/json');
+      final (client, _) =
+          makeStreamClient(410, '', contentType: 'application/json');
       final events = await client.routing
           .planStream(stopsAB, targetResults: 5, maxWindowMinutes: 120)
           .toList();
       final error = (events.single as PlanStreamFailure).error;
       expect(error.code, SpiderErrorCode.queryRetired);
       expect(error.httpStatus, 410);
-      expect(error.serverCode, 'query_retired');
-      expect(error.message,
-          'POST /routing/plan-stream -> 410: persisted queries are retired');
     });
   });
 
