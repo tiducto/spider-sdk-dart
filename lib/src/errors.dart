@@ -11,8 +11,7 @@ enum SpiderErrorCode {
   server,
   rateLimited,
 
-  /// The API part this call uses is retired: the API no longer serves it (HTTP 410, `query_retired`). A newer
-  /// SDK version calls its successor.
+  /// The API no longer serves this call (HTTP 410, or a `query_retired` body code).
   queryRetired,
 
   /// The project has reached its plan's trip planning limit, so trip planning (`plan`, `planStream`) is refused;
@@ -33,10 +32,7 @@ class SpiderError implements Exception {
   final int? httpStatus;
   final String? serverCode;
 
-  /// For a [SpiderErrorCode.badRequest] (an input the SDK rejects before sending, or one the server rejects as
-  /// missing, invalid, out of range or not allowed), the offending input when one is named, by its wire name as a
-  /// dot path from the request body root (e.g. `maxWindow` for `maxWindowMinutes`,
-  /// `preferences.transit.transfer.maximumTransfers` for `maxTransfers`). Null otherwise.
+  /// The rejected input of a [SpiderErrorCode.badRequest] as a wire dot path (e.g. `maxWindow`), else null.
   final String? field;
   final Object? cause;
 
@@ -77,8 +73,7 @@ class SpiderDecodingError implements Exception {
   const SpiderDecodingError(this.message, this.cause);
 }
 
-/// A parsed error body: the contract's `code`, `message` and `field`, and the gateway's own `error` code, each
-/// possibly absent.
+/// A parsed error body: the contract's `code`, `message` and `field`, and the gateway's `error`.
 class ErrorEnvelope {
   final String? code;
   final String? message;

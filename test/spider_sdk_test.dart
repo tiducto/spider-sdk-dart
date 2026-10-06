@@ -1356,7 +1356,7 @@ void main() {
       expect(event.routingErrors, isEmpty);
     });
 
-    // Routing outcomes ride on the terminal pageInfo, shaped like batch planConnection's routingErrors.
+    // Routing outcomes ride on the terminal pageInfo, shaped like the batch plan's routingErrors.
     test('pageInfo carries routing errors on the terminal Done', () {
       const data = '{ "hasNextPage": false, "hasPreviousPage": false, '
           '"routingErrors": ['
@@ -1399,8 +1399,7 @@ void main() {
       }
     });
 
-    // Pins the stream request wire shape (targetResults/maxWindow + via + reliability, nulls omitted) so a
-    // contract regen can't silently rename or reorder the fields the SDK sends to /routing/plan-stream.
+    // Pins the stream request wire shape so a contract regen can't silently rename or reorder its fields.
     test('the stream request serializes to the plan-stream wire shape', () {
       final variables = wire.PlanStreamRequest(
         dateTime:

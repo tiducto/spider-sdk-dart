@@ -500,8 +500,7 @@ class SpiderRouting {
   /// forward, emitting them as they finalize instead of one batched page. Cold and cancellable: listening
   /// starts the request, cancelling the subscription stops the sweep. Each [PlanStreamResult] carries
   /// itineraries with realtime delays already applied to their legs; a terminal [PlanStreamDone] then carries
-  /// the continuation paging info (or a terminal [PlanStreamFailure]; a stream cut before its paging info is one,
-  /// [SpiderErrorCode.network], like a dropped connection).
+  /// the continuation paging info (or a terminal [PlanStreamFailure], [SpiderErrorCode.network] when cut first).
   ///
   /// [targetResults] is how many itineraries the sweep aims for, from 1 up to the environment's result count.
   /// [maxWindowMinutes] caps how far the sweep searches: at least 120 (2 h), up to the environment's maximum
@@ -579,7 +578,7 @@ class SpiderRouting {
         before: before,
         after: after,
       ).toJson();
-      // Reads to the end even after the terminal event, so the stream closes on its own `done`.
+      // Drain past the terminal event: the gateway meters the stream at its own `done`.
       await for (final frame
           in _transport.sse('/routing/v1/plan-stream', body)) {
         if (terminal != null) continue;
@@ -752,10 +751,7 @@ wire.Reliability? _reliabilityInput(Reliability? reliability) =>
 
 // MARK: plan-stream record parsing
 
-/// Parses one finished SSE record (its `event` name + accumulated `data`) into a [PlanStreamEvent]; returns
-/// null for records the SDK doesn't surface (the `done` telemetry, heartbeats, blank data, unknown events). A
-/// malformed payload becomes a terminal [PlanStreamFailure] rather than throwing. Public so the wire-contract
-/// test exercises it directly, matching the batch plan's wire→domain mapping.
+/// One SSE record as a [PlanStreamEvent], a [PlanStreamFailure] when malformed, or null when not surfaced.
 PlanStreamEvent? parsePlanStreamRecord(String event, String data) {
   if (data.trim().isEmpty) return null;
   switch (event) {

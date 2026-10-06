@@ -78,8 +78,7 @@ class RetryConfig {
   const RetryConfig(this.maxAttempts);
 }
 
-/// Translates SDK calls into HTTP against the gateway: identity headers, JSON bodies, and the retry/backoff
-/// loop.
+/// HTTP against the gateway: identity headers, JSON bodies and the retry/backoff loop.
 class Transport {
   final String baseUrl;
   final String apiKey;
@@ -142,11 +141,7 @@ class Transport {
         SpiderHttpRequest('GET', Uri.parse('$baseUrl/ping'), const {}, null));
   }
 
-  /// Opens a Server-Sent Events stream: `POST {baseUrl}{path}` with the JSON [body] and the SDK's
-  /// contract/identity headers, requesting `text/event-stream`. Yields one [SpiderSseEvent] per finished SSE
-  /// record. A non-2xx response throws the same [TransportError] as the buffered calls before any event is
-  /// yielded. The apikey is stamped here — SSE bypasses the buffered, retrying [_send] path, so it opens a
-  /// single, un-retried streaming connection.
+  /// One un-retried SSE `POST {baseUrl}{path}`; it bypasses [_send], so it stamps the apikey itself.
   Stream<SpiderSseEvent> sse(String path, Map<String, dynamic> body) async* {
     final headers = {
       ..._contractHeaders(json: true),
@@ -245,8 +240,7 @@ const _defaultSseEvent = 'message';
 
 const _queryRetired = 'query_retired';
 
-// Gateway codes for a request the project's plan refuses (403), with each one's message when the body carries
-// none. Only the body code identifies them, never the status.
+// Plan-limit refusal codes with their fallback messages; only the body code identifies them, never the status.
 const _planLimits = {
   'planning_limit_reached': (
     TransportErrorKind.planningLimitReached,
@@ -258,11 +252,7 @@ const _planLimits = {
   ),
 };
 
-/// The [TransportError] for a non-2xx response ([where] is e.g. `GET /realtime/v1/vehicles`): the error
-/// envelope's message (else the raw body), its `code`, and for a 400 the field it names. The body's `code`
-/// (else the gateway's `error`) decides whatever the status: a plan-limit code maps to its own kind, with the
-/// body's trimmed message or its fixed wording when that is blank; `query_retired`, like any 410, is
-/// [TransportErrorKind.queryRetired].
+/// A plan-limit or `query_retired` body code (`code`, else gateway `error`) wins over the status.
 TransportError httpFailure(String where, int status, String body) {
   final env = _parseErrorEnvelope(body);
   final bodyCode = env.code ?? env.error;
@@ -316,8 +306,6 @@ ErrorEnvelope _parseErrorEnvelope(String text) {
   return const ErrorEnvelope();
 }
 
-// A 400 names the offending field, as a dot path, in a fixed message shape: "<field> is out of range",
-// "<field> is required", "<field> is invalid" or "<field> is not allowed".
 final _fieldMessage = RegExp(
     r'^([A-Za-z_][A-Za-z0-9_.]*) is (?:out of range|required|invalid|not allowed)$');
 
