@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'package:http/http.dart' as http;
+import 'background.dart' if (dart.library.io) 'background_io.dart';
 import 'contract/contract_version.dart';
 import 'errors.dart';
 import 'identity.dart';
@@ -112,7 +113,7 @@ class Transport {
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
       throw httpFailure('POST $path', resp.statusCode, resp.body);
     }
-    return fromJson(_decodeJson(resp.body, 'POST $path'));
+    return _decodeResponse(resp.body, 'POST $path', fromJson);
   }
 
   Future<SpiderHttpResponse> getRaw(String path,
@@ -128,7 +129,7 @@ class Transport {
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
       throw httpFailure('GET $path', resp.statusCode, resp.body);
     }
-    return fromJson(_decodeJson(resp.body, 'GET $path'));
+    return _decodeResponse(resp.body, 'GET $path', fromJson);
   }
 
   /// Connection warm-up: one `GET {baseUrl}/ping` through the shared [_send] path, so it opens (or reuses) the
@@ -276,6 +277,16 @@ TransportError httpFailure(String where, int status, String body) {
           ? env.field ?? _fieldNamedBy(env.message ?? body)
           : null);
 }
+
+int backgroundDecodeMinLength = 50 * 1024;
+
+/// Build [work] in a top-level function: an isolate cannot be sent the client's sockets.
+Future<R> decodeInBackground<R>(String body, R Function() work) async =>
+    body.length < backgroundDecodeMinLength ? work() : runInBackground(work);
+
+Future<D> _decodeResponse<D>(
+        String body, String where, D Function(Map<String, dynamic>) fromJson) =>
+    decodeInBackground(body, () => fromJson(_decodeJson(body, where)));
 
 Map<String, dynamic> _decodeJson(String body, String where) {
   try {

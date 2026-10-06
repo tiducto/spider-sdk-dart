@@ -31,6 +31,8 @@ keeps its shape.
   paging info, whether it ends or the connection drops, ends with a `PlanStreamFailure` (`network`). Nothing
   follows the terminal `PlanStreamDone` or `PlanStreamFailure`. A non-2xx answer before the stream maps like
   the one-shot calls.
+- **A large response is decoded off the UI isolate.** A body of 50 KB or more is decoded and mapped (plan
+  polylines included) on a background isolate, so a Flutter UI never spends a frame on it. Web decodes inline.
 
 ### Deprecated
 

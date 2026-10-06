@@ -459,14 +459,13 @@ class SpiderRouting {
             : (startTime.millisecondsSinceEpoch / 1000).floor(),
         timeRange: timeRangeSeconds,
       ).toJson();
-      final response = await _transport.postJson(
-          '/routing/v1/departures', body, wire.DeparturesResponse.fromJson);
-      final stop = response.stop;
-      if (stop == null) {
+      final departures = await _transport.postJson(
+          '/routing/v1/departures', body, _decodeDepartures);
+      if (departures == null) {
         throw TransportError(TransportErrorKind.noData,
             'routing returned no stop or station for id=$stopId');
       }
-      return Success(_mapDepartures(stop));
+      return Success(departures);
     } catch (e) {
       return Failure(toSpiderError(e));
     }
@@ -483,14 +482,13 @@ class SpiderRouting {
     try {
       final body =
           wire.TripRequest(id: tripId, serviceDate: serviceDate).toJson();
-      final response = await _transport.postJson(
-          '/routing/v1/trip', body, wire.TripResponse.fromJson);
-      final trip = response.trip;
+      final trip =
+          await _transport.postJson('/routing/v1/trip', body, _decodeTrip);
       if (trip == null) {
         throw TransportError(TransportErrorKind.noData,
             'routing returned no trip for id=$tripId');
       }
-      return Success(_mapTrip(trip));
+      return Success(trip);
     } catch (e) {
       return Failure(toSpiderError(e));
     }
@@ -582,7 +580,7 @@ class SpiderRouting {
       await for (final frame
           in _transport.sse('/routing/v1/plan-stream', body)) {
         if (terminal != null) continue;
-        final event = parsePlanStreamRecord(frame.event, frame.data);
+        final event = await _parseRecordInBackground(frame.event, frame.data);
         if (event == null) continue;
         yield event;
         if (event is! PlanStreamResult) terminal = event;
@@ -643,27 +641,56 @@ class SpiderRouting {
       before: before,
       after: after,
     ).toJson();
-    final plan = await _transport.postJson(
-        '/routing/v1/plan', body, wire.PlanTripResponse.fromJson);
-    final edges = plan.itineraries
+    final page =
+        await _transport.postJson('/routing/v1/plan', body, _decodePlanPage);
+    return Route._(
+        edges: page.edges,
+        pageInfo: page.pageInfo,
+        routingErrors: page.routingErrors,
+        searchDateTime: page.searchDateTime,
+        request: request);
+  }
+}
+
+// MARK: response decoders
+
+typedef _PlanPage = ({
+  List<RouteEdge> edges,
+  RoutePageInfo pageInfo,
+  List<RoutingError> routingErrors,
+  String? searchDateTime,
+});
+
+_PlanPage _decodePlanPage(Map<String, dynamic> json) {
+  final plan = wire.PlanTripResponse.fromJson(json);
+  return (
+    edges: plan.itineraries
         .map((i) => RouteEdge(_noCursor, _mapItinerary(i)))
-        .toList();
-    final pageInfo = RoutePageInfo(
+        .toList(),
+    pageInfo: RoutePageInfo(
       startCursor: plan.pageInfo.startCursor,
       endCursor: plan.pageInfo.endCursor,
       hasNextPage: plan.pageInfo.hasNextPage,
       hasPreviousPage: plan.pageInfo.hasPreviousPage,
       searchWindowUsed: plan.pageInfo.searchWindowUsed,
-    );
-    final routingErrors = plan.routingErrors.map(_mapRoutingError).toList();
-    return Route._(
-        edges: edges,
-        pageInfo: pageInfo,
-        routingErrors: routingErrors,
-        searchDateTime: plan.searchDateTime,
-        request: request);
-  }
+    ),
+    routingErrors: plan.routingErrors.map(_mapRoutingError).toList(),
+    searchDateTime: plan.searchDateTime,
+  );
 }
+
+List<Departure>? _decodeDepartures(Map<String, dynamic> json) {
+  final stop = wire.DeparturesResponse.fromJson(json).stop;
+  return stop == null ? null : _mapDepartures(stop);
+}
+
+TripDetails? _decodeTrip(Map<String, dynamic> json) {
+  final trip = wire.TripResponse.fromJson(json).trip;
+  return trip == null ? null : _mapTrip(trip);
+}
+
+Future<PlanStreamEvent?> _parseRecordInBackground(String event, String data) =>
+    decodeInBackground(data, () => parsePlanStreamRecord(event, data));
 
 // MARK: request builders
 
