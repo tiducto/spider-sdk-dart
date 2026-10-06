@@ -1,6 +1,6 @@
 # spider_sdk (Dart / Flutter)
 
-The Dart SDK for **Spider** — the managed transit API by Tiducto. Trip planning, stop search, and live realtime data behind one typed client that ships the exact queries the gateway allows and attaches auth for you.
+The Dart SDK for **Spider** — the managed transit API by Tiducto. Trip planning, stop search, and live realtime data behind one typed client that speaks the published API contract and attaches auth for you.
 
 Native Dart package (single dependency: `package:http`), usable from Flutter (iOS/Android/web/desktop) and plain Dart. Sibling of the Kotlin, TypeScript, and Swift SDKs — same domain model, Dart idioms (`Future`, `Stream`, sealed classes).
 
@@ -8,7 +8,7 @@ Native Dart package (single dependency: `package:http`), usable from Flutter (iO
 
 ```yaml
 dependencies:
-  spider_sdk: ^1.1.0
+  spider_sdk: ^2.0.0
 ```
 
 ## Quickstart
@@ -50,7 +50,7 @@ Ordinary failures are values — every call returns a `SpiderResult<T>` (`Succes
 
 ## Contract & codegen
 
-The wire models under `lib/src/contract/` and the persisted-query ids are generated from the published contract by `scripts/generate-contract.sh` (via `tiducto/spider-codegen`) and committed — the package carries the types, not the spec. `client.contractVersion` reports the contract version this SDK speaks. Don't hand-edit generated files; re-run the script.
+The routing wire models under `lib/src/contract/` are generated from the published contract by `scripts/generate-contract.sh` (via `tiducto/spider-codegen`) and committed — the package carries the types, not the spec. `client.contractVersion` reports the contract version this SDK speaks. Don't hand-edit generated files; re-run the script.
 
 ## License
 
