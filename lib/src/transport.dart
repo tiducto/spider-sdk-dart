@@ -278,13 +278,9 @@ TransportError httpFailure(String where, int status, String body) {
           : null);
 }
 
-/// Bodies at least this long (dio's threshold) are decoded and mapped on a background isolate, so a Flutter UI
-/// isolate never spends a frame on them; below it, spawning the isolate costs more than the work.
 int backgroundDecodeMinLength = 50 * 1024;
 
-/// Runs [work], which decodes and maps the response [body], on a background isolate once the body reaches
-/// [backgroundDecodeMinLength]. Build [work] in a top-level function: a closure made inside a client method can
-/// capture the client, and an isolate cannot be sent its sockets.
+/// Build [work] in a top-level function: an isolate cannot be sent the client's sockets.
 Future<R> decodeInBackground<R>(String body, R Function() work) async =>
     body.length < backgroundDecodeMinLength ? work() : runInBackground(work);
 

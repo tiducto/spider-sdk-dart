@@ -653,8 +653,6 @@ class SpiderRouting {
 }
 
 // MARK: response decoders
-//
-// Top-level so a large response is decoded and mapped on a background isolate (see decodeInBackground).
 
 typedef _PlanPage = ({
   List<RouteEdge> edges,
