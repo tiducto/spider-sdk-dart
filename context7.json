@@ -19,6 +19,7 @@
   ],
   "rules": [
     "Construct one client with your environment base URL and API key, then reach a surface: SpiderClient('https://your-env-slug.api.tiducto.eu', apiKey).routing / .stops / .realtime.",
+    "The client calls the /routing/v1, /stops/v1 and /realtime/v1 operations on that host itself; there is no path setup step.",
     "Plan a trip with client.routing.plan(PlanOptions(origin: ..., destination: ...)); get stop departures with client.routing.departures(stopId) and a single trip with client.routing.trip(tripId).",
     "Search or geo-query stops through client.stops, and poll live vehicle positions, delays, and alerts through client.realtime.",
     "Every call returns a SpiderResult<T> you branch on (Success / Failure); ordinary failures never throw.",
