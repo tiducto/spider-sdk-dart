@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'contract/persisted_queries.dart';
 import 'contract/routing.dart' as wire;
 import 'enums.dart';
 import 'errors.dart';
@@ -67,6 +66,7 @@ class Leg {
   /// under another line); such a change isn't counted in [Itinerary.numberOfTransfers].
   final bool interlineWithPreviousLeg;
   final BikesAllowed? bikesAllowed;
+  @Deprecated('Always null: the API sends no accessibility score.')
   final double? accessibilityScore;
   final WheelchairBoarding? fromWheelchair;
   final WheelchairBoarding? toWheelchair;
@@ -116,6 +116,7 @@ class Itinerary {
   final int durationSeconds;
   final int? waitingTimeSeconds;
   final int numberOfTransfers;
+  @Deprecated('Always null: the API sends no accessibility score.')
   final double? accessibilityScore;
   final List<Leg> legs;
   const Itinerary({
@@ -129,8 +130,10 @@ class Itinerary {
   });
 }
 
-/// A paged itinerary with its cursor.
+/// One itinerary on a [Route] page.
 class RouteEdge {
+  @Deprecated(
+      'Always "NoCursor": page with Route.pageInfo through planNext / planPrevious.')
   final String cursor;
   final Itinerary itinerary;
   const RouteEdge(this.cursor, this.itinerary);
@@ -326,9 +329,10 @@ class TripDetails {
 /// neither = depart now). [allowedTransitModes] empty = all modes. [searchWindowMinutes] defaults to 60; the
 /// environment sets its maximum, and a window above it fails with [SpiderErrorCode.badRequest].
 ///
-/// Each [via] location takes 1–10 stop ids and a visit waits 0–24 h ([VisitVia.minimumWaitSeconds]); outside
-/// that the call fails with [SpiderErrorCode.badRequest] (field `via`) without a request. The environment sets
-/// how many via locations a plan may have.
+/// Each [via] location takes 1–10 stop ids (field `via`) and a visit waits 0–1 h ([VisitVia.minimumWaitSeconds],
+/// field `via.visit.minimumWaitTime`); a visit takes a stop, so a coordinate visit is `via is invalid`. Outside
+/// that the call fails with [SpiderErrorCode.badRequest] without a request. The environment sets how many via
+/// locations a plan may have.
 class PlanOptions {
   final Location origin;
   final Location destination;
@@ -389,7 +393,8 @@ const _defaultNumberOfDepartures = 30;
 const _maxTimeRangeSeconds = 24 * 60 * 60;
 const _minStreamWindowMinutes = 2 * 60;
 const _maxViaStopIds = 10;
-const _maxViaWaitSeconds = 24 * 60 * 60;
+const _maxViaWaitSeconds = 60 * 60;
+const _noCursor = 'NoCursor';
 
 // The transit modes valid in a modes filter — street/leg modes (WALK/BICYCLE/CAR/TRANSIT) must not reach it.
 const _wireTransitModes = {
@@ -422,13 +427,13 @@ class SpiderRouting {
     return _page(_makeRequest(options));
   }
 
-  /// The next window after [route], or null if there is none. Pages forward with `after` (no page-size count).
+  /// The next window after [route], or null if there is none: the same request plus `after`.
   Future<SpiderResult<Route>?> planNext(Route route) async {
     if (!route.pageInfo.hasNextPage) return null;
     return _page(route._request, after: route.pageInfo.endCursor);
   }
 
-  /// The previous window before [route], or null if there is none. Pages backward with `before` (no page-size count).
+  /// The previous window before [route], or null if there is none: the same request plus `before`.
   Future<SpiderResult<Route>?> planPrevious(Route route) async {
     if (!route.pageInfo.hasPreviousPage) return null;
     return _page(route._request, before: route.pageInfo.startCursor);
@@ -446,7 +451,7 @@ class SpiderRouting {
       return Failure(invalidInput('timeRange'));
     }
     try {
-      final variables = wire.StopDeparturesVariables(
+      final body = wire.DeparturesRequest(
         id: stopId,
         numberOfDepartures: numberOfDepartures,
         startTime: startTime == null
@@ -454,9 +459,9 @@ class SpiderRouting {
             : (startTime.millisecondsSinceEpoch / 1000).floor(),
         timeRange: timeRangeSeconds,
       ).toJson();
-      final data = await _transport.graphql(PersistedQueries.departures,
-          variables, wire.StopDeparturesData.fromJson);
-      final stop = data.asStop ?? data.asStation;
+      final response = await _transport.postJson(
+          '/routing/departures', body, wire.DeparturesResponse.fromJson);
+      final stop = response.stop;
       if (stop == null) {
         throw TransportError(TransportErrorKind.noData,
             'routing returned no stop or station for id=$stopId');
@@ -476,11 +481,11 @@ class SpiderRouting {
         serviceDate == null ? null : invalidServiceDate(serviceDate);
     if (invalid != null) return Failure(invalid);
     try {
-      final variables =
-          wire.TripVariables(id: tripId, serviceDate: serviceDate).toJson();
-      final data = await _transport.graphql(
-          PersistedQueries.trip, variables, wire.TripData.fromJson);
-      final trip = data.trip;
+      final body =
+          wire.TripRequest(id: tripId, serviceDate: serviceDate).toJson();
+      final response = await _transport.postJson(
+          '/routing/trip', body, wire.TripResponse.fromJson);
+      final trip = response.trip;
       if (trip == null) {
         throw TransportError(TransportErrorKind.noData,
             'routing returned no trip for id=$tripId');
@@ -495,7 +500,8 @@ class SpiderRouting {
   /// forward, emitting them as they finalize instead of one batched page. Cold and cancellable: listening
   /// starts the request, cancelling the subscription stops the sweep. Each [PlanStreamResult] carries
   /// itineraries with realtime delays already applied to their legs; a terminal [PlanStreamDone] then carries
-  /// the continuation paging info (or a terminal [PlanStreamFailure]).
+  /// the continuation paging info (or a terminal [PlanStreamFailure]; a stream that ends without its paging info
+  /// is one, [SpiderErrorCode.server]).
   ///
   /// [targetResults] is how many itineraries the sweep aims for, from 1 up to the environment's result count.
   /// [maxWindowMinutes] caps how far the sweep searches: at least 120 (2 h), up to the environment's maximum
@@ -553,32 +559,42 @@ class SpiderRouting {
       yield PlanStreamFailure(invalid);
       return;
     }
-    final request = _makeRequest(options);
-    final iso = request.time.toUtc().toIso8601String();
-    final dateTime = request.timeKind == _TimeKind.departAt
-        ? wire.PlanDateTimeInput(earliestDeparture: iso)
-        : wire.PlanDateTimeInput(latestArrival: iso);
-    final variables = wire.PlanConnectionStreamVariables(
-      dateTime: dateTime,
-      origin: _locationToInput(request.origin),
-      destination: _locationToInput(request.destination),
-      via: request.via.isEmpty ? null : request.via.map(_viaToInput).toList(),
-      modes: _modesInput(request.allowedTransitModes),
-      preferences: _preferencesInput(request),
-      targetResults: targetResults,
-      maxWindow: 'PT${maxWindowMinutes}M',
-      reliability: _reliabilityInput(request.reliability),
-      before: before,
-      after: after,
-    ).toJson();
+    PlanStreamEvent? terminal;
     try {
-      await for (final frame
-          in _transport.sse(PersistedQueries.planstream, variables)) {
+      final request = _makeRequest(options);
+      final iso = request.time.toUtc().toIso8601String();
+      final dateTime = request.timeKind == _TimeKind.departAt
+          ? wire.PlanDateTimeInput(earliestDeparture: iso)
+          : wire.PlanDateTimeInput(latestArrival: iso);
+      final body = wire.PlanStreamRequest(
+        dateTime: dateTime,
+        origin: _locationToInput(request.origin),
+        destination: _locationToInput(request.destination),
+        via: request.via.isEmpty ? null : request.via.map(_viaToInput).toList(),
+        modes: _modesInput(request.allowedTransitModes),
+        preferences: _preferencesInput(request),
+        targetResults: targetResults,
+        maxWindow: 'PT${maxWindowMinutes}M',
+        reliability: _reliabilityInput(request.reliability),
+        before: before,
+        after: after,
+      ).toJson();
+      // Reads to the end even after the terminal event, so the stream closes on its own `done`.
+      await for (final frame in _transport.sse('/routing/plan-stream', body)) {
+        if (terminal != null) continue;
         final event = parsePlanStreamRecord(frame.event, frame.data);
-        if (event != null) yield event;
+        if (event == null) continue;
+        yield event;
+        if (event is! PlanStreamResult) terminal = event;
       }
     } catch (e) {
-      yield PlanStreamFailure(toSpiderError(e));
+      if (terminal == null) yield PlanStreamFailure(toSpiderError(e));
+      return;
+    }
+    if (terminal == null) {
+      yield PlanStreamFailure(toSpiderError(TransportError(
+          TransportErrorKind.upstream,
+          'POST /routing/plan-stream ended without pageInfo')));
     }
   }
 
@@ -616,7 +632,7 @@ class SpiderRouting {
     final dateTime = request.timeKind == _TimeKind.departAt
         ? wire.PlanDateTimeInput(earliestDeparture: iso)
         : wire.PlanDateTimeInput(latestArrival: iso);
-    final variables = wire.PlanConnectionVariables(
+    final body = wire.PlanTripRequest(
       dateTime: dateTime,
       origin: _locationToInput(request.origin),
       destination: _locationToInput(request.destination),
@@ -628,15 +644,10 @@ class SpiderRouting {
       before: before,
       after: after,
     ).toJson();
-    final data = await _transport.graphql(
-        PersistedQueries.plan, variables, wire.PlanConnectionData.fromJson);
-    final plan = data.planConnection;
-    if (plan == null) {
-      throw TransportError(
-          TransportErrorKind.noData, 'routing returned no plan data');
-    }
-    final edges = (plan.edges ?? [])
-        .map((e) => RouteEdge(e.cursor, _mapItinerary(e.node)))
+    final plan = await _transport.postJson(
+        '/routing/plan', body, wire.PlanTripResponse.fromJson);
+    final edges = plan.itineraries
+        .map((i) => RouteEdge(_noCursor, _mapItinerary(i)))
         .toList();
     final pageInfo = RoutePageInfo(
       startCursor: plan.pageInfo.startCursor,
@@ -661,13 +672,17 @@ class SpiderRouting {
 // setting, so the server checks that.
 SpiderError? _invalidVia(List<ViaLocation> via) {
   for (final location in via) {
-    final valid = switch (location) {
+    final invalid = switch (location) {
       PassThroughVia(:final stopIds) =>
-        stopIds.isNotEmpty && stopIds.length <= _maxViaStopIds,
+        stopIds.isEmpty || stopIds.length > _maxViaStopIds
+            ? invalidInput('via')
+            : null,
       VisitVia(:final minimumWaitSeconds) =>
-        minimumWaitSeconds >= 0 && minimumWaitSeconds <= _maxViaWaitSeconds,
+        minimumWaitSeconds < 0 || minimumWaitSeconds > _maxViaWaitSeconds
+            ? invalidInput('via.visit.minimumWaitTime')
+            : null,
     };
-    if (!valid) return invalidInput('via');
+    if (invalid != null) return invalid;
   }
   return null;
 }
@@ -697,12 +712,7 @@ wire.PlanViaLocationInput _viaToInput(ViaLocation via) {
         StopLocation(:final id) => wire.PlanViaLocationInput(
             visit: wire.PlanVisitViaLocationInput(
                 minimumWaitTime: wait, stopLocationIds: [id])),
-        CoordinateLocation(:final latitude, :final longitude) =>
-          wire.PlanViaLocationInput(
-              visit: wire.PlanVisitViaLocationInput(
-                  coordinate: wire.PlanCoordinateInput(
-                      latitude: latitude, longitude: longitude),
-                  minimumWaitTime: wait)),
+        CoordinateLocation() => throw invalidInput('via', malformed: true),
       };
   }
 }
@@ -743,46 +753,38 @@ wire.Reliability? _reliabilityInput(Reliability? reliability) =>
 // MARK: plan-stream record parsing
 
 /// Parses one finished SSE record (its `event` name + accumulated `data`) into a [PlanStreamEvent]; returns
-/// null for records the SDK doesn't surface (the terminal `done` telemetry, heartbeats, blank data, unknown
-/// events). A malformed payload becomes a terminal [PlanStreamFailure] rather than throwing. Public so the
-/// wire-contract test exercises it directly, matching the batch plan's wire→domain mapping.
+/// null for records the SDK doesn't surface (the `done` telemetry, heartbeats, blank data, unknown events). A
+/// malformed payload becomes a terminal [PlanStreamFailure] rather than throwing. Public so the wire-contract
+/// test exercises it directly, matching the batch plan's wire→domain mapping.
 PlanStreamEvent? parsePlanStreamRecord(String event, String data) {
   if (data.trim().isEmpty) return null;
   switch (event) {
     case 'chunk':
       try {
-        final json = jsonDecode(data) as Map<String, dynamic>;
-        final itineraries = (json['results'] as List<dynamic>? ?? const [])
-            .map((e) => _mapItinerary(
-                wire.Itinerary.fromJson(e as Map<String, dynamic>)))
-            .toList();
-        return PlanStreamResult(itineraries);
+        final chunk = wire.PlanStreamChunkEvent.fromJson(
+            jsonDecode(data) as Map<String, dynamic>);
+        return PlanStreamResult(chunk.results.map(_mapItinerary).toList());
       } catch (e) {
         return PlanStreamFailure(_streamDecodingError('chunk', e));
       }
     case 'pageInfo':
       try {
-        final json = jsonDecode(data) as Map<String, dynamic>;
+        final page = wire.PlanStreamPageInfoEvent.fromJson(
+            jsonDecode(data) as Map<String, dynamic>);
         return PlanStreamDone(
           RoutePageInfo(
-            startCursor: json['startCursor'] as String?,
-            endCursor: json['endCursor'] as String?,
-            hasNextPage: json['hasNextPage'] as bool? ?? false,
-            hasPreviousPage: json['hasPreviousPage'] as bool? ?? false,
-            searchWindowUsed: json['searchWindowUsed'] as String?,
+            startCursor: page.startCursor,
+            endCursor: page.endCursor,
+            hasNextPage: page.hasNextPage,
+            hasPreviousPage: page.hasPreviousPage,
+            searchWindowUsed: page.searchWindowUsed,
           ),
-          routingErrors: (json['routingErrors'] as List<dynamic>? ?? const [])
-              .map((e) => _mapRoutingError(
-                  wire.RoutingError.fromJson(e as Map<String, dynamic>)))
-              .toList(),
+          routingErrors: page.routingErrors.map(_mapRoutingError).toList(),
         );
       } catch (e) {
         return PlanStreamFailure(_streamDecodingError('pageInfo', e));
       }
-    case 'error':
-      return PlanStreamFailure(_streamErrorToSpiderError(data));
     default:
-      // The `done` telemetry frame and any heartbeat/unknown record just end the stream.
       return null;
   }
 }
@@ -790,27 +792,6 @@ PlanStreamEvent? parsePlanStreamRecord(String event, String data) {
 SpiderError _streamDecodingError(String event, Object cause) => SpiderError(
     SpiderErrorCode.decoding, 'failed to parse plan-stream $event record',
     cause: cause);
-
-// A stream `error` record is the same GraphQL error envelope the batch path returns, so it maps through the
-// same taxonomy.
-SpiderError _streamErrorToSpiderError(String data) {
-  try {
-    final json = jsonDecode(data) as Map<String, dynamic>;
-    final errors = json['errors'];
-    if (errors is List && errors.isNotEmpty) {
-      return toSpiderError(
-          graphqlErrorsToTransportError(errors, 'plan-stream'));
-    }
-    final message = json['message'];
-    return toSpiderError(TransportError(TransportErrorKind.upstream,
-        'plan-stream error: ${message is String ? message : _truncData(data)}'));
-  } catch (_) {
-    return toSpiderError(TransportError(
-        TransportErrorKind.upstream, 'plan-stream error: ${_truncData(data)}'));
-  }
-}
-
-String _truncData(String s) => s.length > 300 ? s.substring(0, 300) : s;
 
 // MARK: response mappers
 
@@ -825,7 +806,6 @@ Itinerary _mapItinerary(wire.Itinerary w) => Itinerary(
       durationSeconds: w.duration ?? 0,
       waitingTimeSeconds: w.waitingTime,
       numberOfTransfers: w.numberOfTransfers,
-      accessibilityScore: w.accessibilityScore,
       legs: w.legs.map(_mapLeg).toList(),
     );
 
@@ -862,7 +842,6 @@ Leg _mapLeg(wire.Leg w) {
     tripGtfsId: w.trip?.gtfsId,
     interlineWithPreviousLeg: w.interlineWithPreviousLeg ?? false,
     bikesAllowed: BikesAllowed.fromWire(w.trip?.bikesAllowed?.wire),
-    accessibilityScore: w.accessibilityScore,
     fromWheelchair:
         WheelchairBoarding.fromWire(w.from.stop?.wheelchairBoarding?.wire),
     toWheelchair:
@@ -907,7 +886,7 @@ Duration? _parseIsoDuration(String raw) {
   return Duration(microseconds: sign * micros);
 }
 
-List<Departure> _mapDepartures(wire.StopDeparturesStop2 stop) {
+List<Departure> _mapDepartures(wire.DepartureBoard stop) {
   final out = <Departure>[];
   for (final st in stop.stoptimesWithoutPatterns ??
       const <wire.StopDeparturesStoptime>[]) {
@@ -941,7 +920,7 @@ List<Departure> _mapDepartures(wire.StopDeparturesStop2 stop) {
   return out;
 }
 
-TripDetails _mapTrip(wire.TripTrip w) {
+TripDetails _mapTrip(wire.TripTimetable w) {
   final stops = <TripStop>[];
   int? serviceDay;
   for (final st in w.stoptimesForDate ?? const <wire.Stoptime>[]) {

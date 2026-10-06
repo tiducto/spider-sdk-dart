@@ -64,7 +64,7 @@ Future<void> handleErrors(SpiderClient client) async {
       case SpiderErrorCode.rateLimited:
         print('Rate limited — back off, then retry');
       case SpiderErrorCode.queryRetired:
-        print('The API no longer serves this query: ${error.message}');
+        print('The API no longer serves this call: ${error.message}');
       case SpiderErrorCode.planningLimitReached:
         print('Trip planning is unavailable: ${error.message}');
       case SpiderErrorCode.agreementInactive:

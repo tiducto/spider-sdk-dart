@@ -151,7 +151,7 @@ Future<void> arriveBy(SpiderClient client) async {
   // [END arriveBy]
 }
 
-/// Plan a trip that passes through a via point, dwelling there for a few minutes.
+/// Plan a trip that visits a via stop, dwelling there for a few minutes.
 Future<void> planVia(SpiderClient client) async {
   // [START planVia]
   final result = await client.routing.plan(PlanOptions(
@@ -159,19 +159,19 @@ Future<void> planVia(SpiderClient client) async {
     destination: Location.coordinate(49.2246, 16.5747),
     via: [
       ViaLocation.visit(
-        Location.coordinate(49.2103, 16.5993),
+        Location.stop('1:U1234'),
         minimumWaitSeconds: 300,
       ),
     ],
   ));
 
   if (result case Success(:final value)) {
-    print('found ${value.edges.length} itineraries via the waypoint');
+    print('found ${value.edges.length} itineraries via the stop');
   }
   // [END planVia]
 }
 
-/// Plan a wheelchair-accessible trip and read the accessibility info.
+/// Plan a wheelchair-accessible trip and read each boarding stop's accessibility.
 Future<void> wheelchairPlan(SpiderClient client) async {
   // [START wheelchairPlan]
   final result = await client.routing.plan(PlanOptions(
@@ -183,8 +183,7 @@ Future<void> wheelchairPlan(SpiderClient client) async {
   if (result case Success(:final value)) {
     for (final edge in value.edges) {
       final trip = edge.itinerary;
-      print('${trip.start} → ${trip.end} '
-          'accessibility: ${trip.accessibilityScore ?? 'n/a'}');
+      print('${trip.start} → ${trip.end}');
       for (final leg in trip.legs) {
         final boarding = leg.fromWheelchair?.name ?? 'unknown';
         print('  boarding at ${leg.fromName}: $boarding');
@@ -387,7 +386,7 @@ Future<void> streamWithModes(SpiderClient client) async {
   // [END streamWithModes]
 }
 
-/// Stream a plan that passes through a via point, dwelling there for a few minutes.
+/// Stream a plan that visits a via stop, dwelling there for a few minutes.
 Future<void> streamVia(SpiderClient client) async {
   // [START streamVia]
   final options = PlanOptions(
@@ -395,7 +394,7 @@ Future<void> streamVia(SpiderClient client) async {
     destination: Location.coordinate(49.2246, 16.5747),
     via: [
       ViaLocation.visit(
-        Location.coordinate(49.2103, 16.5993),
+        Location.stop('1:U1234'),
         minimumWaitSeconds: 300,
       ),
     ],
