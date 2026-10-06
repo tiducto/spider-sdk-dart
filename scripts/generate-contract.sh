@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regenerate the routing wire models + persisted-query ids + contract version from the published contract.
+# Regenerate the routing wire models + contract version from the published contract.
 #
 # The generated Dart is committed on purpose: the package carries the types, not the spec, and there is no
 # codegen step in the SDK's own build. Types come from spider-codegen (tiducto/spider-codegen) — our own
@@ -44,42 +44,6 @@ CONTRACT_VERSION="$(node -e "process.stdout.write(String(require('$WORK_DIR/open
 echo "==> Contract version: $CONTRACT_VERSION"
 printf '// Generated from the published contract'"'"'s info.version by scripts/generate-contract.sh. Do not edit.\nconst contractVersion = '"'"'%s'"'"';\n' "$CONTRACT_VERSION" > "$CONTRACT_DIR/contract_version.dart"
 
-node - "$WORK_DIR/openapi.json" "$CONTRACT_DIR/persisted_queries.dart" <<'NODE'
-const fs = require('fs');
-const [specPath, outPath] = process.argv.slice(2);
-const spec = JSON.parse(fs.readFileSync(specPath, 'utf8'));
-const ops = [];
-for (const [route, methods] of Object.entries(spec.paths || {})) {
-    for (const op of Object.values(methods)) {
-        const id = op && op['x-persisted-query-id'];
-        if (!id) continue;
-        const path = route.replace(/^\/routing\//, '');
-        ops.push({ name: path.replace(/[^A-Za-z0-9]/g, ''), id, path });
-    }
-}
-if (ops.length === 0) { console.error('ERROR: no x-persisted-query-id found'); process.exit(1); }
-ops.sort((a, b) => a.name.localeCompare(b.name));
-const consts = ops.map((o) => `  static const ${o.name} = PersistedOp('${o.id}', '${o.path}');`).join('\n');
-fs.writeFileSync(outPath, `// Generated from the published contract's x-persisted-query-id by scripts/generate-contract.sh. Do not edit.
-//
-// The gateway enforces a persisted-query allowlist: clients POST { id, variables } and the id is the
-// lowercase-hex SHA-256 of the canonical query text. An id the gateway has not registered is rejected 403,
-// so these must never drift from the published contract — they are generated, never hand-typed.
-
-class PersistedOp {
-  final String id;
-  final String path;
-  const PersistedOp(this.id, this.path);
-}
-
-class PersistedQueries {
-${consts}
-}
-`);
-process.stdout.write(String(ops.length));
-NODE
-echo " persisted-query ids written"
-
 if [[ -n "${CODEGEN_DIR:-}" ]]; then
     echo "==> Using local spider-codegen at $CODEGEN_DIR"
     CODEGEN="$CODEGEN_DIR"
@@ -123,7 +87,7 @@ if [[ -z "$DART" ]]; then
 fi
 echo "==> Formatting the generated Dart"
 ( cd "$REPO_ROOT" && "$DART" pub get >/dev/null \
-    && "$DART" format "$CONTRACT_DIR/routing.dart" "$CONTRACT_DIR/persisted_queries.dart" "$CONTRACT_DIR/contract_version.dart" >/dev/null )
+    && "$DART" format "$CONTRACT_DIR/routing.dart" "$CONTRACT_DIR/contract_version.dart" >/dev/null )
 
 echo "==> Done. Wire models -> lib/src/contract/routing.dart"
 echo "    The stops + realtime wire types are hand-written (lib/src/stops.dart + lib/src/realtime.dart), not generated."

@@ -1,9 +1,8 @@
 import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:spider_sdk/spider_sdk.dart';
 import 'package:spider_sdk/src/contract/contract_version.dart'
     show contractVersion;
-import 'package:spider_sdk/src/contract/persisted_queries.dart'
-    show PersistedQueries;
 import 'package:spider_sdk/src/contract/routing.dart' as wire;
 import 'package:spider_sdk/src/polyline.dart' show decodePolyline;
 import 'package:spider_sdk/src/routing.dart' show parsePlanStreamRecord;
@@ -55,9 +54,6 @@ SpiderHttpResponse resp(String body,
 Map<String, dynamic> bodyOf(SpiderHttpRequest req) =>
     jsonDecode(req.body!) as Map<String, dynamic>;
 
-Map<String, dynamic> varsOf(SpiderHttpRequest req) =>
-    bodyOf(req)['variables'] as Map<String, dynamic>;
-
 (SpiderClient, MockHttpClient) makeStreamClient(int status, String body,
     {String contentType = 'text/event-stream'}) {
   final mock = MockHttpClient((_) => resp('{}'),
@@ -72,31 +68,33 @@ const stopsAB =
     PlanOptions(origin: Location.stop('A'), destination: Location.stop('B'));
 
 const emptyPlanBody =
-    '{"data":{"planConnection":{"edges":[],"pageInfo":{"hasNextPage":false,"hasPreviousPage":false},"routingErrors":[]}}}';
+    '{"itineraries":[],"pageInfo":{"hasNextPage":false,"hasPreviousPage":false},"routingErrors":[]}';
 
 const planBody = '''
-{"data":{"planConnection":{
-  "edges":[{"cursor":"c1","node":{
-    "start":"2026-08-21T10:00:00Z","end":"2026-08-21T10:30:00Z","duration":1800,"waitingTime":120,"numberOfTransfers":1,"accessibilityScore":0.9,
+{
+  "itineraries":[{
+    "start":"2026-08-21T10:00:00Z","end":"2026-08-21T10:30:00Z","duration":1800,"waitingTime":120,"numberOfTransfers":1,
     "legs":[{
       "start":{"scheduledTime":"2026-08-21T10:00:00Z"},"end":{"scheduledTime":"2026-08-21T10:15:00Z"},
       "from":{"name":"A","stop":{"gtfsId":"S1","wheelchairBoarding":"POSSIBLE","platformCode":"1","zoneId":"P"}},
       "to":{"name":"B","stop":{"gtfsId":"S2","wheelchairBoarding":"NOT_POSSIBLE","platformCode":"B2","zoneId":"0"}},
       "mode":"BUS","route":{"gtfsId":"1:R12","shortName":"12","longName":"Line 12","color":"FF0000","textColor":"FFFFFF"},"headsign":"Downtown",
-      "distance":1500.0,"duration":900.0,"accessibilityScore":1.0,
+      "distance":1500.0,"duration":900.0,
       "trip":{"gtfsId":"T1","bikesAllowed":"ALLOWED"},
       "legGeometry":{"points":"_p~iF~ps|U_ulLnnqC_mqNvxq`@"}
     }]
-  }}],
+  }],
   "pageInfo":{"hasNextPage":true,"hasPreviousPage":false,"startCursor":"c1","endCursor":"c1","searchWindowUsed":"PT60M"},
   "routingErrors":[],"searchDateTime":"2026-08-21T10:00:00Z"
-}}}
+}
 ''';
+
+const pageInfoFrame = 'event: pageInfo\n'
+    'data: {"hasNextPage":false,"hasPreviousPage":false,"routingErrors":[]}\n\n';
 
 void main() {
   group('routing', () {
-    test('plan posts the persisted query with headers and maps the route',
-        () async {
+    test('plan posts the REST body with headers and maps the route', () async {
       final (client, mock) = makeClient((_) => resp(planBody));
       final result = await client.routing.plan(const PlanOptions(
         origin: Location.coordinate(49.19, 16.61),
@@ -105,7 +103,11 @@ void main() {
       expect(result, isA<Success<Route>>());
       final route = (result as Success<Route>).value;
       expect(route.edges.length, 1);
+      expect(route.edges[0].cursor, 'NoCursor');
+      expect(route.edges[0].itinerary.accessibilityScore, isNull);
+      expect(route.searchDateTime, '2026-08-21T10:00:00Z');
       final leg = route.edges[0].itinerary.legs[0];
+      expect(leg.accessibilityScore, isNull);
       expect(leg.mode, TransitMode.bus);
       expect(leg.fromWheelchair, WheelchairBoarding.possible);
       expect(leg.toWheelchair, WheelchairBoarding.notPossible);
@@ -121,20 +123,81 @@ void main() {
       expect(route.pageInfo.hasNextPage, true);
 
       final req = mock.requests[0];
-      expect(req.uri.path, '/routing/plan');
+      expect(req.uri.path, '/routing/v1/plan');
       expect(req.method, 'POST');
       expect(req.headers['apikey'], 'secret-key');
       expect(req.headers['x-spider-contract-version'], contractVersion);
       expect(req.headers['x-spider-sdk'], 'dart/$sdkVersion');
       expect(req.headers['content-type'], 'application/json');
       final body = bodyOf(req);
-      expect(body['id'], PersistedQueries.plan.id);
-      final vars = body['variables'] as Map<String, dynamic>;
-      expect(vars.containsKey('first'), false);
-      expect(vars.containsKey('last'), false);
-      expect(vars['searchWindow'], 'PT60M');
-      expect((vars['dateTime'] as Map)['earliestDeparture'], isNotNull);
-      expect((vars['dateTime'] as Map)['latestArrival'], isNull);
+      expect(body.containsKey('id'), false);
+      expect(body.containsKey('variables'), false);
+      expect(body.containsKey('first'), false);
+      expect(body.containsKey('last'), false);
+      expect(body['searchWindow'], 'PT60M');
+      expect((body['dateTime'] as Map)['earliestDeparture'], isNotNull);
+      expect((body['dateTime'] as Map)['latestArrival'], isNull);
+    });
+
+    test('plan sends the contract PlanTripRequest body', () async {
+      final (client, mock) = makeClient((_) => resp(planBody));
+      await client.routing.plan(PlanOptions(
+        origin: const Location.coordinate(49.19, 16.61),
+        destination: const Location.stop('1:B'),
+        departAt: DateTime.utc(2026, 10, 7, 6),
+        via: const [
+          ViaLocation.passThrough(['1:V']),
+          ViaLocation.visit(Location.stop('1:W'), minimumWaitSeconds: 300),
+        ],
+        allowedTransitModes: const [TransitMode.bus],
+        maxTransfers: 1,
+        searchWindowMinutes: 90,
+        wheelchairAccessible: true,
+        reliability: Reliability.safe,
+      ));
+      expect(bodyOf(mock.requests.single), {
+        'dateTime': {'earliestDeparture': '2026-10-07T06:00:00.000Z'},
+        'origin': {
+          'location': {
+            'coordinate': {'latitude': 49.19, 'longitude': 16.61}
+          }
+        },
+        'destination': {
+          'location': {
+            'stopLocation': {'stopLocationId': '1:B'}
+          }
+        },
+        'searchWindow': 'PT90M',
+        'via': [
+          {
+            'passThrough': {
+              'stopLocationIds': ['1:V']
+            }
+          },
+          {
+            'visit': {
+              'stopLocationIds': ['1:W'],
+              'minimumWaitTime': 'PT300S'
+            }
+          },
+        ],
+        'modes': {
+          'transit': {
+            'transit': [
+              {'mode': 'BUS'}
+            ]
+          }
+        },
+        'preferences': {
+          'transit': {
+            'transfer': {'maximumTransfers': 2}
+          },
+          'accessibility': {
+            'wheelchair': {'enabled': true}
+          },
+        },
+        'reliability': 'SAFE',
+      });
     });
 
     test('plan with no filters omits modes/preferences (null-omission)',
@@ -142,8 +205,7 @@ void main() {
       final (client, mock) = makeClient((_) => resp(planBody));
       await client.routing.plan(const PlanOptions(
           origin: Location.stop('S1'), destination: Location.stop('S2')));
-      final vars =
-          bodyOf(mock.requests[0])['variables'] as Map<String, dynamic>;
+      final vars = bodyOf(mock.requests[0]);
       expect(vars.containsKey('modes'), false);
       expect(vars.containsKey('preferences'), false);
       expect(vars.containsKey('via'), false);
@@ -168,8 +230,7 @@ void main() {
         searchWindowMinutes: 30,
         wheelchairAccessible: true,
       ));
-      final vars =
-          bodyOf(mock.requests[0])['variables'] as Map<String, dynamic>;
+      final vars = bodyOf(mock.requests[0]);
       expect(vars['searchWindow'], 'PT30M');
       final transit =
           ((vars['modes'] as Map)['transit'] as Map)['transit'] as List;
@@ -195,21 +256,21 @@ void main() {
             origin: const Location.stop('S1'),
             destination: const Location.stop('S2'),
             reliability: reliability));
-        expect(varsOf(mock.requests.single)['reliability'], expected);
+        expect(bodyOf(mock.requests.single)['reliability'], expected);
       }
       final (client, mock) = makeClient((_) => resp(planBody));
       await client.routing.plan(stopsAB);
-      expect(varsOf(mock.requests.single).containsKey('reliability'), false);
+      expect(bodyOf(mock.requests.single).containsKey('reliability'), false);
     });
 
     test('plan maps the typical arrival delay and the interline flag',
         () async {
       const body = '''
-      {"data":{"planConnection":{"edges":[{"cursor":"c1","node":{"numberOfTransfers":0,"legs":[
+      {"itineraries":[{"numberOfTransfers":0,"legs":[
         {"start":{"scheduledTime":"2026-08-21T10:00:00Z"},"end":{"scheduledTime":"2026-08-21T10:15:00Z"},"from":{"name":"A"},"to":{"name":"B"},"mode":"BUS","typicalArrivalDelay":90,"interlineWithPreviousLeg":false},
         {"start":{"scheduledTime":"2026-08-21T10:15:00Z"},"end":{"scheduledTime":"2026-08-21T10:30:00Z"},"from":{"name":"B"},"to":{"name":"C"},"mode":"BUS","typicalArrivalDelay":null,"interlineWithPreviousLeg":true},
         {"start":{"scheduledTime":"2026-08-21T10:30:00Z"},"end":{"scheduledTime":"2026-08-21T10:35:00Z"},"from":{"name":"C"},"to":{"name":"D"},"mode":"WALK","interlineWithPreviousLeg":null}
-      ]}}],"pageInfo":{"hasNextPage":false,"hasPreviousPage":false},"routingErrors":[]}}}''';
+      ]}],"pageInfo":{"hasNextPage":false,"hasPreviousPage":false},"routingErrors":[]}''';
       final (client, _) = makeClient((_) => resp(body));
       final result = await client.routing.plan(const PlanOptions(
           origin: Location.stop('A'),
@@ -232,35 +293,43 @@ void main() {
         arriveBy:
             DateTime.fromMillisecondsSinceEpoch(1700000000000, isUtc: true),
       ));
-      final dt =
-          (bodyOf(mock.requests[0])['variables'] as Map)['dateTime'] as Map;
+      final dt = bodyOf(mock.requests[0])['dateTime'] as Map;
       expect(dt['latestArrival'], isNotNull);
       expect(dt['earliestDeparture'], isNull);
     });
 
-    test('planNext pages forward with after and no count', () async {
+    test('planNext sends the same body plus after', () async {
       const page2 =
-          '{"data":{"planConnection":{"edges":[],"pageInfo":{"hasNextPage":false,"hasPreviousPage":true,"startCursor":"c2","endCursor":"c2","searchWindowUsed":"PT60M"},"routingErrors":[],"searchDateTime":null}}}';
-      final (client, mock) = makeClient((req) {
-        final vars = bodyOf(req)['variables'] as Map<String, dynamic>;
-        return resp(vars['after'] == 'c1' ? page2 : planBody);
-      });
-      final first = await client.routing.plan(const PlanOptions(
-          origin: Location.stop('A'), destination: Location.stop('B')));
+          '{"itineraries":[],"pageInfo":{"hasNextPage":false,"hasPreviousPage":true,"startCursor":"c2","endCursor":"c2","searchWindowUsed":"PT60M"},"routingErrors":[],"searchDateTime":null}';
+      final (client, mock) = makeClient(
+          (req) => resp(bodyOf(req)['after'] == 'c1' ? page2 : planBody));
+      final first = await client.routing.plan(PlanOptions(
+          origin: const Location.stop('A'),
+          destination: const Location.stop('B'),
+          departAt: DateTime.utc(2026, 10, 7, 6)));
       final next =
           await client.routing.planNext((first as Success<Route>).value);
-      expect(next, isNotNull);
-      final vars =
-          bodyOf(mock.requests[1])['variables'] as Map<String, dynamic>;
-      expect(vars['after'], 'c1');
-      expect(vars.containsKey('first'), false);
-      expect(vars.containsKey('before'), false);
-      expect(vars.containsKey('last'), false);
+      expect((next as Success<Route>).value.pageInfo.startCursor, 'c2');
+      expect(bodyOf(mock.requests[1]),
+          {...bodyOf(mock.requests[0]), 'after': 'c1'});
+    });
+
+    test('planPrevious sends the same body plus before', () async {
+      const both =
+          '{"itineraries":[],"pageInfo":{"hasNextPage":true,"hasPreviousPage":true,"startCursor":"c0","endCursor":"c1"},"routingErrors":[]}';
+      final (client, mock) = makeClient((_) => resp(both));
+      final first = await client.routing.plan(PlanOptions(
+          origin: const Location.stop('A'),
+          destination: const Location.stop('B'),
+          departAt: DateTime.utc(2026, 10, 7, 6)));
+      await client.routing.planPrevious((first as Success<Route>).value);
+      expect(bodyOf(mock.requests[1]),
+          {...bodyOf(mock.requests[0]), 'before': 'c0'});
     });
 
     test('planNext and planPrevious repeat the reliability', () async {
       const both =
-          '{"data":{"planConnection":{"edges":[],"pageInfo":{"hasNextPage":true,"hasPreviousPage":true,"startCursor":"c0","endCursor":"c1"},"routingErrors":[]}}}';
+          '{"itineraries":[],"pageInfo":{"hasNextPage":true,"hasPreviousPage":true,"startCursor":"c0","endCursor":"c1"},"routingErrors":[]}';
       final (client, mock) = makeClient((_) => resp(both));
       final first = await client.routing.plan(const PlanOptions(
           origin: Location.stop('A'),
@@ -269,10 +338,10 @@ void main() {
       final route = (first as Success<Route>).value;
       await client.routing.planNext(route);
       await client.routing.planPrevious(route);
-      expect(mock.requests.map((r) => varsOf(r)['reliability']).toList(),
+      expect(mock.requests.map((r) => bodyOf(r)['reliability']).toList(),
           ['SAFE', 'SAFE', 'SAFE']);
-      expect(varsOf(mock.requests[1])['after'], 'c1');
-      expect(varsOf(mock.requests[2])['before'], 'c0');
+      expect(bodyOf(mock.requests[1])['after'], 'c1');
+      expect(bodyOf(mock.requests[2])['before'], 'c0');
     });
 
     test('http error becomes a failure with a mapped code', () async {
@@ -286,29 +355,34 @@ void main() {
       expect(error.serverCode, 'boom');
     });
 
-    test('upstream GraphQL errors become a failure', () async {
-      final (client, _) =
-          makeClient((_) => resp('{"errors":[{"message":"bad var"}]}'));
-      final result = await client.routing.plan(const PlanOptions(
-          origin: Location.stop('A'), destination: Location.stop('B')));
-      final error = (result as Failure<Route>).error;
-      expect(error.code, SpiderErrorCode.server);
-      expect(error.message, contains('bad var'));
-    });
-
-    test(
-        'a top-level BAD_REQUEST error becomes a badRequest failure '
-        'with field and message', () async {
-      const body = '{"data":null,"errors":[{'
-          '"message":"searchWindow is out of range",'
-          '"extensions":{"code":"BAD_REQUEST","field":"searchWindow"}}]}';
-      final (client, _) = makeClient((_) => resp(body));
-      final result = await client.routing.plan(const PlanOptions(
-          origin: Location.stop('A'), destination: Location.stop('B')));
+    test('a routing 400 is a badRequest naming the body field', () async {
+      final (client, _) = makeClient((_) => resp(
+          '{"code":"bad_request","message":"preferences.street.bicycle is not allowed",'
+          '"field":"preferences.street.bicycle"}',
+          status: 400));
+      final result = await client.routing.plan(stopsAB);
       final error = (result as Failure<Route>).error;
       expect(error.code, SpiderErrorCode.badRequest);
-      expect(error.field, 'searchWindow');
-      expect(error.message, 'searchWindow is out of range');
+      expect(error.httpStatus, 400);
+      expect(error.serverCode, 'bad_request');
+      expect(error.field, 'preferences.street.bicycle');
+      expect(error.message,
+          'POST /routing/v1/plan -> 400: preferences.street.bicycle is not allowed');
+    });
+
+    test('the body field wins over the field the message names', () async {
+      final (client, _) = makeClient((_) => resp(
+          '{"code":"bad_request","message":"after is invalid","field":"before"}',
+          status: 400));
+      final error =
+          ((await client.routing.plan(stopsAB)) as Failure<Route>).error;
+      expect(error.field, 'before');
+    });
+
+    test('a 200 body that is not the plan response is a failure', () async {
+      final (client, _) = makeClient((_) => resp('{"data":null}'));
+      final result = await client.routing.plan(stopsAB);
+      expect(result, isA<Failure<Route>>());
     });
 
     test('plan sends the search window as given, without clamping', () async {
@@ -317,17 +391,17 @@ void main() {
           origin: Location.stop('A'),
           destination: Location.stop('B'),
           searchWindowMinutes: 0));
-      expect(varsOf(mock.requests.single)['searchWindow'], 'PT0M');
+      expect(bodyOf(mock.requests.single)['searchWindow'], 'PT0M');
     });
 
     test('plan maps LOCATION_NOT_FOUND on from, to and via', () async {
-      const body = '{"data":{"planConnection":{"edges":[],'
+      const body = '{"itineraries":[],'
           '"pageInfo":{"hasNextPage":false,"hasPreviousPage":false},'
           '"routingErrors":['
           '{"code":"LOCATION_NOT_FOUND","inputField":"FROM","description":"unknown origin"},'
           '{"code":"LOCATION_NOT_FOUND","inputField":"TO","description":"unknown destination"},'
           '{"code":"LOCATION_NOT_FOUND","inputField":"VIA","description":"unknown via stop"}'
-          ']}}}';
+          ']}';
       final (client, _) = makeClient((_) => resp(body));
       final result = await client.routing.plan(const PlanOptions(
           origin: Location.stop('A'),
@@ -365,39 +439,57 @@ void main() {
         }
       });
 
-      test('reject a visit wait below 0 or above 24 h without a request',
+      test('reject a visit wait below 0 or above 1 h without a request',
           () async {
-        for (final wait in [-1, 86401]) {
+        for (final wait in [-1, 3601]) {
           final (result, mock) = await planVia([
             ViaLocation.visit(const Location.stop('V'),
                 minimumWaitSeconds: wait)
           ]);
           final error = (result as Failure<Route>).error;
-          expect(error.field, 'via', reason: '$wait');
+          expect(error.code, SpiderErrorCode.badRequest, reason: '$wait');
+          expect(error.field, 'via.visit.minimumWaitTime', reason: '$wait');
+          expect(error.message, 'via.visit.minimumWaitTime is out of range');
           expect(mock.requests, isEmpty);
         }
       });
 
-      test('send 10 stop ids and a 24 h wait', () async {
+      test('reject a coordinate visit as via is invalid without a request',
+          () async {
+        final (result, mock) = await planVia(
+            [const ViaLocation.visit(Location.coordinate(49.2, 16.6))]);
+        final error = (result as Failure<Route>).error;
+        expect(error.code, SpiderErrorCode.badRequest);
+        expect(error.field, 'via');
+        expect(error.message, 'via is invalid');
+        expect(mock.requests, isEmpty);
+      });
+
+      test('send 10 stop ids, a visit stop and a 1 h wait', () async {
         final (result, mock) = await planVia([
           ViaLocation.passThrough(List.generate(10, (i) => 'S$i')),
-          ViaLocation.visit(const Location.stop('V'),
-              minimumWaitSeconds: 86400),
+          ViaLocation.visit(const Location.stop('V'), minimumWaitSeconds: 3600),
+          ViaLocation.visit(const Location.stop('W')),
         ]);
         expect(result, isA<Success<Route>>());
-        final via = varsOf(mock.requests.single)['via'] as List;
+        final via = bodyOf(mock.requests.single)['via'] as List;
         expect(
             ((via[0] as Map)['passThrough'] as Map)['stopLocationIds'] as List,
             hasLength(10));
-        expect(
-            ((via[1] as Map)['visit'] as Map)['minimumWaitTime'], 'PT86400S');
+        expect((via[1] as Map)['visit'], {
+          'stopLocationIds': ['V'],
+          'minimumWaitTime': 'PT3600S'
+        });
+        expect((via[2] as Map)['visit'], {
+          'stopLocationIds': ['W']
+        });
       });
 
       test('leave the number of via locations to the server', () async {
         final (result, mock) = await planVia(
             List.generate(5, (i) => ViaLocation.passThrough(['S$i'])));
         expect(result, isA<Success<Route>>());
-        expect(varsOf(mock.requests.single)['via'] as List, hasLength(5));
+        expect(bodyOf(mock.requests.single)['via'] as List, hasLength(5));
       });
     });
 
@@ -410,48 +502,34 @@ void main() {
       expect(result, isA<Success<Route>>());
     });
 
-    test('a retired persisted query (410 query_retired) is queryRetired',
-        () async {
-      final (client, _) = makeClient((_) => resp(
-          '{"error":"query_retired","message":"persisted query is retired"}',
-          status: 410));
-      final result = await client.routing.plan(stopsAB);
-      final error = (result as Failure<Route>).error;
-      expect(error.code, SpiderErrorCode.queryRetired);
-      expect(error.httpStatus, 410);
-      expect(error.serverCode, 'query_retired');
-      expect(error.message, contains('persisted query is retired'));
-      expect(error.message.toLowerCase(), isNot(contains('update')));
-    });
-
     test('the query_retired body code wins over the status', () async {
-      final (client, _) =
-          makeClient((_) => resp('{"error":"query_retired"}', status: 400));
-      final result = await client.routing.trip('T1');
-      expect((result as Failure<TripDetails>).error.code,
-          SpiderErrorCode.queryRetired);
+      for (final body in [
+        '{"code":"query_retired"}',
+        '{"error":"query_retired"}'
+      ]) {
+        final (client, _) = makeClient((_) => resp(body, status: 400));
+        final result = await client.routing.trip('T1');
+        final error = (result as Failure<TripDetails>).error;
+        expect(error.code, SpiderErrorCode.queryRetired, reason: body);
+        expect(error.httpStatus, 400, reason: body);
+      }
     });
 
-    test('a bare 410 falls back to queryRetired', () async {
-      final (client, _) = makeClient((_) => resp('', status: 410));
-      final result = await client.routing.departures('S');
-      final error = (result as Failure<List<Departure>>).error;
-      expect(error.code, SpiderErrorCode.queryRetired);
-      expect(error.serverCode, 'query_retired');
-    });
-
-    test('an unknown persisted-query id (403) is unauthorized', () async {
-      final (client, _) = makeClient((_) => resp(
-          '{"error":"persisted_query_rejected","message":"unknown persisted-query id: abc"}',
-          status: 403));
-      final result = await client.routing.plan(stopsAB);
-      final error = (result as Failure<Route>).error;
-      expect(error.code, SpiderErrorCode.unauthorized);
-      expect(error.httpStatus, 403);
-      expect(error.serverCode, 'persisted_query_rejected');
-      expect(error.message,
-          'routing plan -> 403: unknown persisted-query id: abc');
-      expect(error.message.toLowerCase(), isNot(contains('update')));
+    test('a bare 410 is queryRetired on every surface', () async {
+      final calls =
+          <String, Future<SpiderResult<Object?>> Function(SpiderClient)>{
+        'departures': (c) => c.routing.departures('S'),
+        'stops.search': (c) => c.stops.search(const StopFilter(name: 'M')),
+        'realtime.alerts': (c) => c.realtime.alerts(),
+      };
+      for (final MapEntry(key: name, value: call) in calls.entries) {
+        final (client, _) = makeClient((_) => resp('', status: 410));
+        final error = (await call(client)).errorOrNull!;
+        expect(error.code, SpiderErrorCode.queryRetired, reason: name);
+        expect(error.serverCode, 'query_retired', reason: name);
+        expect(error.message, endsWith('-> 410: this operation is retired'),
+            reason: name);
+      }
     });
 
     test('a routing 400 is a badRequest naming the field its message names',
@@ -469,7 +547,14 @@ void main() {
       for (final (message, field) in [
         ('limit is out of range', 'limit'),
         ('limit is required', 'limit'),
+        ('limit is not allowed', 'limit'),
         ('body is invalid', 'body'),
+        (
+          'preferences.street.walk.speed is out of range',
+          'preferences.street.walk.speed'
+        ),
+        ('via.visit.coordinate is not allowed', 'via.visit.coordinate'),
+        ('.limit is invalid', null),
         ('limit must be an integer', null),
         ('limit is out of range: 0', null),
         ('missing or unreadable body', null),
@@ -499,15 +584,15 @@ void main() {
         'departures keeps every row the router returns and carries the '
         'service date', () async {
       const body = '''
-      {"data":{"asStop":{"gtfsId":"S","name":"Main Square","wheelchairBoarding":"POSSIBLE","stoptimesWithoutPatterns":[
+      {"stop":{"gtfsId":"S","name":"Main Square","wheelchairBoarding":"POSSIBLE","stoptimesWithoutPatterns":[
         {"serviceDay":1784066400,"scheduledDeparture":36000,"realtimeDeparture":36060,"realtime":true,"realtimeState":"UPDATED","headsign":"Airport","trip":{"gtfsId":"T1","bikesAllowed":"ALLOWED","route":{"gtfsId":"1:R12","shortName":"12","longName":"Line 12","mode":"BUS"}}},
         {"serviceDay":1784066400,"scheduledDeparture":88800,"realtime":false,"headsign":"main square","trip":{"gtfsId":"T2","route":{"gtfsId":"1:R5","shortName":"5","mode":"TRAM"}}}
-      ]}}}''';
+      ]}}''';
       final (client, mock) = makeClient((_) => resp(body));
       final result =
           await client.routing.departures('S', numberOfDepartures: 10);
       final departures = (result as Success<List<Departure>>).value;
-      expect(varsOf(mock.requests.single)['numberOfDepartures'], 10);
+      expect(bodyOf(mock.requests.single)['numberOfDepartures'], 10);
       expect(departures.length, 2);
       expect(departures[0].scheduledTimeEpochMs, (1784066400 + 36000) * 1000);
       expect(departures[0].mode, TransitMode.bus);
@@ -523,10 +608,10 @@ void main() {
     test('departures maps the route, stop and accessibility display fields',
         () async {
       const body = '''
-      {"data":{"asStation":{"gtfsId":"1:ST","name":"Central","stoptimesWithoutPatterns":[
+      {"stop":{"gtfsId":"1:ST","name":"Central","wheelchairBoarding":null,"stoptimesWithoutPatterns":[
         {"serviceDay":1784066400,"scheduledDeparture":36000,"stop":{"gtfsId":"1:ST-P2","platformCode":"2"},"trip":{"gtfsId":"T1","wheelchairAccessible":"NOT_POSSIBLE","route":{"gtfsId":"1:R12","shortName":"12","color":"FF0000","textColor":"FFFFFF"}}},
         {"serviceDay":1784066400,"scheduledDeparture":36600,"trip":{"gtfsId":"T2","wheelchairAccessible":"NO_INFORMATION","route":{"gtfsId":"1:R5"}}}
-      ]}}}''';
+      ]}}''';
       final (client, _) = makeClient((_) => resp(body));
       final result = await client.routing.departures('1:ST');
       final departures = (result as Success<List<Departure>>).value;
@@ -548,11 +633,11 @@ void main() {
 
     test('departures maps the typical delay, null when unknown', () async {
       const body = '''
-      {"data":{"asStop":{"gtfsId":"S","name":"S","stoptimesWithoutPatterns":[
+      {"stop":{"gtfsId":"S","name":"S","stoptimesWithoutPatterns":[
         {"serviceDay":1784066400,"scheduledDeparture":36000,"typicalDelay":45},
         {"serviceDay":1784066400,"scheduledDeparture":36600,"typicalDelay":null},
         {"serviceDay":1784066400,"scheduledDeparture":37200}
-      ]}}}''';
+      ]}}''';
       final (client, _) = makeClient((_) => resp(body));
       final departures =
           ((await client.routing.departures('S')) as Success<List<Departure>>)
@@ -561,23 +646,43 @@ void main() {
           [const Duration(seconds: 45), null, null]);
 
       final (stationClient, _) = makeClient((_) => resp(
-          '{"data":{"asStation":{"gtfsId":"1:ST","name":"Central","stoptimesWithoutPatterns":['
-          '{"serviceDay":1784066400,"scheduledDeparture":36000,"typicalDelay":0}]}}}'));
+          '{"stop":{"gtfsId":"1:ST","name":"Central","stoptimesWithoutPatterns":['
+          '{"serviceDay":1784066400,"scheduledDeparture":36000,"typicalDelay":0}]}}'));
       final fromStation = ((await stationClient.routing.departures('1:ST'))
               as Success<List<Departure>>)
           .value;
       expect(fromStation.single.typicalDelay, Duration.zero);
     });
 
-    test('departures always sends the default count and a 24 h time range',
-        () async {
-      final (client, mock) = makeClient(
-          (_) => resp('{"data":{"asStop":{"gtfsId":"S","name":"S"}}}'));
+    test(
+        'departures posts the default count and a 24 h time range to '
+        '/routing/v1/departures', () async {
+      final (client, mock) =
+          makeClient((_) => resp('{"stop":{"gtfsId":"S","name":"S"}}'));
       await client.routing.departures('S');
-      final vars = varsOf(mock.requests.single);
-      expect(vars['numberOfDepartures'], 30);
-      expect(vars['timeRange'], 86400);
-      expect(vars.containsKey('startTime'), false);
+      final req = mock.requests.single;
+      expect(req.method, 'POST');
+      expect(req.uri.path, '/routing/v1/departures');
+      expect(req.headers['content-type'], 'application/json');
+      expect(bodyOf(req),
+          {'id': 'S', 'numberOfDepartures': 30, 'timeRange': 86400});
+    });
+
+    test('departures sends the start time in Unix seconds', () async {
+      final (client, mock) =
+          makeClient((_) => resp('{"stop":{"gtfsId":"S","name":"S"}}'));
+      await client.routing.departures('S',
+          startTime:
+              DateTime.fromMillisecondsSinceEpoch(1791612000999, isUtc: true));
+      expect(bodyOf(mock.requests.single)['startTime'], 1791612000);
+    });
+
+    test('departures for an unknown id (stop null) is notFound', () async {
+      final (client, _) = makeClient((_) => resp('{"stop":null}'));
+      final result = await client.routing.departures('1:NOPE');
+      final error = (result as Failure<List<Departure>>).error;
+      expect(error.code, SpiderErrorCode.notFound);
+      expect(error.message, contains('1:NOPE'));
     });
 
     test('departures rejects a time range outside (0, 24 h] without a request',
@@ -592,26 +697,37 @@ void main() {
         expect(error.message, 'timeRange is out of range');
         expect(mock.requests, isEmpty);
       }
-      final (client, mock) = makeClient(
-          (_) => resp('{"data":{"asStop":{"gtfsId":"S","name":"S"}}}'));
+      final (client, mock) =
+          makeClient((_) => resp('{"stop":{"gtfsId":"S","name":"S"}}'));
       await client.routing.departures('S', timeRangeSeconds: 1);
-      expect(varsOf(mock.requests.single)['timeRange'], 1);
+      expect(bodyOf(mock.requests.single)['timeRange'], 1);
     });
 
     test('trip without a service date leaves it to the server (today)',
         () async {
       final (client, mock) = makeClient((_) => resp(
-          '{"data":{"trip":{"gtfsId":"T1","route":{"gtfsId":"R1"},"stoptimesForDate":[]}}}'));
+          '{"trip":{"gtfsId":"T1","route":{"gtfsId":"R1"},"stoptimesForDate":[]}}'));
       final result = await client.routing.trip('T1');
       expect(result, isA<Success<TripDetails>>());
-      expect(varsOf(mock.requests.single).containsKey('serviceDate'), false);
+      final req = mock.requests.single;
+      expect(req.method, 'POST');
+      expect(req.uri.path, '/routing/v1/trip');
+      expect(bodyOf(req), {'id': 'T1'});
+    });
+
+    test('trip for an unknown id (trip null) is notFound', () async {
+      final (client, _) = makeClient((_) => resp('{"trip":null}'));
+      final result = await client.routing.trip('1:NOPE');
+      final error = (result as Failure<TripDetails>).error;
+      expect(error.code, SpiderErrorCode.notFound);
+      expect(error.message, contains('1:NOPE'));
     });
 
     test('trip maps stops, geometry and enums', () async {
       const body = '''
-      {"data":{"trip":{"gtfsId":"T1","directionId":"0","tripHeadsign":"Airport","bikesAllowed":"NOT_ALLOWED","route":{"gtfsId":"1:R12","shortName":"12","longName":"Line 12","mode":"BUS"},"stoptimesForDate":[
+      {"trip":{"gtfsId":"T1","directionId":"0","tripHeadsign":"Airport","bikesAllowed":"NOT_ALLOWED","route":{"gtfsId":"1:R12","shortName":"12","longName":"Line 12","mode":"BUS"},"stoptimesForDate":[
         {"serviceDay":1787263200,"scheduledArrival":36000,"scheduledDeparture":36030,"realtimeArrival":36050,"realtimeDeparture":36080,"realtime":true,"stop":{"gtfsId":"S1","name":"A","lat":49.19,"lon":16.61,"wheelchairBoarding":"POSSIBLE"}}
-      ],"tripGeometry":{"points":"_p~iF~ps|U","length":2}}}}''';
+      ],"tripGeometry":{"points":"_p~iF~ps|U","length":2}}}''';
       final (client, mock) = makeClient((_) => resp(body));
       final result = await client.routing.trip('T1', serviceDate: '2026-08-21');
       final trip = (result as Success<TripDetails>).value;
@@ -622,17 +738,17 @@ void main() {
       expect(
           trip.stops[0].scheduledArrivalEpochMs, (1787263200 + 36000) * 1000);
       expect(trip.geometry.length, 1);
-      expect((bodyOf(mock.requests.single)['variables'] as Map)['serviceDate'],
-          '2026-08-21');
+      expect(bodyOf(mock.requests.single),
+          {'id': 'T1', 'serviceDate': '2026-08-21'});
     });
 
     test('trip maps the route, accessibility and stop display fields',
         () async {
       const body = '''
-      {"data":{"trip":{"gtfsId":"T1","wheelchairAccessible":"POSSIBLE","route":{"gtfsId":"1:R12","shortName":"12","color":"00A0E2","textColor":"000000"},"stoptimesForDate":[
+      {"trip":{"gtfsId":"T1","wheelchairAccessible":"POSSIBLE","route":{"gtfsId":"1:R12","shortName":"12","color":"00A0E2","textColor":"000000"},"stoptimesForDate":[
         {"serviceDay":1787263200,"scheduledArrival":36000,"stop":{"gtfsId":"S1","name":"A","platformCode":"3","zoneId":"P"}},
         {"serviceDay":1787263200,"scheduledArrival":36600,"stop":{"gtfsId":"S2","name":"B"}}
-      ]}}}''';
+      ]}}''';
       final (client, _) = makeClient((_) => resp(body));
       final trip =
           ((await client.routing.trip('T1')) as Success<TripDetails>).value;
@@ -646,7 +762,7 @@ void main() {
       expect(trip.stops[1].zoneId, isNull);
 
       final (bareClient, _) = makeClient((_) => resp(
-          '{"data":{"trip":{"gtfsId":"T1","route":{"gtfsId":"1:R12"},"stoptimesForDate":[]}}}'));
+          '{"trip":{"gtfsId":"T1","route":{"gtfsId":"1:R12"},"stoptimesForDate":[]}}'));
       final bare =
           ((await bareClient.routing.trip('T1')) as Success<TripDetails>).value;
       expect(bare.routeColor, isNull);
@@ -656,11 +772,11 @@ void main() {
 
     test('trip maps the typical delay per stop, null when unknown', () async {
       const body = '''
-      {"data":{"trip":{"gtfsId":"T1","route":{"gtfsId":"1:R12"},"stoptimesForDate":[
+      {"trip":{"gtfsId":"T1","route":{"gtfsId":"1:R12"},"stoptimesForDate":[
         {"serviceDay":1787263200,"scheduledArrival":36000,"typicalDelay":30,"stop":{"gtfsId":"S1","name":"A"}},
         {"serviceDay":1787263200,"scheduledArrival":36600,"typicalDelay":null,"stop":{"gtfsId":"S2","name":"B"}},
         {"serviceDay":1787263200,"scheduledArrival":37200,"stop":{"gtfsId":"S3","name":"C"}}
-      ]}}}''';
+      ]}}''';
       final (client, _) = makeClient((_) => resp(body));
       final trip =
           ((await client.routing.trip('T1')) as Success<TripDetails>).value;
@@ -699,6 +815,8 @@ void main() {
       final stops = (result as Success<List<Stop>>).value;
       expect(stops.length, 1);
       expect(stops[0].city, 'Example City');
+      expect(mock.requests[0].method, 'POST');
+      expect(mock.requests[0].uri.path, '/stops/v1/search');
       final body2 = bodyOf(mock.requests[0]);
       expect(body2['q'], 'Main');
       expect(body2['filter'], r'country = "CZ" AND city = "Br\"no"');
@@ -890,6 +1008,23 @@ void main() {
       expect(mock.requests[0].uri.queryParameters['tripIds'], 'T1,T9');
     });
 
+    test('each call targets its /v1 path', () async {
+      final calls = <(String, String), Future<Object?> Function(SpiderClient)>{
+        ('GET', '/realtime/v1/vehicles'): (c) => c.realtime.vehicles(['T1']),
+        ('GET', '/realtime/v1/vehicles/by-trip/T1'): (c) =>
+            c.realtime.vehicleForTrip('T1'),
+        ('POST', '/realtime/v1/delays'): (c) =>
+            c.realtime.delays(['T1'], '2026-07-15'),
+        ('GET', '/realtime/v1/alerts'): (c) => c.realtime.alerts(),
+      };
+      for (final MapEntry(key: (method, path), value: call) in calls.entries) {
+        final (client, mock) = makeClient((_) => resp('{}'));
+        await call(client);
+        final req = mock.requests.single;
+        expect((req.method, req.uri.path), (method, path));
+      }
+    });
+
     test('vehicles keeps feed-prefixed ids as the service sends them',
         () async {
       const body =
@@ -962,7 +1097,7 @@ void main() {
 
       final req = mock.requests[0];
       expect(req.method, 'POST');
-      expect(req.uri.path, '/realtime/delays');
+      expect(req.uri.path, '/realtime/v1/delays');
       expect(bodyOf(req)['queries'], [
         {
           'serviceDate': '2026-07-15',
@@ -1095,7 +1230,7 @@ void main() {
       expect(done.routingErrors.single.code, RoutingErrorCode.unknown);
       expect(done.routingErrors.single.inputField, InputField.unknown);
       const chunk =
-          '{"results":[{"numberOfTransfers":0,"legs":[{"mode":"HOVERCRAFT",'
+          '{"frontier":60,"found":1,"finalized":1,"results":[{"numberOfTransfers":0,"legs":[{"mode":"HOVERCRAFT",'
           '"realtimeState":"SOMETHING_NEW","start":{"scheduledTime":"t"},"end":{"scheduledTime":"t"},'
           '"from":{"name":"A"},"to":{"name":"B"}}]}]}';
       final leg = (parsePlanStreamRecord('chunk', chunk) as PlanStreamResult)
@@ -1109,7 +1244,8 @@ void main() {
 
     test('wheelchair and bikes decode unknown and NO_INFORMATION in the models',
         () async {
-      const data = '{"results":[{"numberOfTransfers":0,"legs":['
+      const data =
+          '{"frontier":60,"found":1,"finalized":1,"results":[{"numberOfTransfers":0,"legs":['
           '{"start":{"scheduledTime":"t"},"end":{"scheduledTime":"t"},'
           '"from":{"name":"A","stop":{"gtfsId":"1:A","wheelchairBoarding":"RAMP_ONLY"}},'
           '"to":{"name":"B","stop":{"gtfsId":"1:B","wheelchairBoarding":"NO_INFORMATION"}},'
@@ -1127,9 +1263,9 @@ void main() {
       expect(legs[0].bikesAllowed, BikesAllowed.unknown);
       expect(legs[1].bikesAllowed, isNull);
 
-      final (client, _) = makeClient((_) => resp(
-          '{"data":{"trip":{"gtfsId":"T1","wheelchairAccessible":"SOMETHING_NEW",'
-          '"route":{"gtfsId":"R1"},"stoptimesForDate":[]}}}'));
+      final (client, _) = makeClient((_) =>
+          resp('{"trip":{"gtfsId":"T1","wheelchairAccessible":"SOMETHING_NEW",'
+              '"route":{"gtfsId":"R1"},"stoptimesForDate":[]}}'));
       final trip =
           ((await client.routing.trip('T1')) as Success<TripDetails>).value;
       expect(trip.wheelchairAccessible, WheelchairBoarding.unknown);
@@ -1155,6 +1291,7 @@ void main() {
     test('chunk maps itineraries with realtime delays', () {
       const data = '''
         {
+          "frontier": 1800, "found": 1, "finalized": 1,
           "results": [
             {
               "numberOfTransfers": 1,
@@ -1207,7 +1344,7 @@ void main() {
     // The `pageInfo` frame is the terminal event: it maps to PlanStreamDone carrying the continuation cursors.
     test('pageInfo maps to a terminal Done with continuation cursors', () {
       const data =
-          '{ "startCursor": "c-prev", "endCursor": "c-next", "hasNextPage": true, "hasPreviousPage": false, "searchWindowUsed": "PT1H" }';
+          '{ "startCursor": "c-prev", "endCursor": "c-next", "hasNextPage": true, "hasPreviousPage": false, "searchWindowUsed": "PT1H", "routingErrors": [] }';
       final event = parsePlanStreamRecord('pageInfo', data);
       expect(event, isA<PlanStreamDone>());
       final page = (event as PlanStreamDone).pageInfo;
@@ -1219,7 +1356,7 @@ void main() {
       expect(event.routingErrors, isEmpty);
     });
 
-    // Routing outcomes ride on the terminal pageInfo, shaped like batch planConnection's routingErrors.
+    // Routing outcomes ride on the terminal pageInfo, shaped like the batch plan's routingErrors.
     test('pageInfo carries routing errors on the terminal Done', () {
       const data = '{ "hasNextPage": false, "hasPreviousPage": false, '
           '"routingErrors": ['
@@ -1236,34 +1373,35 @@ void main() {
       expect(event.routingErrors[1].inputField, InputField.from);
     });
 
-    // The old `done` telemetry frame is no longer surfaced — it just ends the stream.
     test('done telemetry is ignored', () {
       const data =
           '{ "iterations": 3, "windowSeconds": 3600, "resultCount": 5, "stoppedBy": "targetResults" }';
       expect(parsePlanStreamRecord('done', data), isNull);
     });
 
-    // A stream `error` record is the GraphQL error envelope; a top-level BAD_REQUEST becomes a typed badRequest.
-    test('error event maps to a typed badRequest failure', () {
-      const data =
-          '{ "data": null, "errors": [ { "message": "maxWindow is out of range", "extensions": { "code": "BAD_REQUEST", "field": "maxWindow" } } ] }';
-      final event = parsePlanStreamRecord('error', data);
-      expect(event, isA<PlanStreamFailure>());
-      final error = (event as PlanStreamFailure).error;
-      expect(error.code, SpiderErrorCode.badRequest);
-      expect(error.field, 'maxWindow');
-      expect(error.message, 'maxWindow is out of range');
-    });
-
-    test('heartbeats and unknown events are ignored', () {
+    test('heartbeats and unknown events, error included, are ignored', () {
       expect(parsePlanStreamRecord('message', ''), isNull);
       expect(parsePlanStreamRecord('weird', '{ "x": 1 }'), isNull);
+      expect(
+          parsePlanStreamRecord(
+              'error', '{"code":"bad_request","message":"x is invalid"}'),
+          isNull);
     });
 
-    // Pins the stream request wire shape (targetResults/maxWindow + via + reliability, nulls omitted) so a
-    // contract regen can't silently rename or reorder the fields the SDK sends to /routing/plan-stream.
-    test('stream variables serialize to the plan-stream wire shape', () {
-      final variables = wire.PlanConnectionStreamVariables(
+    test('a chunk or pageInfo off the contract is a decoding failure', () {
+      for (final (event, data) in [
+        ('chunk', '{"results":[]}'),
+        ('pageInfo', '{"hasNextPage":true,"hasPreviousPage":false}'),
+        ('pageInfo', 'not json'),
+      ]) {
+        final failure = parsePlanStreamRecord(event, data) as PlanStreamFailure;
+        expect(failure.error.code, SpiderErrorCode.decoding, reason: data);
+      }
+    });
+
+    // Pins the stream request wire shape so a contract regen can't silently rename or reorder its fields.
+    test('the stream request serializes to the plan-stream wire shape', () {
+      final variables = wire.PlanStreamRequest(
         dateTime:
             wire.PlanDateTimeInput(earliestDeparture: '2026-07-15T08:00:00Z'),
         origin: wire.PlanLabeledLocationInput(
@@ -1310,14 +1448,14 @@ void main() {
 
     test(
         'planStream emits Result then a terminal Done over SSE (dropping the '
-        'done telemetry) and sends the id + apikey, no cursors', () async {
+        'done telemetry) and posts the REST body, no cursors', () async {
       const frames = 'event: chunk\n'
           'data: {"frontier":1800,"found":1,"finalized":1,"results":[{"numberOfTransfers":0,"duration":600,"legs":[{"mode":"BUS","start":{"scheduledTime":"2026-07-15T08:00:00Z"},"end":{"scheduledTime":"2026-07-15T08:10:00Z"},"from":{"name":"A"},"to":{"name":"B"}}]}]}\n'
           '\n'
           ': heartbeat\n'
           '\n'
           'event: pageInfo\n'
-          'data: {"endCursor":"c-next","hasNextPage":true}\n'
+          'data: {"endCursor":"c-next","hasNextPage":true,"hasPreviousPage":false,"routingErrors":[]}\n'
           '\n'
           'event: done\n'
           'data: {"iterations":1,"windowSeconds":1800,"resultCount":1,"stoppedBy":"targetResults"}\n'
@@ -1347,22 +1485,24 @@ void main() {
 
       final req = mock.requests.single;
       expect(req.method, 'POST');
-      expect(req.uri.path, '/routing/plan-stream');
+      expect(req.uri.path, '/routing/v1/plan-stream');
       expect(req.headers['apikey'], 'secret-key');
       expect(req.headers['accept'], 'text/event-stream');
-      final body = bodyOf(req);
-      expect(body['id'], PersistedQueries.planstream.id);
-      final vars = body['variables'] as Map<String, dynamic>;
+      expect(req.headers['content-type'], 'application/json');
+      expect(req.headers['x-spider-contract-version'], contractVersion);
+      final vars = bodyOf(req);
+      expect(vars.containsKey('id'), false);
+      expect(vars.containsKey('variables'), false);
       expect(vars.containsKey('after'), false);
       expect(vars.containsKey('before'), false);
       expect(vars.containsKey('reliability'), false);
+      expect(vars.containsKey('searchWindow'), false);
       expect(vars['targetResults'], 4);
       expect(vars['maxWindow'], 'PT180M');
     });
 
     test('planStream sends reliability when set', () async {
-      final (client, mock) = makeStreamClient(200,
-          'event: pageInfo\ndata: {"hasNextPage":false,"hasPreviousPage":false}\n\n');
+      final (client, mock) = makeStreamClient(200, pageInfoFrame);
       await client.routing
           .planStream(
               const PlanOptions(
@@ -1372,7 +1512,7 @@ void main() {
               targetResults: 5,
               maxWindowMinutes: 120)
           .toList();
-      expect(varsOf(mock.requests.single)['reliability'], 'VERY_SAFE');
+      expect(bodyOf(mock.requests.single)['reliability'], 'VERY_SAFE');
     });
 
     test('planStream rejects a max window under 2 h without a request',
@@ -1394,13 +1534,12 @@ void main() {
         expect(error.message, 'maxWindow is out of range');
         expect(mock.requests, isEmpty);
       }
-      final (client, mock) = makeStreamClient(200,
-          'event: pageInfo\ndata: {"hasNextPage":false,"hasPreviousPage":false}\n\n');
+      final (client, mock) = makeStreamClient(200, pageInfoFrame);
       final events = await client.routing
           .planStream(stopsAB, targetResults: 5, maxWindowMinutes: 120)
           .toList();
       expect(events.single, isA<PlanStreamDone>());
-      expect(varsOf(mock.requests.single)['maxWindow'], 'PT120M');
+      expect(bodyOf(mock.requests.single)['maxWindow'], 'PT120M');
     });
 
     test('planStream checks via limits without a request', () async {
@@ -1418,37 +1557,125 @@ void main() {
       expect(mock.requests, isEmpty);
     });
 
-    test(
-        'a 2xx JSON body instead of an event stream maps like batch '
-        '(gateway missing-variable BAD_REQUEST)', () async {
+    test('planStream rejects a coordinate visit as via is invalid', () async {
+      final (client, mock) = makeStreamClient(200, pageInfoFrame);
+      final events = await client.routing
+          .planStream(
+              const PlanOptions(
+                  origin: Location.stop('A'),
+                  destination: Location.stop('B'),
+                  via: [ViaLocation.visit(Location.coordinate(49.2, 16.6))]),
+              targetResults: 5,
+              maxWindowMinutes: 120)
+          .toList();
+      final error = (events.single as PlanStreamFailure).error;
+      expect(error.code, SpiderErrorCode.badRequest);
+      expect(error.field, 'via');
+      expect(error.message, 'via is invalid');
+      expect(mock.requests, isEmpty);
+    });
+
+    test('a 400 before the stream is a badRequest naming the body field',
+        () async {
       final (client, _) = makeStreamClient(
-          200,
-          '{"data":null,"errors":[{"message":"maxWindow is required",'
-          '"extensions":{"code":"BAD_REQUEST","field":"maxWindow"}}]}',
+          400,
+          '{"code":"bad_request","message":"targetResults is required",'
+          '"field":"targetResults"}',
           contentType: 'application/json');
       final events = await client.routing
           .planStream(stopsAB, targetResults: 5, maxWindowMinutes: 120)
           .toList();
       final error = (events.single as PlanStreamFailure).error;
       expect(error.code, SpiderErrorCode.badRequest);
-      expect(error.field, 'maxWindow');
-      expect(error.message, 'maxWindow is required');
+      expect(error.httpStatus, 400);
+      expect(error.field, 'targetResults');
     });
 
-    test('a 2xx JSON body with no errors is a server failure', () async {
-      final (client, _) = makeStreamClient(200, '{"data":null}',
-          contentType: 'application/json; charset=utf-8');
+    test('a stream that ends without pageInfo is a network failure', () async {
+      for (final body in [
+        'event: chunk\n'
+            'data: {"frontier":60,"found":0,"finalized":0,"results":[]}\n\n',
+        '',
+      ]) {
+        final (client, _) = makeStreamClient(200, body);
+        final events = await client.routing
+            .planStream(stopsAB, targetResults: 5, maxWindowMinutes: 120)
+            .toList();
+        final failure = events.last as PlanStreamFailure;
+        expect(failure.error.code, SpiderErrorCode.network, reason: body);
+        expect(failure.error.message, contains('without pageInfo'));
+        expect(events.whereType<PlanStreamDone>(), isEmpty, reason: body);
+      }
+    });
+
+    test(
+        'nothing follows the terminal event, and the stream is read to its '
+        'done', () async {
+      var drained = false;
+      Stream<List<int>> frames() async* {
+        yield utf8.encode(pageInfoFrame);
+        await Future<void>.delayed(Duration.zero);
+        yield utf8.encode('event: chunk\n'
+            'data: {"frontier":60,"found":1,"finalized":1,"results":[]}\n\n'
+            '$pageInfoFrame'
+            'event: done\n'
+            'data: {"iterations":1,"windowSeconds":60,"resultCount":0,"stoppedBy":"targetResults"}\n\n');
+        drained = true;
+      }
+
+      final mock = MockHttpClient((_) => resp('{}'),
+          streamHandler: (_) => SpiderHttpStreamedResponse(
+              200, {'content-type': 'text/event-stream'}, frames()));
+      final client = SpiderClient('https://env.api.example.com', 'secret-key',
+          SpiderClientOptions(httpClient: mock));
       final events = await client.routing
           .planStream(stopsAB, targetResults: 5, maxWindowMinutes: 120)
           .toList();
-      expect((events.single as PlanStreamFailure).error.code,
-          SpiderErrorCode.server);
+      expect(events.single, isA<PlanStreamDone>());
+      expect(drained, true);
+    });
+
+    test('a connection drop after pageInfo keeps the Done', () async {
+      Stream<List<int>> frames() async* {
+        yield utf8.encode(pageInfoFrame);
+        throw http.ClientException('connection closed');
+      }
+
+      final mock = MockHttpClient((_) => resp('{}'),
+          streamHandler: (_) => SpiderHttpStreamedResponse(
+              200, {'content-type': 'text/event-stream'}, frames()));
+      final client = SpiderClient('https://env.api.example.com', 'secret-key',
+          SpiderClientOptions(httpClient: mock));
+      final events = await client.routing
+          .planStream(stopsAB, targetResults: 5, maxWindowMinutes: 120)
+          .toList();
+      expect(events.single, isA<PlanStreamDone>());
+    });
+
+    test('a connection drop before pageInfo is a network failure', () async {
+      Stream<List<int>> frames() async* {
+        yield utf8.encode('event: chunk\n'
+            'data: {"frontier":60,"found":0,"finalized":0,"results":[]}\n\n');
+        throw http.ClientException('connection closed');
+      }
+
+      final mock = MockHttpClient((_) => resp('{}'),
+          streamHandler: (_) => SpiderHttpStreamedResponse(
+              200, {'content-type': 'text/event-stream'}, frames()));
+      final client = SpiderClient('https://env.api.example.com', 'secret-key',
+          SpiderClientOptions(httpClient: mock));
+      final events = await client.routing
+          .planStream(stopsAB, targetResults: 5, maxWindowMinutes: 120)
+          .toList();
+      expect(events.first, isA<PlanStreamResult>());
+      expect((events.last as PlanStreamFailure).error.code,
+          SpiderErrorCode.network);
     });
 
     test('planStreamNext continues forward with after and repeats the request',
         () async {
       const frames = 'event: pageInfo\n'
-          'data: {"startCursor":"c-prev","endCursor":"c-next2","hasNextPage":true,"hasPreviousPage":true}\n'
+          'data: {"startCursor":"c-prev","endCursor":"c-next2","hasNextPage":true,"hasPreviousPage":true,"routingErrors":[]}\n'
           '\n';
       final mock = MockHttpClient((_) => resp('{}'),
           streamHandler: (_) => SpiderHttpStreamedResponse(
@@ -1466,8 +1693,7 @@ void main() {
       expect(events.single, isA<PlanStreamDone>());
       expect((events.single as PlanStreamDone).pageInfo.hasPreviousPage, true);
 
-      final vars =
-          bodyOf(mock.requests.single)['variables'] as Map<String, dynamic>;
+      final vars = bodyOf(mock.requests.single);
       expect(vars['after'], 'c-next');
       expect(vars.containsKey('before'), false);
       expect(vars['targetResults'], 3);
@@ -1476,7 +1702,7 @@ void main() {
 
     test('planStreamPrevious continues backward with before', () async {
       const frames = 'event: pageInfo\n'
-          'data: {"startCursor":"c-prev2","endCursor":"c-next","hasNextPage":true,"hasPreviousPage":false}\n'
+          'data: {"startCursor":"c-prev2","endCursor":"c-next","hasNextPage":true,"hasPreviousPage":false,"routingErrors":[]}\n'
           '\n';
       final mock = MockHttpClient((_) => resp('{}'),
           streamHandler: (_) => SpiderHttpStreamedResponse(
@@ -1494,8 +1720,7 @@ void main() {
       expect(events.single, isA<PlanStreamDone>());
       expect((events.single as PlanStreamDone).pageInfo.hasNextPage, true);
 
-      final vars =
-          bodyOf(mock.requests.single)['variables'] as Map<String, dynamic>;
+      final vars = bodyOf(mock.requests.single);
       expect(vars['before'], 'c-prev');
       expect(vars.containsKey('after'), false);
     });
@@ -1506,8 +1731,7 @@ void main() {
           origin: Location.stop('A'),
           destination: Location.stop('B'),
           reliability: Reliability.standard);
-      final (client, mock) = makeStreamClient(200,
-          'event: pageInfo\ndata: {"hasNextPage":false,"hasPreviousPage":false}\n\n');
+      final (client, mock) = makeStreamClient(200, pageInfoFrame);
       await client.routing
           .planStreamNext(options,
               targetResults: 5, maxWindowMinutes: 120, after: 'c-next')
@@ -1516,7 +1740,7 @@ void main() {
           .planStreamPrevious(options,
               targetResults: 5, maxWindowMinutes: 120, before: 'c-prev')
           .toList();
-      expect(mock.requests.map((r) => varsOf(r)['reliability']).toList(),
+      expect(mock.requests.map((r) => bodyOf(r)['reliability']).toList(),
           ['STANDARD', 'STANDARD']);
     });
 
@@ -1539,32 +1763,15 @@ void main() {
           SpiderErrorCode.unauthorized);
     });
 
-    test('planStream maps a retired persisted query to queryRetired', () async {
-      final (client, _) = makeStreamClient(410,
-          '{"error":"query_retired","message":"persisted query is retired"}',
-          contentType: 'application/json');
+    test('planStream maps a 410 to queryRetired', () async {
+      final (client, _) =
+          makeStreamClient(410, '', contentType: 'application/json');
       final events = await client.routing
           .planStream(stopsAB, targetResults: 5, maxWindowMinutes: 120)
           .toList();
       final error = (events.single as PlanStreamFailure).error;
       expect(error.code, SpiderErrorCode.queryRetired);
       expect(error.httpStatus, 410);
-      expect(error.serverCode, 'query_retired');
-      expect(error.message.toLowerCase(), isNot(contains('update')));
-    });
-
-    test('planStream keeps an unknown persisted-query id unauthorized',
-        () async {
-      final (client, _) = makeStreamClient(403,
-          '{"error":"persisted_query_rejected","message":"unknown persisted-query id: abc"}',
-          contentType: 'application/json');
-      final events = await client.routing
-          .planStream(stopsAB, targetResults: 5, maxWindowMinutes: 120)
-          .toList();
-      final error = (events.single as PlanStreamFailure).error;
-      expect(error.code, SpiderErrorCode.unauthorized);
-      expect(error.serverCode, 'persisted_query_rejected');
-      expect(error.message, contains('unknown persisted-query id: abc'));
     });
   });
 
@@ -1632,6 +1839,25 @@ void main() {
             expect(error.serverCode, serverCode,
                 reason: '$call $status $serverCode');
           }
+        }
+      }
+    });
+
+    test('the contract code names the refusal too, before the gateway error',
+        () async {
+      for (final (code, serverCode, message) in limits) {
+        for (final call in calls.keys) {
+          final error = await errorOf(
+              call,
+              resp(
+                  jsonEncode({
+                    'code': serverCode,
+                    'error': 'forbidden',
+                    'message': message
+                  }),
+                  status: 403));
+          expect(error.code, code, reason: '$call $serverCode');
+          expect(error.serverCode, serverCode, reason: '$call $serverCode');
         }
       }
     });
