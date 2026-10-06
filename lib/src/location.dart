@@ -28,7 +28,8 @@ sealed class ViaLocation {
   /// Require the route to pass through any of the given stops (no dwell).
   const factory ViaLocation.passThrough(List<String> stopIds) = PassThroughVia;
 
-  /// Require the route to visit a place, optionally dwelling at least [minimumWaitSeconds] there.
+  /// Require the route to visit a stop, optionally dwelling at least [minimumWaitSeconds] (up to 3600) there. A
+  /// coordinate [location] fails the plan with `badRequest` (`via is invalid`) without a request.
   const factory ViaLocation.visit(Location location, {int minimumWaitSeconds}) =
       VisitVia;
 }
