@@ -1,5 +1,46 @@
 # Changelog
 
+## 2.0.0 - 2026-10-06
+
+Targets Spider API contract `2.0`.
+
+**Hard cut.** Contract `2.0` moves routing from persisted GraphQL queries to REST and retires the persisted
+queries: once the API serves `2.0`, `plan`, `planStream`, `departures` and `trip` from a 1.x SDK fail with
+`SpiderErrorCode.queryRetired` (HTTP 410). Stops and realtime calls keep working on 1.x.
+
+### Changed
+
+- **`plan`, `planStream`, `departures` and `trip` call the REST operations** `POST /routing/plan`,
+  `/routing/plan-stream`, `/routing/departures` and `/routing/trip` with the contract's JSON bodies. The public
+  routing API (`PlanOptions`, `Route`, `Departure`, `TripDetails`, `PlanStreamEvent`) keeps its shape.
+- **`SpiderErrorCode.queryRetired` means the API part a call uses is retired (HTTP 410)**, on every surface: a
+  410, or a body whose `code` (or gateway `error`) is `query_retired`, whatever the status. The message is the
+  body's.
+- **`SpiderError.field` on a 400 is the body's `field`**, else the dot path the message names
+  (`<path> is required`, `is invalid`, `is out of range` or `is not allowed`), e.g.
+  `preferences.transit.transfer.maximumTransfers`. A member the API does not take is `<path> is not allowed`.
+- **A plan-limit refusal is read from the body's `code`, else its `error`.**
+- **A via visit waits at most 1 h** (`minimumWaitSeconds` 0–3600, was 0–86400), as the API takes. Outside that
+  the plan fails as `badRequest` with field `via.visit.minimumWaitTime`, without a request.
+- **A coordinate via visit fails before sending.** `ViaLocation.visit(Location.coordinate(...))` is
+  `badRequest` with message `via is invalid` and field `via`, the answer the API already gave; a visit takes a
+  stop.
+- **`planStream` ignores event names it doesn't know**, so the API can add events. A stream that ends without
+  its paging info ends with a `PlanStreamFailure` (`server`), or `network` when the connection drops first.
+  Nothing follows the terminal `PlanStreamDone` or `PlanStreamFailure`. A non-2xx answer before the stream
+  maps like the one-shot calls.
+
+### Deprecated
+
+- **`RouteEdge.cursor`** is always `"NoCursor"`; page with `Route.pageInfo` through `planNext` /
+  `planPrevious`.
+- **`Itinerary.accessibilityScore` and `Leg.accessibilityScore`** are always null.
+
+### Removed
+
+- The persisted-query transport and its `persisted_query_rejected` code: a 403 that isn't a plan-limit
+  refusal is `unauthorized`, like any other.
+
 ## 1.1.0 - 2026-10-05
 
 Targets Spider API contract `1.1`.
