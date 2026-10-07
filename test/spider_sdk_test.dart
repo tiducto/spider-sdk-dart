@@ -67,30 +67,185 @@ Map<String, dynamic> bodyOf(SpiderHttpRequest req) =>
 const stopsAB =
     PlanOptions(origin: Location.stop('A'), destination: Location.stop('B'));
 
-const emptyPlanBody =
-    '{"itineraries":[],"pageInfo":{"hasNextPage":false,"hasPreviousPage":false},"routingErrors":[]}';
+// Contract 1.3 response builders: every member is required (nullable ones explicitly null), so a fixture
+// spreads its overrides over a complete base.
+typedef Json = Map<String, dynamic>;
 
-const planBody = '''
-{
-  "itineraries":[{
-    "start":"2026-08-21T10:00:00Z","end":"2026-08-21T10:30:00Z","duration":1800,"waitingTime":120,"numberOfTransfers":1,
-    "legs":[{
-      "start":{"scheduledTime":"2026-08-21T10:00:00Z"},"end":{"scheduledTime":"2026-08-21T10:15:00Z"},
-      "from":{"name":"A","stop":{"gtfsId":"S1","wheelchairBoarding":"POSSIBLE","platformCode":"1","zoneId":"P"}},
-      "to":{"name":"B","stop":{"gtfsId":"S2","wheelchairBoarding":"NOT_POSSIBLE","platformCode":"B2","zoneId":"0"}},
-      "mode":"BUS","route":{"gtfsId":"1:R12","shortName":"12","longName":"Line 12","color":"FF0000","textColor":"FFFFFF"},"headsign":"Downtown",
-      "distance":1500.0,"duration":900.0,
-      "trip":{"gtfsId":"T1","bikesAllowed":"ALLOWED"},
-      "legGeometry":{"points":"_p~iF~ps|U_ulLnnqC_mqNvxq`@"}
-    }]
-  }],
-  "pageInfo":{"hasNextPage":true,"hasPreviousPage":false,"startCursor":"c1","endCursor":"c1","searchWindowUsed":"PT60M"},
-  "routingErrors":[],"searchDateTime":"2026-08-21T10:00:00Z"
-}
-''';
+Json stopJson(String gtfsId, [Json o = const {}]) => {
+      'gtfsId': gtfsId,
+      'wheelchairBoarding': 'NO_INFORMATION',
+      'platformCode': '1',
+      'zoneId': 'P',
+      ...o,
+    };
 
-const pageInfoFrame = 'event: pageInfo\n'
-    'data: {"hasNextPage":false,"hasPreviousPage":false,"routingErrors":[]}\n\n';
+Json routeJson(String gtfsId, [Json o = const {}]) => {
+      'gtfsId': gtfsId,
+      'shortName': '12',
+      'longName': 'Line 12',
+      'color': 'FF0000',
+      'textColor': 'FFFFFF',
+      ...o,
+    };
+
+Json legJson([Json o = const {}]) => {
+      'mode': 'BUS',
+      'start': {'scheduledTime': '2026-08-21T10:00:00Z', 'estimated': null},
+      'end': {'scheduledTime': '2026-08-21T10:15:00Z', 'estimated': null},
+      'typicalArrivalDelay': 0,
+      'realtimeState': 'SCHEDULED',
+      'realTime': false,
+      'serviceDate': '2026-08-21',
+      'from': {'name': 'A', 'stop': stopJson('1:S1')},
+      'to': {'name': 'B', 'stop': stopJson('1:S2')},
+      'route': routeJson('1:R12'),
+      'headsign': 'Downtown',
+      'distance': 1500.0,
+      'duration': 900,
+      'trip': {'gtfsId': '1:T1', 'bikesAllowed': 'NO_INFORMATION'},
+      'interlineWithPreviousLeg': false,
+      'legGeometry': {'points': '_p~iF~ps|U'},
+      ...o,
+    };
+
+Json itineraryJson(List<Json> legs, [Json o = const {}]) => {
+      'start': '2026-08-21T10:00:00Z',
+      'end': '2026-08-21T10:30:00Z',
+      'duration': 1800,
+      'waitingTime': 0,
+      'numberOfTransfers': legs.length > 1 ? legs.length - 1 : 0,
+      'legs': legs,
+      ...o,
+    };
+
+Json pageInfoJson([Json o = const {}]) => {
+      'startCursor': 'c0',
+      'endCursor': 'c1',
+      'hasNextPage': false,
+      'hasPreviousPage': false,
+      'searchWindowUsed': 'PT60M',
+      ...o,
+    };
+
+String planJson(
+        {List<Json> itineraries = const [],
+        Json pageInfo = const {},
+        List<Json> routingErrors = const []}) =>
+    jsonEncode({
+      'itineraries': itineraries,
+      'pageInfo': pageInfoJson(pageInfo),
+      'routingErrors': routingErrors,
+      'searchDateTime': '2026-08-21T10:00:00Z',
+    });
+
+String chunkJson(List<Json> itineraries) => jsonEncode({
+      'frontier': 1800,
+      'found': itineraries.length,
+      'finalized': itineraries.length,
+      'results': itineraries,
+    });
+
+String streamPageInfoJson(
+        [Json o = const {}, List<Json> routingErrors = const []]) =>
+    jsonEncode({...pageInfoJson(o), 'routingErrors': routingErrors});
+
+Json stoptimeJson(String tripId, [Json o = const {}]) => {
+      'serviceDay': 1784066400,
+      'scheduledDeparture': 36000,
+      'realtimeDeparture': 36000,
+      'realtime': false,
+      'realtimeState': 'SCHEDULED',
+      'typicalDelay': 0,
+      'headsign': 'Airport',
+      'stop': {'gtfsId': '1:ST-P1', 'platformCode': '1'},
+      'trip': {
+        'gtfsId': tripId,
+        'bikesAllowed': 'NO_INFORMATION',
+        'wheelchairAccessible': 'NO_INFORMATION',
+        'route': routeJson('1:R12', {'mode': 'BUS'}),
+      },
+      ...o,
+    };
+
+String departuresJson(List<Json> stoptimes, [Json o = const {}]) => jsonEncode({
+      'stop': {
+        'gtfsId': '1:ST',
+        'name': 'Central',
+        'wheelchairBoarding': null,
+        'stoptimesWithoutPatterns': stoptimes,
+        ...o,
+      }
+    });
+
+Json tripStoptimeJson(String stopId,
+        [Json o = const {}, Json stop = const {}]) =>
+    {
+      'serviceDay': 1787263200,
+      'scheduledArrival': 36000,
+      'scheduledDeparture': 36000,
+      'realtimeArrival': 36000,
+      'realtimeDeparture': 36000,
+      'realtime': false,
+      'realtimeState': 'SCHEDULED',
+      'typicalDelay': 0,
+      'stop': {
+        'gtfsId': stopId,
+        'name': 'A',
+        'lat': 49.19,
+        'lon': 16.61,
+        'wheelchairBoarding': 'NO_INFORMATION',
+        'platformCode': '1',
+        'zoneId': 'P',
+        ...stop,
+      },
+      ...o,
+    };
+
+String tripJson(List<Json> stoptimes, [Json o = const {}]) => jsonEncode({
+      'trip': {
+        'gtfsId': '1:T1',
+        'directionId': '0',
+        'tripHeadsign': 'Airport',
+        'bikesAllowed': 'NO_INFORMATION',
+        'wheelchairAccessible': 'NO_INFORMATION',
+        'route': routeJson('1:R12', {'mode': 'BUS'}),
+        'stoptimesForDate': stoptimes,
+        'tripGeometry': null,
+        ...o,
+      }
+    });
+
+final emptyPlanBody = planJson();
+
+final planBody = planJson(itineraries: [
+  itineraryJson([
+    legJson({
+      'from': {
+        'name': 'A',
+        'stop': stopJson('1:S1', {'wheelchairBoarding': 'POSSIBLE'})
+      },
+      'to': {
+        'name': 'B',
+        'stop': stopJson('1:S2', {
+          'wheelchairBoarding': 'NOT_POSSIBLE',
+          'platformCode': 'B2',
+          'zoneId': '0'
+        })
+      },
+      'trip': {'gtfsId': '1:T1', 'bikesAllowed': 'ALLOWED'},
+      'legGeometry': {'points': '_p~iF~ps|U_ulLnnqC_mqNvxq`@'},
+    })
+  ], {
+    'waitingTime': 120,
+    'numberOfTransfers': 1
+  })
+], pageInfo: {
+  'hasNextPage': true,
+  'startCursor': 'c1',
+  'endCursor': 'c1'
+});
+
+final pageInfoFrame = 'event: pageInfo\ndata: ${streamPageInfoJson()}\n\n';
 
 void main() {
   group('routing', () {
@@ -265,12 +420,21 @@ void main() {
 
     test('plan maps the typical arrival delay and the interline flag',
         () async {
-      const body = '''
-      {"itineraries":[{"numberOfTransfers":0,"legs":[
-        {"start":{"scheduledTime":"2026-08-21T10:00:00Z"},"end":{"scheduledTime":"2026-08-21T10:15:00Z"},"from":{"name":"A"},"to":{"name":"B"},"mode":"BUS","typicalArrivalDelay":90,"interlineWithPreviousLeg":false},
-        {"start":{"scheduledTime":"2026-08-21T10:15:00Z"},"end":{"scheduledTime":"2026-08-21T10:30:00Z"},"from":{"name":"B"},"to":{"name":"C"},"mode":"BUS","typicalArrivalDelay":null,"interlineWithPreviousLeg":true},
-        {"start":{"scheduledTime":"2026-08-21T10:30:00Z"},"end":{"scheduledTime":"2026-08-21T10:35:00Z"},"from":{"name":"C"},"to":{"name":"D"},"mode":"WALK","interlineWithPreviousLeg":null}
-      ]}],"pageInfo":{"hasNextPage":false,"hasPreviousPage":false},"routingErrors":[]}''';
+      final body = planJson(itineraries: [
+        itineraryJson([
+          legJson({'typicalArrivalDelay': 90}),
+          legJson(
+              {'typicalArrivalDelay': null, 'interlineWithPreviousLeg': true}),
+          legJson({
+            'mode': 'WALK',
+            'typicalArrivalDelay': null,
+            'serviceDate': null,
+            'route': null,
+            'headsign': null,
+            'trip': null,
+          }),
+        ])
+      ]);
       final (client, _) = makeClient((_) => resp(body));
       final result = await client.routing.plan(const PlanOptions(
           origin: Location.stop('A'),
@@ -299,8 +463,11 @@ void main() {
     });
 
     test('planNext sends the same body plus after', () async {
-      const page2 =
-          '{"itineraries":[],"pageInfo":{"hasNextPage":false,"hasPreviousPage":true,"startCursor":"c2","endCursor":"c2","searchWindowUsed":"PT60M"},"routingErrors":[],"searchDateTime":null}';
+      final page2 = planJson(pageInfo: {
+        'hasPreviousPage': true,
+        'startCursor': 'c2',
+        'endCursor': 'c2'
+      });
       final (client, mock) = makeClient(
           (req) => resp(bodyOf(req)['after'] == 'c1' ? page2 : planBody));
       final first = await client.routing.plan(PlanOptions(
@@ -315,8 +482,8 @@ void main() {
     });
 
     test('planPrevious sends the same body plus before', () async {
-      const both =
-          '{"itineraries":[],"pageInfo":{"hasNextPage":true,"hasPreviousPage":true,"startCursor":"c0","endCursor":"c1"},"routingErrors":[]}';
+      final both =
+          planJson(pageInfo: {'hasNextPage': true, 'hasPreviousPage': true});
       final (client, mock) = makeClient((_) => resp(both));
       final first = await client.routing.plan(PlanOptions(
           origin: const Location.stop('A'),
@@ -328,8 +495,8 @@ void main() {
     });
 
     test('planNext and planPrevious repeat the reliability', () async {
-      const both =
-          '{"itineraries":[],"pageInfo":{"hasNextPage":true,"hasPreviousPage":true,"startCursor":"c0","endCursor":"c1"},"routingErrors":[]}';
+      final both =
+          planJson(pageInfo: {'hasNextPage': true, 'hasPreviousPage': true});
       final (client, mock) = makeClient((_) => resp(both));
       final first = await client.routing.plan(const PlanOptions(
           origin: Location.stop('A'),
@@ -395,13 +562,18 @@ void main() {
     });
 
     test('plan maps LOCATION_NOT_FOUND on from, to and via', () async {
-      const body = '{"itineraries":[],'
-          '"pageInfo":{"hasNextPage":false,"hasPreviousPage":false},'
-          '"routingErrors":['
-          '{"code":"LOCATION_NOT_FOUND","inputField":"FROM","description":"unknown origin"},'
-          '{"code":"LOCATION_NOT_FOUND","inputField":"TO","description":"unknown destination"},'
-          '{"code":"LOCATION_NOT_FOUND","inputField":"VIA","description":"unknown via stop"}'
-          ']}';
+      final body = planJson(routingErrors: [
+        for (final (field, description) in [
+          ('FROM', 'unknown origin'),
+          ('TO', 'unknown destination'),
+          ('VIA', 'unknown via stop'),
+        ])
+          {
+            'code': 'LOCATION_NOT_FOUND',
+            'inputField': field,
+            'description': description
+          }
+      ]);
       final (client, _) = makeClient((_) => resp(body));
       final result = await client.routing.plan(const PlanOptions(
           origin: Location.stop('A'),
@@ -502,36 +674,6 @@ void main() {
       expect(result, isA<Success<Route>>());
     });
 
-    test('the query_retired body code wins over the status', () async {
-      for (final body in [
-        '{"code":"query_retired"}',
-        '{"error":"query_retired"}'
-      ]) {
-        final (client, _) = makeClient((_) => resp(body, status: 400));
-        final result = await client.routing.trip('T1');
-        final error = (result as Failure<TripDetails>).error;
-        expect(error.code, SpiderErrorCode.queryRetired, reason: body);
-        expect(error.httpStatus, 400, reason: body);
-      }
-    });
-
-    test('a bare 410 is queryRetired on every surface', () async {
-      final calls =
-          <String, Future<SpiderResult<Object?>> Function(SpiderClient)>{
-        'departures': (c) => c.routing.departures('S'),
-        'stops.search': (c) => c.stops.search(const StopFilter(name: 'M')),
-        'realtime.alerts': (c) => c.realtime.alerts(),
-      };
-      for (final MapEntry(key: name, value: call) in calls.entries) {
-        final (client, _) = makeClient((_) => resp('', status: 410));
-        final error = (await call(client)).errorOrNull!;
-        expect(error.code, SpiderErrorCode.queryRetired, reason: name);
-        expect(error.serverCode, 'query_retired', reason: name);
-        expect(error.message, endsWith('-> 410: this operation is retired'),
-            reason: name);
-      }
-    });
-
     test('a routing 400 is a badRequest naming the field its message names',
         () async {
       final (client, _) = makeClient((_) =>
@@ -583,11 +725,27 @@ void main() {
     test(
         'departures keeps every row the router returns and carries the '
         'service date', () async {
-      const body = '''
-      {"stop":{"gtfsId":"S","name":"Main Square","wheelchairBoarding":"POSSIBLE","stoptimesWithoutPatterns":[
-        {"serviceDay":1784066400,"scheduledDeparture":36000,"realtimeDeparture":36060,"realtime":true,"realtimeState":"UPDATED","headsign":"Airport","trip":{"gtfsId":"T1","bikesAllowed":"ALLOWED","route":{"gtfsId":"1:R12","shortName":"12","longName":"Line 12","mode":"BUS"}}},
-        {"serviceDay":1784066400,"scheduledDeparture":88800,"realtime":false,"headsign":"main square","trip":{"gtfsId":"T2","route":{"gtfsId":"1:R5","shortName":"5","mode":"TRAM"}}}
-      ]}}''';
+      final body = departuresJson([
+        stoptimeJson('1:T1', {
+          'realtimeDeparture': 36060,
+          'realtime': true,
+          'realtimeState': 'UPDATED',
+        }),
+        stoptimeJson('1:T2', {
+          'scheduledDeparture': 88800,
+          'realtimeDeparture': 88800,
+          'headsign': 'main square',
+          'trip': {
+            'gtfsId': '1:T2',
+            'bikesAllowed': 'NO_INFORMATION',
+            'wheelchairAccessible': 'NO_INFORMATION',
+            'route': routeJson('1:R5', {'shortName': '5', 'mode': 'TRAM'}),
+          },
+        }),
+      ], {
+        'name': 'Main Square',
+        'wheelchairBoarding': 'POSSIBLE'
+      });
       final (client, mock) = makeClient((_) => resp(body));
       final result =
           await client.routing.departures('S', numberOfDepartures: 10);
@@ -607,11 +765,33 @@ void main() {
 
     test('departures maps the route, stop and accessibility display fields',
         () async {
-      const body = '''
-      {"stop":{"gtfsId":"1:ST","name":"Central","wheelchairBoarding":null,"stoptimesWithoutPatterns":[
-        {"serviceDay":1784066400,"scheduledDeparture":36000,"stop":{"gtfsId":"1:ST-P2","platformCode":"2"},"trip":{"gtfsId":"T1","wheelchairAccessible":"NOT_POSSIBLE","route":{"gtfsId":"1:R12","shortName":"12","color":"FF0000","textColor":"FFFFFF"}}},
-        {"serviceDay":1784066400,"scheduledDeparture":36600,"trip":{"gtfsId":"T2","wheelchairAccessible":"NO_INFORMATION","route":{"gtfsId":"1:R5"}}}
-      ]}}''';
+      final body = departuresJson([
+        stoptimeJson('1:T1', {
+          'stop': {'gtfsId': '1:ST-P2', 'platformCode': '2'},
+          'trip': {
+            'gtfsId': '1:T1',
+            'bikesAllowed': 'NO_INFORMATION',
+            'wheelchairAccessible': 'NOT_POSSIBLE',
+            'route': routeJson('1:R12', {'mode': 'BUS'}),
+          },
+        }),
+        stoptimeJson('1:T2', {
+          'scheduledDeparture': 36600,
+          'stop': {'gtfsId': '1:ST-P1', 'platformCode': null},
+          'trip': {
+            'gtfsId': '1:T2',
+            'bikesAllowed': 'NO_INFORMATION',
+            'wheelchairAccessible': 'NO_INFORMATION',
+            'route': routeJson('1:R5', {
+              'shortName': null,
+              'longName': null,
+              'color': null,
+              'textColor': null,
+              'mode': 'BUS'
+            }),
+          },
+        }),
+      ]);
       final (client, _) = makeClient((_) => resp(body));
       final result = await client.routing.departures('1:ST');
       final departures = (result as Success<List<Departure>>).value;
@@ -626,28 +806,25 @@ void main() {
       expect(bare.routeGtfsId, '1:R5');
       expect(bare.routeColor, isNull);
       expect(bare.routeTextColor, isNull);
-      expect(bare.stopGtfsId, isNull);
+      expect(bare.stopGtfsId, '1:ST-P1');
       expect(bare.platformCode, isNull);
       expect(bare.wheelchairAccessible, isNull);
     });
 
     test('departures maps the typical delay, null when unknown', () async {
-      const body = '''
-      {"stop":{"gtfsId":"S","name":"S","stoptimesWithoutPatterns":[
-        {"serviceDay":1784066400,"scheduledDeparture":36000,"typicalDelay":45},
-        {"serviceDay":1784066400,"scheduledDeparture":36600,"typicalDelay":null},
-        {"serviceDay":1784066400,"scheduledDeparture":37200}
-      ]}}''';
+      final body = departuresJson([
+        stoptimeJson('1:T1', {'typicalDelay': 45}),
+        stoptimeJson('1:T2', {'typicalDelay': null}),
+      ]);
       final (client, _) = makeClient((_) => resp(body));
       final departures =
           ((await client.routing.departures('S')) as Success<List<Departure>>)
               .value;
       expect(departures.map((d) => d.typicalDelay).toList(),
-          [const Duration(seconds: 45), null, null]);
+          [const Duration(seconds: 45), null]);
 
-      final (stationClient, _) = makeClient((_) => resp(
-          '{"stop":{"gtfsId":"1:ST","name":"Central","stoptimesWithoutPatterns":['
-          '{"serviceDay":1784066400,"scheduledDeparture":36000,"typicalDelay":0}]}}'));
+      final (stationClient, _) =
+          makeClient((_) => resp(departuresJson([stoptimeJson('1:T1')])));
       final fromStation = ((await stationClient.routing.departures('1:ST'))
               as Success<List<Departure>>)
           .value;
@@ -657,8 +834,7 @@ void main() {
     test(
         'departures posts the default count and a 24 h time range to '
         '/routing/v1/departures', () async {
-      final (client, mock) =
-          makeClient((_) => resp('{"stop":{"gtfsId":"S","name":"S"}}'));
+      final (client, mock) = makeClient((_) => resp(departuresJson(const [])));
       await client.routing.departures('S');
       final req = mock.requests.single;
       expect(req.method, 'POST');
@@ -669,8 +845,7 @@ void main() {
     });
 
     test('departures sends the start time in Unix seconds', () async {
-      final (client, mock) =
-          makeClient((_) => resp('{"stop":{"gtfsId":"S","name":"S"}}'));
+      final (client, mock) = makeClient((_) => resp(departuresJson(const [])));
       await client.routing.departures('S',
           startTime:
               DateTime.fromMillisecondsSinceEpoch(1791612000999, isUtc: true));
@@ -697,16 +872,14 @@ void main() {
         expect(error.message, 'timeRange is out of range');
         expect(mock.requests, isEmpty);
       }
-      final (client, mock) =
-          makeClient((_) => resp('{"stop":{"gtfsId":"S","name":"S"}}'));
+      final (client, mock) = makeClient((_) => resp(departuresJson(const [])));
       await client.routing.departures('S', timeRangeSeconds: 1);
       expect(bodyOf(mock.requests.single)['timeRange'], 1);
     });
 
     test('trip without a service date leaves it to the server (today)',
         () async {
-      final (client, mock) = makeClient((_) => resp(
-          '{"trip":{"gtfsId":"T1","route":{"gtfsId":"R1"},"stoptimesForDate":[]}}'));
+      final (client, mock) = makeClient((_) => resp(tripJson(const [])));
       final result = await client.routing.trip('T1');
       expect(result, isA<Success<TripDetails>>());
       final req = mock.requests.single;
@@ -724,10 +897,19 @@ void main() {
     });
 
     test('trip maps stops, geometry and enums', () async {
-      const body = '''
-      {"trip":{"gtfsId":"T1","directionId":"0","tripHeadsign":"Airport","bikesAllowed":"NOT_ALLOWED","route":{"gtfsId":"1:R12","shortName":"12","longName":"Line 12","mode":"BUS"},"stoptimesForDate":[
-        {"serviceDay":1787263200,"scheduledArrival":36000,"scheduledDeparture":36030,"realtimeArrival":36050,"realtimeDeparture":36080,"realtime":true,"stop":{"gtfsId":"S1","name":"A","lat":49.19,"lon":16.61,"wheelchairBoarding":"POSSIBLE"}}
-      ],"tripGeometry":{"points":"_p~iF~ps|U","length":2}}}''';
+      final body = tripJson([
+        tripStoptimeJson('1:S1', {
+          'scheduledDeparture': 36030,
+          'realtimeArrival': 36050,
+          'realtimeDeparture': 36080,
+          'realtime': true,
+        }, {
+          'wheelchairBoarding': 'POSSIBLE'
+        })
+      ], {
+        'bikesAllowed': 'NOT_ALLOWED',
+        'tripGeometry': {'points': '_p~iF~ps|U', 'length': 2},
+      });
       final (client, mock) = makeClient((_) => resp(body));
       final result = await client.routing.trip('T1', serviceDate: '2026-08-21');
       final trip = (result as Success<TripDetails>).value;
@@ -744,11 +926,19 @@ void main() {
 
     test('trip maps the route, accessibility and stop display fields',
         () async {
-      const body = '''
-      {"trip":{"gtfsId":"T1","wheelchairAccessible":"POSSIBLE","route":{"gtfsId":"1:R12","shortName":"12","color":"00A0E2","textColor":"000000"},"stoptimesForDate":[
-        {"serviceDay":1787263200,"scheduledArrival":36000,"stop":{"gtfsId":"S1","name":"A","platformCode":"3","zoneId":"P"}},
-        {"serviceDay":1787263200,"scheduledArrival":36600,"stop":{"gtfsId":"S2","name":"B"}}
-      ]}}''';
+      final body = tripJson([
+        tripStoptimeJson(
+            '1:S1', const {}, {'platformCode': '3', 'zoneId': 'P'}),
+        tripStoptimeJson('1:S2', {'scheduledArrival': 36600},
+            {'name': 'B', 'platformCode': null, 'zoneId': null}),
+      ], {
+        'wheelchairAccessible': 'POSSIBLE',
+        'route': routeJson('1:R12', {
+          'color': '00A0E2',
+          'textColor': '000000',
+          'mode': 'BUS',
+        }),
+      });
       final (client, _) = makeClient((_) => resp(body));
       final trip =
           ((await client.routing.trip('T1')) as Success<TripDetails>).value;
@@ -761,8 +951,15 @@ void main() {
       expect(trip.stops[1].platformCode, isNull);
       expect(trip.stops[1].zoneId, isNull);
 
-      final (bareClient, _) = makeClient((_) => resp(
-          '{"trip":{"gtfsId":"T1","route":{"gtfsId":"1:R12"},"stoptimesForDate":[]}}'));
+      final (bareClient, _) = makeClient((_) => resp(tripJson(const [], {
+            'route': routeJson('1:R12', {
+              'shortName': null,
+              'longName': null,
+              'color': null,
+              'textColor': null,
+              'mode': 'BUS',
+            })
+          })));
       final bare =
           ((await bareClient.routing.trip('T1')) as Success<TripDetails>).value;
       expect(bare.routeColor, isNull);
@@ -771,17 +968,16 @@ void main() {
     });
 
     test('trip maps the typical delay per stop, null when unknown', () async {
-      const body = '''
-      {"trip":{"gtfsId":"T1","route":{"gtfsId":"1:R12"},"stoptimesForDate":[
-        {"serviceDay":1787263200,"scheduledArrival":36000,"typicalDelay":30,"stop":{"gtfsId":"S1","name":"A"}},
-        {"serviceDay":1787263200,"scheduledArrival":36600,"typicalDelay":null,"stop":{"gtfsId":"S2","name":"B"}},
-        {"serviceDay":1787263200,"scheduledArrival":37200,"stop":{"gtfsId":"S3","name":"C"}}
-      ]}}''';
+      final body = tripJson([
+        tripStoptimeJson('1:S1', {'typicalDelay': 30}),
+        tripStoptimeJson(
+            '1:S2', {'scheduledArrival': 36600, 'typicalDelay': null}),
+      ]);
       final (client, _) = makeClient((_) => resp(body));
       final trip =
           ((await client.routing.trip('T1')) as Success<TripDetails>).value;
       expect(trip.stops.map((s) => s.typicalDelay).toList(),
-          [const Duration(seconds: 30), null, null]);
+          [const Duration(seconds: 30), null]);
     });
 
     test('trip rejects a malformed service date without a request', () async {
@@ -996,25 +1192,26 @@ void main() {
   group('realtime', () {
     test('vehicles maps and converts seconds to millis', () async {
       const body =
-          '{"vehicles":[{"tripId":"T1","latitude":49.1,"longitude":16.6,"occupancyStatus":"FEW_SEATS_AVAILABLE","timestamp":1700000000}],"missing":["T9"],"feedTimestamp":1700000000,"staleSeconds":3.5}';
+          '{"vehicles":[{"tripId":"1:T1","latitude":49.1,"longitude":16.6,"occupancyStatus":"FEW_SEATS_AVAILABLE","timestamp":1700000000}],"missing":["1:T9"],"feedTimestamp":1700000000,"staleSeconds":3}';
       final (client, mock) = makeClient((_) => resp(body));
-      final result = await client.realtime.vehicles(['T1', 'T9']);
+      final result = await client.realtime.vehicles(['1:T1', '1:T9']);
       final positions = (result as Success<VehiclePositions>).value;
       expect(positions.vehicles[0].timestampEpochMs, 1700000000 * 1000);
       expect(
           positions.vehicles[0].occupancy, OccupancyStatus.fewSeatsAvailable);
-      expect(positions.missing, ['T9']);
+      expect(positions.missing, ['1:T9']);
+      expect(positions.freshness.staleSeconds, 3);
       expect(positions.freshness.feedTimestampEpochMs, 1700000000 * 1000);
-      expect(mock.requests[0].uri.queryParameters['tripIds'], 'T1,T9');
+      expect(mock.requests[0].uri.queryParameters['tripIds'], '1:T1,1:T9');
     });
 
     test('each call targets its /v1 path', () async {
       final calls = <(String, String), Future<Object?> Function(SpiderClient)>{
-        ('GET', '/realtime/v1/vehicles'): (c) => c.realtime.vehicles(['T1']),
-        ('GET', '/realtime/v1/vehicles/by-trip/T1'): (c) =>
-            c.realtime.vehicleForTrip('T1'),
-        ('POST', '/realtime/v1/delays'): (c) =>
-            c.realtime.delays(['T1'], '2026-07-15'),
+        ('GET', '/realtime/v1/vehicles'): (c) => c.realtime.vehicles(['1:T1']),
+        ('GET', '/realtime/v1/vehicles/by-trip/1%3AT1'): (c) =>
+            c.realtime.vehicleForTrip('1:T1'),
+        ('GET', '/realtime/v1/delays'): (c) =>
+            c.realtime.delays('2026-07-15', ['1:T1']),
         ('GET', '/realtime/v1/alerts'): (c) => c.realtime.alerts(),
       };
       for (final MapEntry(key: (method, path), value: call) in calls.entries) {
@@ -1075,7 +1272,7 @@ void main() {
     test('a vehicleForTrip 400 is a badRequest naming the field', () async {
       final (client, _) =
           makeClient((_) => resp('tripId is invalid', status: 400));
-      final result = await client.realtime.vehicleForTrip('T1');
+      final result = await client.realtime.vehicleForTrip('1:T1');
       final error = (result as Failure<LiveVehicleUpdate>).error;
       expect(error.code, SpiderErrorCode.badRequest);
       expect(error.field, 'tripId');
@@ -1083,85 +1280,86 @@ void main() {
 
     test('vehicleForTrip 404 is a soft null', () async {
       final (client, _) = makeClient((_) => resp('{}', status: 404));
-      final result = await client.realtime.vehicleForTrip('T1');
+      final result = await client.realtime.vehicleForTrip('1:T1');
       expect((result as Success<LiveVehicleUpdate>).value.vehicle, isNull);
     });
 
-    test('delays posts grouped queries and resolves per (tripId, serviceDate)',
-        () async {
+    test('delays GETs one service date with the ids as sent', () async {
       const body =
-          '{"results":[{"serviceDate":"2026-07-15","delays":[{"tripId":"T1","routeId":"R1","delaySeconds":120,"scheduleRelationship":"SCHEDULED","stopTimeUpdates":[{"stopId":"S1","stopSequence":3,"arrivalDelay":120,"departureDelay":90}]}],"missing":["T2"]}],"feedTimestamp":1700000000,"staleSeconds":2.0}';
+          '{"serviceDate":"2026-07-15","delays":[{"tripId":"1:T1","routeId":"1:R1","delaySeconds":120,"scheduleRelationship":"SCHEDULED","stopTimeUpdates":[{"stopId":"1:S1","stopSequence":3,"arrivalDelay":120,"departureDelay":90}]}],"missing":["1:T2"],"feedTimestamp":1700000000,"staleSeconds":2}';
       final (client, mock) = makeClient((_) => resp(body));
-      final result = await client.realtime.delays(['T1', 'T2'], '2026-07-15');
+      final result =
+          await client.realtime.delays('2026-07-15', ['1:T2', '1:T1']);
       final delays = (result as Success<TripDelays>).value;
 
-      final req = mock.requests[0];
-      expect(req.method, 'POST');
+      final req = mock.requests.single;
+      expect(req.method, 'GET');
       expect(req.uri.path, '/realtime/v1/delays');
-      expect(bodyOf(req)['queries'], [
-        {
-          'serviceDate': '2026-07-15',
-          'tripIds': ['T1', 'T2']
-        }
-      ]);
+      expect(req.uri.queryParameters,
+          {'serviceDate': '2026-07-15', 'tripIds': '1:T1,1:T2'});
 
-      final d = delays.delayFor('T1', '2026-07-15');
+      expect(delays.serviceDate, '2026-07-15');
+      final d = delays.delayFor('1:T1');
+      expect(d?.routeId, '1:R1');
       expect(d?.delaySeconds, 120);
+      expect(d?.stopTimeUpdates.first.stopId, '1:S1');
       expect(d?.stopTimeUpdates.first.arrivalDelay, 120);
-      expect(delays.groups.single.missing, ['T2']);
+      expect(delays.delayFor('T1'), isNull);
+      expect(delays.missing, ['1:T2']);
       expect(delays.freshness.feedTimestampEpochMs, 1700000000 * 1000);
-      // The same trip id on another service date is a different instance.
-      expect(delays.delayFor('T1', '2026-07-16'), isNull);
+      expect(delays.freshness.staleSeconds, 2);
     });
 
-    test('delays with no trip ids is an empty success without a request',
-        () async {
-      for (final groups in [
-        <String, List<String>>{},
-        {'2026-07-15': <String>[]},
-        {'2026-07-15': <String>[], '2026-07-16': <String>[]},
+    test('delays de-duplicates and sorts ids into one URL', () async {
+      final urls = <String>[];
+      for (final ids in [
+        ['1:B', '1:A', '1:B'],
+        ['1:A', '1:B'],
       ]) {
-        final (client, mock) = makeClient((_) => resp('{}'));
-        final result = await client.realtime.delaysByServiceDate(groups);
-        final delays = (result as Success<TripDelays>).value;
-        expect(delays.groups, isEmpty);
-        expect(delays.freshness.feedTimestampEpochMs, isNull);
-        expect(mock.requests, isEmpty);
+        final (client, mock) = makeClient((_) => resp(
+            '{"serviceDate":"2026-07-15","delays":[],"missing":["1:A","1:B"]}'));
+        final result = await client.realtime.delays('2026-07-15', ids);
+        expect(result, isA<Success<TripDelays>>());
+        urls.add(mock.requests.single.uri.toString());
       }
-      final (client, mock) = makeClient((_) => resp('{}'));
-      final result = await client.realtime.delays(const [], '2026-07-15');
-      expect(result, isA<Success<TripDelays>>());
-      expect(mock.requests, isEmpty);
+      expect(urls[0], urls[1]);
     });
 
-    test('delays counts trip ids across all service dates', () async {
-      List<String> ids(int n, String p) => List.generate(n, (i) => '$p$i');
-      final (overClient, overMock) = makeClient((_) => resp('{}'));
-      final over = await overClient.realtime.delaysByServiceDate(
-          {'2026-07-15': ids(30, 'A'), '2026-07-16': ids(21, 'B')});
-      final error = (over as Failure<TripDelays>).error;
-      expect(error.code, SpiderErrorCode.badRequest);
-      expect(error.field, 'tripIds');
-      expect(error.message, 'tripIds is out of range');
-      expect(overMock.requests, isEmpty);
-      final (client, mock) = makeClient((_) => resp('{"results":[]}'));
-      final result = await client.realtime.delaysByServiceDate(
-          {'2026-07-15': ids(25, 'A'), '2026-07-16': ids(25, 'B')});
-      expect(result, isA<Success<TripDelays>>());
-      expect(mock.requests, hasLength(1));
+    test('delays rejects fixed limits without a request', () async {
+      final cases = <(String, List<String>, String, String)>[
+        ('2026-07-15', const [], 'tripIds', 'tripIds is required'),
+        ('2026-07-15', const ['1:T1', ' '], 'tripIds', 'tripIds is invalid'),
+        ('2026-07-15', const ['1:T1', ''], 'tripIds', 'tripIds is invalid'),
+        (
+          '2026-07-15',
+          List.generate(51, (i) => '1:T$i'),
+          'tripIds',
+          'tripIds is out of range'
+        ),
+        ('20260715', const ['1:T1'], 'serviceDate', 'serviceDate is invalid'),
+      ];
+      for (final (date, ids, field, message) in cases) {
+        final (client, mock) = makeClient((_) => resp('{}'));
+        final result = await client.realtime.delays(date, ids);
+        final error = (result as Failure<TripDelays>).error;
+        expect(error.code, SpiderErrorCode.badRequest, reason: message);
+        expect(error.field, field, reason: message);
+        expect(error.message, message);
+        expect(mock.requests, isEmpty, reason: message);
+      }
     });
 
-    test('delays rejects a malformed service date without a request', () async {
-      final (client, mock) = makeClient((_) => resp('{}'));
-      final result = await client.realtime.delaysByServiceDate({
-        '2026-07-15': ['T1'],
-        '20260716': ['T2'],
-      });
-      final error = (result as Failure<TripDelays>).error;
-      expect(error.code, SpiderErrorCode.badRequest);
-      expect(error.field, 'serviceDate');
-      expect(error.message, 'serviceDate is invalid');
-      expect(mock.requests, isEmpty);
+    test('delays counts distinct ids against the limit of 50', () async {
+      final (client, mock) = makeClient(
+          (_) => resp('{"serviceDate":"2026-07-15","delays":[],"missing":[]}'));
+      final ids = [
+        ...List.generate(50, (i) => '1:T$i'),
+        ...List.generate(10, (i) => '1:T$i'),
+      ];
+      final result = await client.realtime.delays('2026-07-15', ids);
+      expect(result, isA<Success<TripDelays>>());
+      expect(mock.requests.single.uri.queryParameters['tripIds']!.split(','),
+          hasLength(50));
     });
   });
 
@@ -1215,7 +1413,7 @@ void main() {
       expect(RealtimeState.fromWire('UPDATED'), RealtimeState.updated);
       expect(RealtimeState.fromWire('SOMETHING_NEW'), RealtimeState.unknown);
       expect(RoutingErrorCode.fromWire('OUTSIDE_BOUNDS'),
-          RoutingErrorCode.outsideBounds);
+          RoutingErrorCode.unknown);
       expect(
           RoutingErrorCode.fromWire('SOMETHING_NEW'), RoutingErrorCode.unknown);
       expect(InputField.fromWire('VIA'), InputField.via);
@@ -1224,15 +1422,17 @@ void main() {
 
     test('an unknown wire value decodes to unknown through the plan mapping',
         () {
-      const data = '{ "hasNextPage": false, "hasPreviousPage": false, '
-          '"routingErrors": [{ "code": "SOMETHING_NEW", "inputField": "SOMEWHERE", "description": "x" }] }';
+      final data = streamPageInfoJson(const {}, [
+        {'code': 'SOMETHING_NEW', 'inputField': 'SOMEWHERE', 'description': 'x'}
+      ]);
       final done = parsePlanStreamRecord('pageInfo', data) as PlanStreamDone;
       expect(done.routingErrors.single.code, RoutingErrorCode.unknown);
       expect(done.routingErrors.single.inputField, InputField.unknown);
-      const chunk =
-          '{"frontier":60,"found":1,"finalized":1,"results":[{"numberOfTransfers":0,"legs":[{"mode":"HOVERCRAFT",'
-          '"realtimeState":"SOMETHING_NEW","start":{"scheduledTime":"t"},"end":{"scheduledTime":"t"},'
-          '"from":{"name":"A"},"to":{"name":"B"}}]}]}';
+      final chunk = chunkJson([
+        itineraryJson([
+          legJson({'mode': 'HOVERCRAFT', 'realtimeState': 'SOMETHING_NEW'})
+        ])
+      ]);
       final leg = (parsePlanStreamRecord('chunk', chunk) as PlanStreamResult)
           .itineraries
           .single
@@ -1244,16 +1444,24 @@ void main() {
 
     test('wheelchair and bikes decode unknown and NO_INFORMATION in the models',
         () async {
-      const data =
-          '{"frontier":60,"found":1,"finalized":1,"results":[{"numberOfTransfers":0,"legs":['
-          '{"start":{"scheduledTime":"t"},"end":{"scheduledTime":"t"},'
-          '"from":{"name":"A","stop":{"gtfsId":"1:A","wheelchairBoarding":"RAMP_ONLY"}},'
-          '"to":{"name":"B","stop":{"gtfsId":"1:B","wheelchairBoarding":"NO_INFORMATION"}},'
-          '"trip":{"gtfsId":"1:T","bikesAllowed":"FOLDING_ONLY"}},'
-          '{"start":{"scheduledTime":"t"},"end":{"scheduledTime":"t"},'
-          '"from":{"name":"B"},"to":{"name":"C"},'
-          '"trip":{"gtfsId":"1:T2","bikesAllowed":"NO_INFORMATION"}}'
-          ']}]}';
+      final data = chunkJson([
+        itineraryJson([
+          legJson({
+            'from': {
+              'name': 'A',
+              'stop': stopJson('1:A', {'wheelchairBoarding': 'RAMP_ONLY'})
+            },
+            'to': {
+              'name': 'B',
+              'stop': stopJson('1:B', {'wheelchairBoarding': 'NO_INFORMATION'})
+            },
+            'trip': {'gtfsId': '1:T', 'bikesAllowed': 'FOLDING_ONLY'},
+          }),
+          legJson({
+            'trip': {'gtfsId': '1:T2', 'bikesAllowed': 'NO_INFORMATION'},
+          }),
+        ])
+      ]);
       final legs = (parsePlanStreamRecord('chunk', data) as PlanStreamResult)
           .itineraries
           .single
@@ -1264,8 +1472,7 @@ void main() {
       expect(legs[1].bikesAllowed, isNull);
 
       final (client, _) = makeClient((_) =>
-          resp('{"trip":{"gtfsId":"T1","wheelchairAccessible":"SOMETHING_NEW",'
-              '"route":{"gtfsId":"R1"},"stoptimesForDate":[]}}'));
+          resp(tripJson(const [], {'wheelchairAccessible': 'SOMETHING_NEW'})));
       final trip =
           ((await client.routing.trip('T1')) as Success<TripDetails>).value;
       expect(trip.wheelchairAccessible, WheelchairBoarding.unknown);
@@ -1289,30 +1496,36 @@ void main() {
     // A `chunk` carries itinerary nodes; realtime delays ride on each leg's estimated{time,delay} +
     // realtimeState + realTime + serviceDate and must land on the domain Leg exactly as the batch plan maps.
     test('chunk maps itineraries with realtime delays', () {
-      const data = '''
-        {
-          "frontier": 1800, "found": 1, "finalized": 1,
-          "results": [
-            {
-              "numberOfTransfers": 1,
-              "start": "2026-07-15T08:00:00Z", "end": "2026-07-15T08:30:00Z", "duration": 1800,
-              "legs": [
-                {
-                  "mode": "BUS",
-                  "start": { "scheduledTime": "2026-07-15T08:00:00Z", "estimated": { "time": "2026-07-15T08:01:00Z", "delay": "PT60S" } },
-                  "end":   { "scheduledTime": "2026-07-15T08:30:00Z", "estimated": { "time": "2026-07-15T08:32:00Z", "delay": "PT120S" } },
-                  "typicalArrivalDelay": 150,
-                  "realtimeState": "UPDATED", "realTime": true, "serviceDate": "2026-07-15",
-                  "from": { "name": "Origin", "stop": { "gtfsId": "1:A" } },
-                  "to":   { "name": "Dest",   "stop": { "gtfsId": "1:B" } },
-                  "route": { "gtfsId": "1:R12", "shortName": "12" }, "trip": { "gtfsId": "1:T" },
-                  "interlineWithPreviousLeg": true
-                }
-              ]
-            }
-          ]
-        }
-      ''';
+      final data = chunkJson([
+        itineraryJson([
+          legJson({
+            'start': {
+              'scheduledTime': '2026-07-15T08:00:00Z',
+              'estimated': {'time': '2026-07-15T08:01:00Z', 'delay': 'PT60S'}
+            },
+            'end': {
+              'scheduledTime': '2026-07-15T08:30:00Z',
+              'estimated': {'time': '2026-07-15T08:32:00Z', 'delay': 'PT120S'}
+            },
+            'typicalArrivalDelay': 150,
+            'realtimeState': 'UPDATED',
+            'realTime': true,
+            'serviceDate': '2026-07-15',
+            'from': {
+              'name': 'Origin',
+              'stop': stopJson('1:A', {'platformCode': null})
+            },
+            'to': {
+              'name': 'Dest',
+              'stop': stopJson('1:B', {'zoneId': null})
+            },
+            'route': routeJson('1:R12', {'color': null, 'textColor': null}),
+            'interlineWithPreviousLeg': true,
+          })
+        ], {
+          'numberOfTransfers': 1
+        })
+      ]);
       final event = parsePlanStreamRecord('chunk', data);
       expect(event, isA<PlanStreamResult>());
       final result = event as PlanStreamResult;
@@ -1334,7 +1547,7 @@ void main() {
       expect(leg.fromGtfsId, '1:A');
       expect(leg.toGtfsId, '1:B');
       expect(leg.routeGtfsId, '1:R12');
-      // Absent display fields stay null.
+      // Null display fields stay null.
       expect(leg.routeColor, isNull);
       expect(leg.routeTextColor, isNull);
       expect(leg.fromPlatformCode, isNull);
@@ -1358,11 +1571,18 @@ void main() {
 
     // Routing outcomes ride on the terminal pageInfo, shaped like the batch plan's routingErrors.
     test('pageInfo carries routing errors on the terminal Done', () {
-      const data = '{ "hasNextPage": false, "hasPreviousPage": false, '
-          '"routingErrors": ['
-          '{ "code": "OUTSIDE_SERVICE_PERIOD", "inputField": "DATE_TIME", "description": "outside the feed" },'
-          '{ "code": "LOCATION_NOT_FOUND", "inputField": "FROM", "description": "unknown stop" }'
-          '] }';
+      final data = streamPageInfoJson(const {}, [
+        {
+          'code': 'OUTSIDE_SERVICE_PERIOD',
+          'inputField': 'DATE_TIME',
+          'description': 'outside the feed'
+        },
+        {
+          'code': 'LOCATION_NOT_FOUND',
+          'inputField': 'FROM',
+          'description': 'unknown stop'
+        },
+      ]);
       final event = parsePlanStreamRecord('pageInfo', data) as PlanStreamDone;
       expect(event.routingErrors.length, 2);
       expect(
@@ -1421,7 +1641,7 @@ void main() {
         maxWindow: 'PT3H',
         reliability: wire.Reliability.safe,
       );
-      expect(variables.toJson(), {
+      expect(jsonDecode(jsonEncode(variables)), {
         'dateTime': {'earliestDeparture': '2026-07-15T08:00:00Z'},
         'origin': {
           'location': {
@@ -1449,13 +1669,20 @@ void main() {
     test(
         'planStream emits Result then a terminal Done over SSE (dropping the '
         'done telemetry) and posts the REST body, no cursors', () async {
-      const frames = 'event: chunk\n'
-          'data: {"frontier":1800,"found":1,"finalized":1,"results":[{"numberOfTransfers":0,"duration":600,"legs":[{"mode":"BUS","start":{"scheduledTime":"2026-07-15T08:00:00Z"},"end":{"scheduledTime":"2026-07-15T08:10:00Z"},"from":{"name":"A"},"to":{"name":"B"}}]}]}\n'
+      final frames = 'event: chunk\n'
+          'data: ${chunkJson([
+            itineraryJson([
+              legJson({'typicalArrivalDelay': null})
+            ])
+          ])}\n'
           '\n'
           ': heartbeat\n'
           '\n'
           'event: pageInfo\n'
-          'data: {"endCursor":"c-next","hasNextPage":true,"hasPreviousPage":false,"routingErrors":[]}\n'
+          'data: ${streamPageInfoJson({
+            'endCursor': 'c-next',
+            'hasNextPage': true
+          })}\n'
           '\n'
           'event: done\n'
           'data: {"iterations":1,"windowSeconds":1800,"resultCount":1,"stoppedBy":"targetResults"}\n'
@@ -1674,8 +1901,13 @@ void main() {
 
     test('planStreamNext continues forward with after and repeats the request',
         () async {
-      const frames = 'event: pageInfo\n'
-          'data: {"startCursor":"c-prev","endCursor":"c-next2","hasNextPage":true,"hasPreviousPage":true,"routingErrors":[]}\n'
+      final frames = 'event: pageInfo\n'
+          'data: ${streamPageInfoJson({
+            'startCursor': 'c-prev',
+            'endCursor': 'c-next2',
+            'hasNextPage': true,
+            'hasPreviousPage': true
+          })}\n'
           '\n';
       final mock = MockHttpClient((_) => resp('{}'),
           streamHandler: (_) => SpiderHttpStreamedResponse(
@@ -1701,8 +1933,12 @@ void main() {
     });
 
     test('planStreamPrevious continues backward with before', () async {
-      const frames = 'event: pageInfo\n'
-          'data: {"startCursor":"c-prev2","endCursor":"c-next","hasNextPage":true,"hasPreviousPage":false,"routingErrors":[]}\n'
+      final frames = 'event: pageInfo\n'
+          'data: ${streamPageInfoJson({
+            'startCursor': 'c-prev2',
+            'endCursor': 'c-next',
+            'hasNextPage': true
+          })}\n'
           '\n';
       final mock = MockHttpClient((_) => resp('{}'),
           streamHandler: (_) => SpiderHttpStreamedResponse(
@@ -1762,17 +1998,6 @@ void main() {
       expect((events.single as PlanStreamFailure).error.code,
           SpiderErrorCode.unauthorized);
     });
-
-    test('planStream maps a 410 to queryRetired', () async {
-      final (client, _) =
-          makeStreamClient(410, '', contentType: 'application/json');
-      final events = await client.routing
-          .planStream(stopsAB, targetResults: 5, maxWindowMinutes: 120)
-          .toList();
-      final error = (events.single as PlanStreamFailure).error;
-      expect(error.code, SpiderErrorCode.queryRetired);
-      expect(error.httpStatus, 410);
-    });
   });
 
   group('plan limits', () {
@@ -1800,9 +2025,9 @@ void main() {
       'trip': (c) => c.routing.trip('T1'),
       'stops.search': (c) => c.stops.search(const StopFilter(name: 'M')),
       'stops.byId': (c) => c.stops.byId('1:S1'),
-      'realtime.vehicles': (c) => c.realtime.vehicles(['T1']),
-      'realtime.vehicleForTrip': (c) => c.realtime.vehicleForTrip('T1'),
-      'realtime.delays': (c) => c.realtime.delays(['T1'], '2026-07-15'),
+      'realtime.vehicles': (c) => c.realtime.vehicles(['1:T1']),
+      'realtime.vehicleForTrip': (c) => c.realtime.vehicleForTrip('1:T1'),
+      'realtime.delays': (c) => c.realtime.delays('2026-07-15', ['1:T1']),
       'realtime.alerts': (c) => c.realtime.alerts(),
     };
 

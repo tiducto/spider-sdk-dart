@@ -496,11 +496,10 @@ Future<void> departuresWithRealtime(SpiderClient client) async {
       final scheduled =
           DateTime.fromMillisecondsSinceEpoch(d.scheduledTimeEpochMs);
 
-      if (d.isRealtime && d.realtimeTimeEpochMs != null) {
-        final live =
-            DateTime.fromMillisecondsSinceEpoch(d.realtimeTimeEpochMs!);
+      if (d.isRealtime) {
+        final live = DateTime.fromMillisecondsSinceEpoch(d.realtimeTimeEpochMs);
         final delayMin =
-            (d.realtimeTimeEpochMs! - d.scheduledTimeEpochMs) ~/ 60000;
+            (d.realtimeTimeEpochMs - d.scheduledTimeEpochMs) ~/ 60000;
         print('$line → ${d.headsign}: scheduled $scheduled, '
             'live $live (${delayMin}m, ${d.realtimeState?.name}) '
             '[trip ${d.tripGtfsId}]');

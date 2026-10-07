@@ -130,8 +130,6 @@ enum RoutingErrorCode {
   locationNotFound('LOCATION_NOT_FOUND'),
   noStopsInRange('NO_STOPS_IN_RANGE'),
   noTransitConnection('NO_TRANSIT_CONNECTION'),
-  noTransitConnectionInSearchWindow('NO_TRANSIT_CONNECTION_IN_SEARCH_WINDOW'),
-  outsideBounds('OUTSIDE_BOUNDS'),
   outsideServicePeriod('OUTSIDE_SERVICE_PERIOD'),
   walkingBetterThanTransit('WALKING_BETTER_THAN_TRANSIT'),
   unknown('UNKNOWN');

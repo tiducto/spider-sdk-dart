@@ -11,9 +11,6 @@ enum SpiderErrorCode {
   server,
   rateLimited,
 
-  /// The API no longer serves this call (HTTP 410, or a `query_retired` body code).
-  queryRetired,
-
   /// The project has reached its plan's trip planning limit, so trip planning (`plan`, `planStream`) is refused;
   /// the other calls still work (gateway `planning_limit_reached`).
   planningLimitReached,
@@ -48,7 +45,6 @@ enum TransportErrorKind {
   http,
   noData,
   upstream,
-  queryRetired,
   planningLimitReached,
   agreementInactive
 }
@@ -89,6 +85,10 @@ SpiderError invalidInput(String field, {bool malformed = false}) => SpiderError(
     malformed ? '$field is invalid' : '$field is out of range',
     field: field);
 
+/// A [SpiderErrorCode.badRequest] the SDK raises before sending when the required [field] is empty.
+SpiderError missingInput(String field) =>
+    SpiderError(SpiderErrorCode.badRequest, '$field is required', field: field);
+
 /// Maps any thrown error into the public [SpiderError] taxonomy. Mirrors the TS SDK's `toSpiderError`.
 SpiderError toSpiderError(Object error) {
   if (error is SpiderError) return error;
@@ -109,9 +109,6 @@ SpiderError toSpiderError(Object error) {
             httpStatus: status,
             serverCode: error.serverCode,
             field: error.field);
-      case TransportErrorKind.queryRetired:
-        return SpiderError(SpiderErrorCode.queryRetired, error.message,
-            httpStatus: error.httpStatus, serverCode: error.serverCode);
       case TransportErrorKind.planningLimitReached:
         return SpiderError(SpiderErrorCode.planningLimitReached, error.message,
             httpStatus: error.httpStatus, serverCode: error.serverCode);
