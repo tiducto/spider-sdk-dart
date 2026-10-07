@@ -23,9 +23,7 @@ Future<void> reuseHit(SpiderClient client) async {
 
   if (found case Success(:final value) when value.isNotEmpty) {
     final hit = value.first;
-    if (hit.lat != null && hit.lon != null) {
-      print('using ${hit.name} at ${hit.lat}, ${hit.lon}');
-    }
+    print('using ${hit.name} at ${hit.lat}, ${hit.lon}');
 
     final departures =
         await client.routing.departures(hit.gtfsId, numberOfDepartures: 5);

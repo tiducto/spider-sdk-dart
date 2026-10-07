@@ -1020,14 +1020,16 @@ void main() {
 
     test('search maps code, location type and wheelchair boarding', () async {
       const body = '{"hits":['
-          '{"gtfsId":"1:U1","name":"Station","code":"ZV","locationType":1,"wheelchairBoarding":1},'
-          '{"gtfsId":"1:U2","name":"Stop","wheelchairBoarding":2},'
-          '{"gtfsId":"1:U3","name":"Bare","wheelchairBoarding":0},'
-          '{"gtfsId":"1:U4","name":"Odd","wheelchairBoarding":7}'
+          '{"gtfsId":"1:U1","name":"Station","code":"ZV","locationType":1,"wheelchairBoarding":1,"lat":49.19,"lon":16.6},'
+          '{"gtfsId":"1:U2","name":"Stop","wheelchairBoarding":2,"lat":49.2,"lon":16.61},'
+          '{"gtfsId":"1:U3","name":"Bare","wheelchairBoarding":0,"lat":49.21,"lon":16.62},'
+          '{"gtfsId":"1:U4","name":"Odd","wheelchairBoarding":7,"lat":49.22,"lon":16.63}'
           ']}';
       final (client, _) = makeClient((_) => resp(body));
       final result = await client.stops.search(const StopFilter(name: 'S'));
       final stops = (result as Success<List<Stop>>).value;
+      expect(stops[0].lat, 49.19);
+      expect(stops[0].lon, 16.6);
       expect(stops[0].code, 'ZV');
       expect(stops[0].locationType, 1);
       expect(stops[0].wheelchairBoarding, WheelchairBoarding.possible);
@@ -1051,8 +1053,8 @@ void main() {
     test('search maps modes, an unknown mode to unknown, absent to empty',
         () async {
       const body = '{"hits":['
-          '{"gtfsId":"1:U1","name":"Hub","modes":["BUS","RAIL","HOVERCRAFT"]},'
-          '{"gtfsId":"1:U2","name":"Unserved"}'
+          '{"gtfsId":"1:U1","name":"Hub","modes":["BUS","RAIL","HOVERCRAFT"],"lat":49.19,"lon":16.6},'
+          '{"gtfsId":"1:U2","name":"Unserved","lat":49.2,"lon":16.61}'
           ']}';
       final (client, _) = makeClient((_) => resp(body));
       final result = await client.stops.search(const StopFilter(name: 'H'));
@@ -1225,13 +1227,15 @@ void main() {
     test('vehicles keeps feed-prefixed ids as the service sends them',
         () async {
       const body =
-          '{"vehicles":[{"tripId":"1:T1","routeId":"1:R1","vehicleId":"1:V7","stopId":"1:S1"}],"missing":[]}';
+          '{"vehicles":[{"tripId":"1:T1","routeId":"1:R1","vehicleId":"1:V7","stopId":"1:S1","latitude":49.19,"longitude":16.6}],"missing":[]}';
       final (client, _) = makeClient((_) => resp(body));
       final result = await client.realtime.vehicles(['1:T1']);
       final vehicle = (result as Success<VehiclePositions>).value.vehicles[0];
       expect(vehicle.vehicleId, '1:V7');
       expect(vehicle.tripId, '1:T1');
       expect(vehicle.stopId, '1:S1');
+      expect(vehicle.latitude, 49.19);
+      expect(vehicle.longitude, 16.6);
     });
 
     test('vehicles with no trip ids is an empty success without a request',

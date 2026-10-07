@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.1 - 2026-10-07
+
+### Changed
+
+- **Fields the contract requires are non-null**, as in the Kotlin, TypeScript and Swift SDKs: `Stop.lat`, `lon`;
+  `LiveVehicle.tripId`, `latitude`, `longitude`; `ServiceAlert.id`. Their constructor parameters are `required`.
+
 ## 1.3.0 - 2026-10-07
 
 Targets Spider API contract `1.3`.
