@@ -15,8 +15,8 @@ class PlanTripRequest {
 
   /// Locations the journey must visit or pass through, in the order given, all of one kind: every entry `visit` or every entry `passThrough`; mixing them is a 400 `via is invalid`. How many a request takes is an environment setting, and an environment set to 0 has via turned off; more is a 400 `via is out of range`. A via stop id that resolves to no stop or station is a 200 with the `routingErrors` code `LOCATION_NOT_FOUND` on `VIA`.
   final List<PlanViaLocationInput>? via;
-  final dynamic? modes;
-  final dynamic? preferences;
+  final PlanModesInput? modes;
+  final PlanPreferencesInput? preferences;
 
   /// Itineraries on this page: 1 up to the environment's itinerary limit; rejected, never clamped. Absent means the limit. With `after` or no cursor, never with `before`.
   final int? first;
@@ -31,7 +31,7 @@ class PlanTripRequest {
   final String? after;
 
   /// Delay-aware planning level; omitted or null plans on the timetable alone.
-  final dynamic? reliability;
+  final Reliability? reliability;
 
   const PlanTripRequest({
     required this.dateTime,
@@ -61,13 +61,20 @@ class PlanTripRequest {
             ?.map(
                 (e) => PlanViaLocationInput.fromJson(e as Map<String, dynamic>))
             .toList(),
-        modes: json['modes'],
-        preferences: json['preferences'],
+        modes: json['modes'] == null
+            ? null
+            : PlanModesInput.fromJson(json['modes'] as Map<String, dynamic>),
+        preferences: json['preferences'] == null
+            ? null
+            : PlanPreferencesInput.fromJson(
+                json['preferences'] as Map<String, dynamic>),
         first: (json['first'] as num?)?.toInt(),
         last: (json['last'] as num?)?.toInt(),
         before: json['before'] as String?,
         after: json['after'] as String?,
-        reliability: json['reliability'],
+        reliability: json['reliability'] == null
+            ? null
+            : Reliability.fromWire(json['reliability'] as String),
       );
 
   Map<String, dynamic> toJson() => {
@@ -76,13 +83,13 @@ class PlanTripRequest {
         'destination': destination.toJson(),
         'searchWindow': searchWindow,
         if (via != null) 'via': via!.map((e) => e.toJson()).toList(),
-        if (modes != null) 'modes': modes!,
-        if (preferences != null) 'preferences': preferences!,
+        if (modes != null) 'modes': modes!.toJson(),
+        if (preferences != null) 'preferences': preferences!.toJson(),
         if (first != null) 'first': first!,
         if (last != null) 'last': last!,
         if (before != null) 'before': before!,
         if (after != null) 'after': after!,
-        if (reliability != null) 'reliability': reliability!,
+        if (reliability != null) 'reliability': reliability!.toJson(),
       };
 }
 
@@ -104,8 +111,8 @@ class PlanStreamRequest {
 
   /// Locations the journey must visit or pass through, in the order given, all of one kind: every entry `visit` or every entry `passThrough`; mixing them is a 400 `via is invalid`. How many a request takes is an environment setting, and an environment set to 0 has via turned off; more is a 400 `via is out of range`. A via stop id that resolves to no stop or station is a 200 with the `routingErrors` code `LOCATION_NOT_FOUND` on `VIA`.
   final List<PlanViaLocationInput>? via;
-  final dynamic? modes;
-  final dynamic? preferences;
+  final PlanModesInput? modes;
+  final PlanPreferencesInput? preferences;
 
   /// `pageInfo.startCursor` of a page, to fetch the page before it. Never with `after`. An `endCursor` here is a 400 `before is invalid`.
   final String? before;
@@ -114,7 +121,7 @@ class PlanStreamRequest {
   final String? after;
 
   /// Delay-aware planning level; omitted or null plans on the timetable alone.
-  final dynamic? reliability;
+  final Reliability? reliability;
 
   const PlanStreamRequest({
     required this.dateTime,
@@ -144,11 +151,18 @@ class PlanStreamRequest {
             ?.map(
                 (e) => PlanViaLocationInput.fromJson(e as Map<String, dynamic>))
             .toList(),
-        modes: json['modes'],
-        preferences: json['preferences'],
+        modes: json['modes'] == null
+            ? null
+            : PlanModesInput.fromJson(json['modes'] as Map<String, dynamic>),
+        preferences: json['preferences'] == null
+            ? null
+            : PlanPreferencesInput.fromJson(
+                json['preferences'] as Map<String, dynamic>),
         before: json['before'] as String?,
         after: json['after'] as String?,
-        reliability: json['reliability'],
+        reliability: json['reliability'] == null
+            ? null
+            : Reliability.fromWire(json['reliability'] as String),
       );
 
   Map<String, dynamic> toJson() => {
@@ -158,11 +172,11 @@ class PlanStreamRequest {
         'targetResults': targetResults,
         'maxWindow': maxWindow,
         if (via != null) 'via': via!.map((e) => e.toJson()).toList(),
-        if (modes != null) 'modes': modes!,
-        if (preferences != null) 'preferences': preferences!,
+        if (modes != null) 'modes': modes!.toJson(),
+        if (preferences != null) 'preferences': preferences!.toJson(),
         if (before != null) 'before': before!,
         if (after != null) 'after': after!,
-        if (reliability != null) 'reliability': reliability!,
+        if (reliability != null) 'reliability': reliability!.toJson(),
       };
 }
 
@@ -274,10 +288,10 @@ class PlanLabeledLocationInput {
 /// Exactly one of `coordinate`, `stopLocation`; neither or both is a 400 naming `origin.location` or `destination.location`.
 class PlanLocationInput {
   /// A point; the journey walks between it and the stops.
-  final dynamic? coordinate;
+  final PlanCoordinateInput? coordinate;
 
   /// A stop or a station.
-  final dynamic? stopLocation;
+  final PlanStopLocationInput? stopLocation;
 
   const PlanLocationInput({
     this.coordinate,
@@ -286,13 +300,19 @@ class PlanLocationInput {
 
   factory PlanLocationInput.fromJson(Map<String, dynamic> json) =>
       PlanLocationInput(
-        coordinate: json['coordinate'],
-        stopLocation: json['stopLocation'],
+        coordinate: json['coordinate'] == null
+            ? null
+            : PlanCoordinateInput.fromJson(
+                json['coordinate'] as Map<String, dynamic>),
+        stopLocation: json['stopLocation'] == null
+            ? null
+            : PlanStopLocationInput.fromJson(
+                json['stopLocation'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
-        if (coordinate != null) 'coordinate': coordinate!,
-        if (stopLocation != null) 'stopLocation': stopLocation!,
+        if (coordinate != null) 'coordinate': coordinate!.toJson(),
+        if (stopLocation != null) 'stopLocation': stopLocation!.toJson(),
       };
 }
 
@@ -343,10 +363,10 @@ class PlanStopLocationInput {
 /// Exactly one of `passThrough`, `visit`; neither or both is a 400 `via is invalid`.
 class PlanViaLocationInput {
   /// The journey passes the location, on board or by changing vehicles there.
-  final dynamic? passThrough;
+  final PlanPassThroughViaLocationInput? passThrough;
 
   /// The journey stops at the location: it alights there and boards again after `minimumWaitTime`.
-  final dynamic? visit;
+  final PlanVisitViaLocationInput? visit;
 
   const PlanViaLocationInput({
     this.passThrough,
@@ -355,13 +375,19 @@ class PlanViaLocationInput {
 
   factory PlanViaLocationInput.fromJson(Map<String, dynamic> json) =>
       PlanViaLocationInput(
-        passThrough: json['passThrough'],
-        visit: json['visit'],
+        passThrough: json['passThrough'] == null
+            ? null
+            : PlanPassThroughViaLocationInput.fromJson(
+                json['passThrough'] as Map<String, dynamic>),
+        visit: json['visit'] == null
+            ? null
+            : PlanVisitViaLocationInput.fromJson(
+                json['visit'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
-        if (passThrough != null) 'passThrough': passThrough!,
-        if (visit != null) 'visit': visit!,
+        if (passThrough != null) 'passThrough': passThrough!.toJson(),
+        if (visit != null) 'visit': visit!.toJson(),
       };
 }
 
@@ -420,7 +446,7 @@ class PlanModesInput {
 
   /// Never a journey without a transit leg.
   final bool? transitOnly;
-  final dynamic? transit;
+  final PlanTransitModesInput? transit;
 
   const PlanModesInput({
     this.directOnly,
@@ -431,13 +457,16 @@ class PlanModesInput {
   factory PlanModesInput.fromJson(Map<String, dynamic> json) => PlanModesInput(
         directOnly: json['directOnly'] as bool?,
         transitOnly: json['transitOnly'] as bool?,
-        transit: json['transit'],
+        transit: json['transit'] == null
+            ? null
+            : PlanTransitModesInput.fromJson(
+                json['transit'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
         if (directOnly != null) 'directOnly': directOnly!,
         if (transitOnly != null) 'transitOnly': transitOnly!,
-        if (transit != null) 'transit': transit!,
+        if (transit != null) 'transit': transit!.toJson(),
       };
 }
 
@@ -467,7 +496,7 @@ class PlanTransitModesInput {
 /// A transit mode the search may use.
 class PlanTransitModePreferenceInput {
   final TransitMode mode;
-  final dynamic? cost;
+  final TransitModePreferenceCostInput? cost;
 
   const PlanTransitModePreferenceInput({
     required this.mode,
@@ -477,12 +506,15 @@ class PlanTransitModePreferenceInput {
   factory PlanTransitModePreferenceInput.fromJson(Map<String, dynamic> json) =>
       PlanTransitModePreferenceInput(
         mode: TransitMode.fromWire(json['mode'] as String),
-        cost: json['cost'],
+        cost: json['cost'] == null
+            ? null
+            : TransitModePreferenceCostInput.fromJson(
+                json['cost'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
         'mode': mode.toJson(),
-        if (cost != null) 'cost': cost!,
+        if (cost != null) 'cost': cost!.toJson(),
       };
 }
 
@@ -507,9 +539,9 @@ class TransitModePreferenceCostInput {
 
 /// Routing preferences. An absent member keeps the environment's default.
 class PlanPreferencesInput {
-  final dynamic? street;
-  final dynamic? transit;
-  final dynamic? accessibility;
+  final PlanStreetPreferencesInput? street;
+  final TransitPreferencesInput? transit;
+  final AccessibilityPreferencesInput? accessibility;
 
   const PlanPreferencesInput({
     this.street,
@@ -519,21 +551,30 @@ class PlanPreferencesInput {
 
   factory PlanPreferencesInput.fromJson(Map<String, dynamic> json) =>
       PlanPreferencesInput(
-        street: json['street'],
-        transit: json['transit'],
-        accessibility: json['accessibility'],
+        street: json['street'] == null
+            ? null
+            : PlanStreetPreferencesInput.fromJson(
+                json['street'] as Map<String, dynamic>),
+        transit: json['transit'] == null
+            ? null
+            : TransitPreferencesInput.fromJson(
+                json['transit'] as Map<String, dynamic>),
+        accessibility: json['accessibility'] == null
+            ? null
+            : AccessibilityPreferencesInput.fromJson(
+                json['accessibility'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
-        if (street != null) 'street': street!,
-        if (transit != null) 'transit': transit!,
-        if (accessibility != null) 'accessibility': accessibility!,
+        if (street != null) 'street': street!.toJson(),
+        if (transit != null) 'transit': transit!.toJson(),
+        if (accessibility != null) 'accessibility': accessibility!.toJson(),
       };
 }
 
 /// Street preferences, for walking to, from and between stops.
 class PlanStreetPreferencesInput {
-  final dynamic? walk;
+  final WalkPreferencesInput? walk;
 
   const PlanStreetPreferencesInput({
     this.walk,
@@ -541,11 +582,14 @@ class PlanStreetPreferencesInput {
 
   factory PlanStreetPreferencesInput.fromJson(Map<String, dynamic> json) =>
       PlanStreetPreferencesInput(
-        walk: json['walk'],
+        walk: json['walk'] == null
+            ? null
+            : WalkPreferencesInput.fromJson(
+                json['walk'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
-        if (walk != null) 'walk': walk!,
+        if (walk != null) 'walk': walk!.toJson(),
       };
 }
 
@@ -582,9 +626,9 @@ class WalkPreferencesInput {
 
 /// Transit preferences.
 class TransitPreferencesInput {
-  final dynamic? transfer;
-  final dynamic? board;
-  final dynamic? alight;
+  final TransferPreferencesInput? transfer;
+  final BoardPreferencesInput? board;
+  final AlightPreferencesInput? alight;
 
   /// Routes or agencies to leave out of the search.
   final List<TransitFilterInput>? filters;
@@ -598,18 +642,27 @@ class TransitPreferencesInput {
 
   factory TransitPreferencesInput.fromJson(Map<String, dynamic> json) =>
       TransitPreferencesInput(
-        transfer: json['transfer'],
-        board: json['board'],
-        alight: json['alight'],
+        transfer: json['transfer'] == null
+            ? null
+            : TransferPreferencesInput.fromJson(
+                json['transfer'] as Map<String, dynamic>),
+        board: json['board'] == null
+            ? null
+            : BoardPreferencesInput.fromJson(
+                json['board'] as Map<String, dynamic>),
+        alight: json['alight'] == null
+            ? null
+            : AlightPreferencesInput.fromJson(
+                json['alight'] as Map<String, dynamic>),
         filters: (json['filters'] as List<dynamic>?)
             ?.map((e) => TransitFilterInput.fromJson(e as Map<String, dynamic>))
             .toList(),
       );
 
   Map<String, dynamic> toJson() => {
-        if (transfer != null) 'transfer': transfer!,
-        if (board != null) 'board': board!,
-        if (alight != null) 'alight': alight!,
+        if (transfer != null) 'transfer': transfer!.toJson(),
+        if (board != null) 'board': board!.toJson(),
+        if (alight != null) 'alight': alight!.toJson(),
         if (filters != null)
           'filters': filters!.map((e) => e.toJson()).toList(),
       };
@@ -744,7 +797,7 @@ class TransitFilterSelectInput {
 
 /// Accessibility preferences.
 class AccessibilityPreferencesInput {
-  final dynamic? wheelchair;
+  final WheelchairPreferencesInput? wheelchair;
 
   const AccessibilityPreferencesInput({
     this.wheelchair,
@@ -752,11 +805,14 @@ class AccessibilityPreferencesInput {
 
   factory AccessibilityPreferencesInput.fromJson(Map<String, dynamic> json) =>
       AccessibilityPreferencesInput(
-        wheelchair: json['wheelchair'],
+        wheelchair: json['wheelchair'] == null
+            ? null
+            : WheelchairPreferencesInput.fromJson(
+                json['wheelchair'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
-        if (wheelchair != null) 'wheelchair': wheelchair!,
+        if (wheelchair != null) 'wheelchair': wheelchair!.toJson(),
       };
 }
 
@@ -923,22 +979,22 @@ class Leg {
   final LegTime end;
 
   /// Seconds of delay applied to this leg's arrival at the requested `reliability`: that level's percentile (p50, p70 or p90) of the trip's recorded delay at the alighting stop on the service date's day type, from the environment's realtime history, never below 0 and never decreasing along the trip's pattern. Null when `reliability` is omitted, the trip has live realtime or there is no history, and on a walk leg.
-  final int typicalArrivalDelay;
+  final int? typicalArrivalDelay;
   final RealtimeState realtimeState;
 
   /// True when the leg's times include realtime.
   final bool realTime;
 
   /// The GTFS service date of the leg's trip, `YYYY-MM-DD`; null on a walk leg.
-  final String serviceDate;
+  final String? serviceDate;
   final Place from;
   final Place to;
 
   /// Null on a walk leg.
-  final dynamic route;
+  final Route? route;
 
   /// Null on a walk leg and when the feed has none.
-  final String headsign;
+  final String? headsign;
 
   /// Metres.
   final double distance;
@@ -947,7 +1003,7 @@ class Leg {
   final int duration;
 
   /// Null on a walk leg.
-  final dynamic trip;
+  final Trip? trip;
 
   /// True on a transit leg ridden in the same vehicle as the previous leg: the vehicle carries on as another trip, often under another line number, and the rider stays on board. That change is not counted in `numberOfTransfers`. False on every other leg.
   final bool interlineWithPreviousLeg;
@@ -976,17 +1032,21 @@ class Leg {
         mode: Mode.fromWire(json['mode'] as String),
         start: LegTime.fromJson(json['start'] as Map<String, dynamic>),
         end: LegTime.fromJson(json['end'] as Map<String, dynamic>),
-        typicalArrivalDelay: (json['typicalArrivalDelay'] as num).toInt(),
+        typicalArrivalDelay: (json['typicalArrivalDelay'] as num?)?.toInt(),
         realtimeState: RealtimeState.fromWire(json['realtimeState'] as String),
         realTime: json['realTime'] as bool,
-        serviceDate: json['serviceDate'] as String,
+        serviceDate: json['serviceDate'] as String?,
         from: Place.fromJson(json['from'] as Map<String, dynamic>),
         to: Place.fromJson(json['to'] as Map<String, dynamic>),
-        route: json['route'],
-        headsign: json['headsign'] as String,
+        route: json['route'] == null
+            ? null
+            : Route.fromJson(json['route'] as Map<String, dynamic>),
+        headsign: json['headsign'] as String?,
         distance: (json['distance'] as num).toDouble(),
         duration: (json['duration'] as num).toInt(),
-        trip: json['trip'],
+        trip: json['trip'] == null
+            ? null
+            : Trip.fromJson(json['trip'] as Map<String, dynamic>),
         interlineWithPreviousLeg: json['interlineWithPreviousLeg'] as bool,
         legGeometry:
             Geometry.fromJson(json['legGeometry'] as Map<String, dynamic>),
@@ -996,17 +1056,18 @@ class Leg {
         'mode': mode.toJson(),
         'start': start.toJson(),
         'end': end.toJson(),
-        'typicalArrivalDelay': typicalArrivalDelay,
+        'typicalArrivalDelay':
+            typicalArrivalDelay == null ? null : typicalArrivalDelay!,
         'realtimeState': realtimeState.toJson(),
         'realTime': realTime,
-        'serviceDate': serviceDate,
+        'serviceDate': serviceDate == null ? null : serviceDate!,
         'from': from.toJson(),
         'to': to.toJson(),
-        'route': route,
-        'headsign': headsign,
+        'route': route == null ? null : route!.toJson(),
+        'headsign': headsign == null ? null : headsign!,
         'distance': distance,
         'duration': duration,
-        'trip': trip,
+        'trip': trip == null ? null : trip!.toJson(),
         'interlineWithPreviousLeg': interlineWithPreviousLeg,
         'legGeometry': legGeometry.toJson(),
       };
@@ -1016,7 +1077,7 @@ class LegTime {
   final String scheduledTime;
 
   /// Null without realtime.
-  final dynamic estimated;
+  final RealTimeEstimate? estimated;
 
   const LegTime({
     required this.scheduledTime,
@@ -1025,12 +1086,15 @@ class LegTime {
 
   factory LegTime.fromJson(Map<String, dynamic> json) => LegTime(
         scheduledTime: json['scheduledTime'] as String,
-        estimated: json['estimated'],
+        estimated: json['estimated'] == null
+            ? null
+            : RealTimeEstimate.fromJson(
+                json['estimated'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
         'scheduledTime': scheduledTime,
-        'estimated': estimated,
+        'estimated': estimated == null ? null : estimated!.toJson(),
       };
 }
 
@@ -1062,7 +1126,7 @@ class Place {
   final String name;
 
   /// Null when the place is not a stop, as for an origin or destination coordinate.
-  final dynamic stop;
+  final Stop? stop;
 
   const Place({
     required this.name,
@@ -1071,12 +1135,14 @@ class Place {
 
   factory Place.fromJson(Map<String, dynamic> json) => Place(
         name: json['name'] as String,
-        stop: json['stop'],
+        stop: json['stop'] == null
+            ? null
+            : Stop.fromJson(json['stop'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
         'name': name,
-        'stop': stop,
+        'stop': stop == null ? null : stop!.toJson(),
       };
 }
 
@@ -1085,10 +1151,10 @@ class Stop {
   final WheelchairBoarding wheelchairBoarding;
 
   /// Null when the feed has none.
-  final String platformCode;
+  final String? platformCode;
 
   /// Null when the feed has none.
-  final String zoneId;
+  final String? zoneId;
 
   const Stop({
     required this.gtfsId,
@@ -1101,15 +1167,15 @@ class Stop {
         gtfsId: json['gtfsId'] as String,
         wheelchairBoarding:
             WheelchairBoarding.fromWire(json['wheelchairBoarding'] as String),
-        platformCode: json['platformCode'] as String,
-        zoneId: json['zoneId'] as String,
+        platformCode: json['platformCode'] as String?,
+        zoneId: json['zoneId'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
         'gtfsId': gtfsId,
         'wheelchairBoarding': wheelchairBoarding.toJson(),
-        'platformCode': platformCode,
-        'zoneId': zoneId,
+        'platformCode': platformCode == null ? null : platformCode!,
+        'zoneId': zoneId == null ? null : zoneId!,
       };
 }
 
@@ -1117,16 +1183,16 @@ class Route {
   final String gtfsId;
 
   /// Null when the feed has none.
-  final String shortName;
+  final String? shortName;
 
   /// Null when the feed has none.
-  final String longName;
+  final String? longName;
 
   /// Hex without `#`; null when the feed has none.
-  final String color;
+  final String? color;
 
   /// Hex without `#`; null when the feed has none.
-  final String textColor;
+  final String? textColor;
 
   const Route({
     required this.gtfsId,
@@ -1138,18 +1204,18 @@ class Route {
 
   factory Route.fromJson(Map<String, dynamic> json) => Route(
         gtfsId: json['gtfsId'] as String,
-        shortName: json['shortName'] as String,
-        longName: json['longName'] as String,
-        color: json['color'] as String,
-        textColor: json['textColor'] as String,
+        shortName: json['shortName'] as String?,
+        longName: json['longName'] as String?,
+        color: json['color'] as String?,
+        textColor: json['textColor'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
         'gtfsId': gtfsId,
-        'shortName': shortName,
-        'longName': longName,
-        'color': color,
-        'textColor': textColor,
+        'shortName': shortName == null ? null : shortName!,
+        'longName': longName == null ? null : longName!,
+        'color': color == null ? null : color!,
+        'textColor': textColor == null ? null : textColor!,
       };
 }
 
@@ -1192,10 +1258,10 @@ class Geometry {
 
 class PlanPageInfo {
   /// Send as `before` for the previous page; null when there is none, as for a declined, direct-only or unroutable plan.
-  final String startCursor;
+  final String? startCursor;
 
   /// Send as `after` for the next page; null when there is none, as for a declined, direct-only or unroutable plan.
-  final String endCursor;
+  final String? endCursor;
 
   /// True exactly when `endCursor` is present.
   final bool hasNextPage;
@@ -1204,7 +1270,7 @@ class PlanPageInfo {
   final bool hasPreviousPage;
 
   /// The window the search covered, as an ISO-8601 duration; null when no transit search ran, as for a declined, direct-only or unroutable plan.
-  final String searchWindowUsed;
+  final String? searchWindowUsed;
 
   const PlanPageInfo({
     required this.startCursor,
@@ -1215,19 +1281,19 @@ class PlanPageInfo {
   });
 
   factory PlanPageInfo.fromJson(Map<String, dynamic> json) => PlanPageInfo(
-        startCursor: json['startCursor'] as String,
-        endCursor: json['endCursor'] as String,
+        startCursor: json['startCursor'] as String?,
+        endCursor: json['endCursor'] as String?,
         hasNextPage: json['hasNextPage'] as bool,
         hasPreviousPage: json['hasPreviousPage'] as bool,
-        searchWindowUsed: json['searchWindowUsed'] as String,
+        searchWindowUsed: json['searchWindowUsed'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
-        'startCursor': startCursor,
-        'endCursor': endCursor,
+        'startCursor': startCursor == null ? null : startCursor!,
+        'endCursor': endCursor == null ? null : endCursor!,
         'hasNextPage': hasNextPage,
         'hasPreviousPage': hasPreviousPage,
-        'searchWindowUsed': searchWindowUsed,
+        'searchWindowUsed': searchWindowUsed == null ? null : searchWindowUsed!,
       };
 }
 
@@ -1237,7 +1303,7 @@ class RoutingError {
   final String description;
 
   /// The request member at fault; null when it is none in particular.
-  final dynamic inputField;
+  final InputField? inputField;
 
   const RoutingError({
     required this.code,
@@ -1248,13 +1314,15 @@ class RoutingError {
   factory RoutingError.fromJson(Map<String, dynamic> json) => RoutingError(
         code: RoutingErrorCode.fromWire(json['code'] as String),
         description: json['description'] as String,
-        inputField: json['inputField'],
+        inputField: json['inputField'] == null
+            ? null
+            : InputField.fromWire(json['inputField'] as String),
       );
 
   Map<String, dynamic> toJson() => {
         'code': code.toJson(),
         'description': description,
-        'inputField': inputField,
+        'inputField': inputField == null ? null : inputField!.toJson(),
       };
 }
 
@@ -1404,7 +1472,7 @@ enum BikesAllowed {
 
 /// `stop` is the board, or null for an id that resolves to no stop or station.
 class DeparturesResponse {
-  final dynamic stop;
+  final DepartureBoard? stop;
 
   const DeparturesResponse({
     required this.stop,
@@ -1412,11 +1480,13 @@ class DeparturesResponse {
 
   factory DeparturesResponse.fromJson(Map<String, dynamic> json) =>
       DeparturesResponse(
-        stop: json['stop'],
+        stop: json['stop'] == null
+            ? null
+            : DepartureBoard.fromJson(json['stop'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
-        'stop': stop,
+        'stop': stop == null ? null : stop!.toJson(),
       };
 }
 
@@ -1426,7 +1496,7 @@ class DepartureBoard {
   final String name;
 
   /// Null on a station board.
-  final dynamic wheelchairBoarding;
+  final WheelchairBoarding? wheelchairBoarding;
   final List<StopDeparturesStoptime> stoptimesWithoutPatterns;
 
   const DepartureBoard({
@@ -1439,7 +1509,9 @@ class DepartureBoard {
   factory DepartureBoard.fromJson(Map<String, dynamic> json) => DepartureBoard(
         gtfsId: json['gtfsId'] as String,
         name: json['name'] as String,
-        wheelchairBoarding: json['wheelchairBoarding'],
+        wheelchairBoarding: json['wheelchairBoarding'] == null
+            ? null
+            : WheelchairBoarding.fromWire(json['wheelchairBoarding'] as String),
         stoptimesWithoutPatterns:
             (json['stoptimesWithoutPatterns'] as List<dynamic>)
                 .map((e) =>
@@ -1450,7 +1522,8 @@ class DepartureBoard {
   Map<String, dynamic> toJson() => {
         'gtfsId': gtfsId,
         'name': name,
-        'wheelchairBoarding': wheelchairBoarding,
+        'wheelchairBoarding':
+            wheelchairBoarding == null ? null : wheelchairBoarding!.toJson(),
         'stoptimesWithoutPatterns':
             stoptimesWithoutPatterns.map((e) => e.toJson()).toList(),
       };
@@ -1471,10 +1544,10 @@ class StopDeparturesStoptime {
   final RealtimeState realtimeState;
 
   /// The trip's usual delay at this stop in seconds: the median (p50) recorded on the service date's day type, from the environment's realtime history, never below 0 and never decreasing along the trip's pattern. Null when the trip has live realtime or there is no history.
-  final int typicalDelay;
+  final int? typicalDelay;
 
   /// Null when the feed has none.
-  final String headsign;
+  final String? headsign;
 
   /// The platform or stand the departure leaves from, which tells a station's platforms apart.
   final StopDeparturesStop stop;
@@ -1499,8 +1572,8 @@ class StopDeparturesStoptime {
         realtimeDeparture: (json['realtimeDeparture'] as num).toInt(),
         realtime: json['realtime'] as bool,
         realtimeState: RealtimeState.fromWire(json['realtimeState'] as String),
-        typicalDelay: (json['typicalDelay'] as num).toInt(),
-        headsign: json['headsign'] as String,
+        typicalDelay: (json['typicalDelay'] as num?)?.toInt(),
+        headsign: json['headsign'] as String?,
         stop: StopDeparturesStop.fromJson(json['stop'] as Map<String, dynamic>),
         trip: StopDeparturesTrip.fromJson(json['trip'] as Map<String, dynamic>),
       );
@@ -1511,8 +1584,8 @@ class StopDeparturesStoptime {
         'realtimeDeparture': realtimeDeparture,
         'realtime': realtime,
         'realtimeState': realtimeState.toJson(),
-        'typicalDelay': typicalDelay,
-        'headsign': headsign,
+        'typicalDelay': typicalDelay == null ? null : typicalDelay!,
+        'headsign': headsign == null ? null : headsign!,
         'stop': stop.toJson(),
         'trip': trip.toJson(),
       };
@@ -1522,7 +1595,7 @@ class StopDeparturesStop {
   final String gtfsId;
 
   /// Null when the feed has none.
-  final String platformCode;
+  final String? platformCode;
 
   const StopDeparturesStop({
     required this.gtfsId,
@@ -1532,12 +1605,12 @@ class StopDeparturesStop {
   factory StopDeparturesStop.fromJson(Map<String, dynamic> json) =>
       StopDeparturesStop(
         gtfsId: json['gtfsId'] as String,
-        platformCode: json['platformCode'] as String,
+        platformCode: json['platformCode'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
         'gtfsId': gtfsId,
-        'platformCode': platformCode,
+        'platformCode': platformCode == null ? null : platformCode!,
       };
 }
 
@@ -1576,17 +1649,17 @@ class StopDeparturesRoute {
   final String gtfsId;
 
   /// Null when the feed has none.
-  final String shortName;
+  final String? shortName;
 
   /// Null when the feed has none.
-  final String longName;
+  final String? longName;
   final TransitMode mode;
 
   /// Hex without `#`; null when the feed has none.
-  final String color;
+  final String? color;
 
   /// Hex without `#`; null when the feed has none.
-  final String textColor;
+  final String? textColor;
 
   const StopDeparturesRoute({
     required this.gtfsId,
@@ -1600,37 +1673,39 @@ class StopDeparturesRoute {
   factory StopDeparturesRoute.fromJson(Map<String, dynamic> json) =>
       StopDeparturesRoute(
         gtfsId: json['gtfsId'] as String,
-        shortName: json['shortName'] as String,
-        longName: json['longName'] as String,
+        shortName: json['shortName'] as String?,
+        longName: json['longName'] as String?,
         mode: TransitMode.fromWire(json['mode'] as String),
-        color: json['color'] as String,
-        textColor: json['textColor'] as String,
+        color: json['color'] as String?,
+        textColor: json['textColor'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
         'gtfsId': gtfsId,
-        'shortName': shortName,
-        'longName': longName,
+        'shortName': shortName == null ? null : shortName!,
+        'longName': longName == null ? null : longName!,
         'mode': mode.toJson(),
-        'color': color,
-        'textColor': textColor,
+        'color': color == null ? null : color!,
+        'textColor': textColor == null ? null : textColor!,
       };
 }
 
 /// `trip` is null for an id that resolves to no trip.
 class TripResponse {
-  final dynamic trip;
+  final TripTimetable? trip;
 
   const TripResponse({
     required this.trip,
   });
 
   factory TripResponse.fromJson(Map<String, dynamic> json) => TripResponse(
-        trip: json['trip'],
+        trip: json['trip'] == null
+            ? null
+            : TripTimetable.fromJson(json['trip'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
-        'trip': trip,
+        'trip': trip == null ? null : trip!.toJson(),
       };
 }
 
@@ -1639,17 +1714,17 @@ class TripTimetable {
   final String gtfsId;
 
   /// `0` or `1`, as the feed gives it; null when it gives none.
-  final String directionId;
+  final String? directionId;
 
   /// Null when the feed has none.
-  final String tripHeadsign;
+  final String? tripHeadsign;
   final BikesAllowed bikesAllowed;
   final WheelchairBoarding wheelchairAccessible;
   final TripRoute route;
   final List<Stoptime> stoptimesForDate;
 
   /// The trip's path; null when the feed has no shapes.
-  final dynamic tripGeometry;
+  final TripGeometry? tripGeometry;
 
   const TripTimetable({
     required this.gtfsId,
@@ -1664,8 +1739,8 @@ class TripTimetable {
 
   factory TripTimetable.fromJson(Map<String, dynamic> json) => TripTimetable(
         gtfsId: json['gtfsId'] as String,
-        directionId: json['directionId'] as String,
-        tripHeadsign: json['tripHeadsign'] as String,
+        directionId: json['directionId'] as String?,
+        tripHeadsign: json['tripHeadsign'] as String?,
         bikesAllowed: BikesAllowed.fromWire(json['bikesAllowed'] as String),
         wheelchairAccessible:
             WheelchairBoarding.fromWire(json['wheelchairAccessible'] as String),
@@ -1673,18 +1748,21 @@ class TripTimetable {
         stoptimesForDate: (json['stoptimesForDate'] as List<dynamic>)
             .map((e) => Stoptime.fromJson(e as Map<String, dynamic>))
             .toList(),
-        tripGeometry: json['tripGeometry'],
+        tripGeometry: json['tripGeometry'] == null
+            ? null
+            : TripGeometry.fromJson(
+                json['tripGeometry'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
         'gtfsId': gtfsId,
-        'directionId': directionId,
-        'tripHeadsign': tripHeadsign,
+        'directionId': directionId == null ? null : directionId!,
+        'tripHeadsign': tripHeadsign == null ? null : tripHeadsign!,
         'bikesAllowed': bikesAllowed.toJson(),
         'wheelchairAccessible': wheelchairAccessible.toJson(),
         'route': route.toJson(),
         'stoptimesForDate': stoptimesForDate.map((e) => e.toJson()).toList(),
-        'tripGeometry': tripGeometry,
+        'tripGeometry': tripGeometry == null ? null : tripGeometry!.toJson(),
       };
 }
 
@@ -1692,17 +1770,17 @@ class TripRoute {
   final String gtfsId;
 
   /// Null when the feed has none.
-  final String shortName;
+  final String? shortName;
 
   /// Null when the feed has none.
-  final String longName;
+  final String? longName;
   final TransitMode mode;
 
   /// Hex without `#`; null when the feed has none.
-  final String color;
+  final String? color;
 
   /// Hex without `#`; null when the feed has none.
-  final String textColor;
+  final String? textColor;
 
   const TripRoute({
     required this.gtfsId,
@@ -1715,20 +1793,20 @@ class TripRoute {
 
   factory TripRoute.fromJson(Map<String, dynamic> json) => TripRoute(
         gtfsId: json['gtfsId'] as String,
-        shortName: json['shortName'] as String,
-        longName: json['longName'] as String,
+        shortName: json['shortName'] as String?,
+        longName: json['longName'] as String?,
         mode: TransitMode.fromWire(json['mode'] as String),
-        color: json['color'] as String,
-        textColor: json['textColor'] as String,
+        color: json['color'] as String?,
+        textColor: json['textColor'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
         'gtfsId': gtfsId,
-        'shortName': shortName,
-        'longName': longName,
+        'shortName': shortName == null ? null : shortName!,
+        'longName': longName == null ? null : longName!,
         'mode': mode.toJson(),
-        'color': color,
-        'textColor': textColor,
+        'color': color == null ? null : color!,
+        'textColor': textColor == null ? null : textColor!,
       };
 }
 
@@ -1740,10 +1818,10 @@ class TripStop {
   final WheelchairBoarding wheelchairBoarding;
 
   /// Null when the feed has none.
-  final String platformCode;
+  final String? platformCode;
 
   /// Null when the feed has none.
-  final String zoneId;
+  final String? zoneId;
 
   const TripStop({
     required this.gtfsId,
@@ -1762,8 +1840,8 @@ class TripStop {
         lon: (json['lon'] as num).toDouble(),
         wheelchairBoarding:
             WheelchairBoarding.fromWire(json['wheelchairBoarding'] as String),
-        platformCode: json['platformCode'] as String,
-        zoneId: json['zoneId'] as String,
+        platformCode: json['platformCode'] as String?,
+        zoneId: json['zoneId'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -1772,8 +1850,8 @@ class TripStop {
         'lat': lat,
         'lon': lon,
         'wheelchairBoarding': wheelchairBoarding.toJson(),
-        'platformCode': platformCode,
-        'zoneId': zoneId,
+        'platformCode': platformCode == null ? null : platformCode!,
+        'zoneId': zoneId == null ? null : zoneId!,
       };
 }
 
@@ -1798,7 +1876,7 @@ class Stoptime {
   final RealtimeState realtimeState;
 
   /// The trip's usual delay at this stop in seconds: the median (p50) recorded on the service date's day type, from the environment's realtime history, never below 0 and never decreasing along the trip's pattern. Null when the trip has live realtime or there is no history.
-  final int typicalDelay;
+  final int? typicalDelay;
   final TripStop stop;
 
   const Stoptime({
@@ -1821,7 +1899,7 @@ class Stoptime {
         realtimeDeparture: (json['realtimeDeparture'] as num).toInt(),
         realtime: json['realtime'] as bool,
         realtimeState: RealtimeState.fromWire(json['realtimeState'] as String),
-        typicalDelay: (json['typicalDelay'] as num).toInt(),
+        typicalDelay: (json['typicalDelay'] as num?)?.toInt(),
         stop: TripStop.fromJson(json['stop'] as Map<String, dynamic>),
       );
 
@@ -1833,7 +1911,7 @@ class Stoptime {
         'realtimeDeparture': realtimeDeparture,
         'realtime': realtime,
         'realtimeState': realtimeState.toJson(),
-        'typicalDelay': typicalDelay,
+        'typicalDelay': typicalDelay == null ? null : typicalDelay!,
         'stop': stop.toJson(),
       };
 }
@@ -1903,10 +1981,10 @@ class PlanStreamChunkEvent {
 /// Sent once, after the last `chunk`. To continue, send `endCursor` as `after` or `startCursor` as `before` in a new request.
 class PlanStreamPageInfoEvent {
   /// Send as `before` for earlier itineraries; null when there is none, as for a declined, direct-only or unroutable plan.
-  final String startCursor;
+  final String? startCursor;
 
   /// Send as `after` for later itineraries; null when there is none, as for a declined, direct-only or unroutable plan.
-  final String endCursor;
+  final String? endCursor;
 
   /// True exactly when `endCursor` is present.
   final bool hasNextPage;
@@ -1915,7 +1993,7 @@ class PlanStreamPageInfoEvent {
   final bool hasPreviousPage;
 
   /// The window the stream searched, as an ISO-8601 duration; null when no transit search ran, as for a declined, direct-only or unroutable plan.
-  final String searchWindowUsed;
+  final String? searchWindowUsed;
 
   /// Why the plan was declined; empty when it was not.
   final List<RoutingError> routingErrors;
@@ -1931,22 +2009,22 @@ class PlanStreamPageInfoEvent {
 
   factory PlanStreamPageInfoEvent.fromJson(Map<String, dynamic> json) =>
       PlanStreamPageInfoEvent(
-        startCursor: json['startCursor'] as String,
-        endCursor: json['endCursor'] as String,
+        startCursor: json['startCursor'] as String?,
+        endCursor: json['endCursor'] as String?,
         hasNextPage: json['hasNextPage'] as bool,
         hasPreviousPage: json['hasPreviousPage'] as bool,
-        searchWindowUsed: json['searchWindowUsed'] as String,
+        searchWindowUsed: json['searchWindowUsed'] as String?,
         routingErrors: (json['routingErrors'] as List<dynamic>)
             .map((e) => RoutingError.fromJson(e as Map<String, dynamic>))
             .toList(),
       );
 
   Map<String, dynamic> toJson() => {
-        'startCursor': startCursor,
-        'endCursor': endCursor,
+        'startCursor': startCursor == null ? null : startCursor!,
+        'endCursor': endCursor == null ? null : endCursor!,
         'hasNextPage': hasNextPage,
         'hasPreviousPage': hasPreviousPage,
-        'searchWindowUsed': searchWindowUsed,
+        'searchWindowUsed': searchWindowUsed == null ? null : searchWindowUsed!,
         'routingErrors': routingErrors.map((e) => e.toJson()).toList(),
       };
 }

@@ -680,14 +680,12 @@ _PlanPage _decodePlanPage(Map<String, dynamic> json) {
 }
 
 List<Departure>? _decodeDepartures(Map<String, dynamic> json) {
-  final stop = _nullableRef(wire.DeparturesResponse.fromJson(json).stop,
-      wire.DepartureBoard.fromJson);
+  final stop = wire.DeparturesResponse.fromJson(json).stop;
   return stop == null ? null : _mapDepartures(stop);
 }
 
 TripDetails? _decodeTrip(Map<String, dynamic> json) {
-  final trip = _nullableRef(
-      wire.TripResponse.fromJson(json).trip, wire.TripTimetable.fromJson);
+  final trip = wire.TripResponse.fromJson(json).trip;
   return trip == null ? null : _mapTrip(trip);
 }
 
@@ -823,7 +821,7 @@ SpiderError _streamDecodingError(String event, Object cause) => SpiderError(
 RoutingError _mapRoutingError(wire.RoutingError w) => RoutingError(
     RoutingErrorCode.fromWire(w.code.wire),
     w.description,
-    InputField.fromWire(w.inputField as String?));
+    InputField.fromWire(w.inputField?.wire));
 
 Itinerary _mapItinerary(wire.Itinerary w) => Itinerary(
       start: w.start,
@@ -835,12 +833,12 @@ Itinerary _mapItinerary(wire.Itinerary w) => Itinerary(
     );
 
 Leg _mapLeg(wire.Leg w) {
-  final startEstimated = _estimate(w.start.estimated);
-  final endEstimated = _estimate(w.end.estimated);
-  final fromStop = _stop(w.from.stop);
-  final toStop = _stop(w.to.stop);
-  final route = _route(w.route);
-  final trip = _trip(w.trip);
+  final startEstimated = w.start.estimated;
+  final endEstimated = w.end.estimated;
+  final fromStop = w.from.stop;
+  final toStop = w.to.stop;
+  final route = w.route;
+  final trip = w.trip;
   return Leg(
     mode: TransitMode.fromWire(w.mode.wire),
     startScheduled: w.start.scheduledTime,
@@ -878,16 +876,6 @@ Leg _mapLeg(wire.Leg w) {
     geometry: decodePolyline(w.legGeometry.points),
   );
 }
-
-// The generated wire models type `anyOf: [$ref, null]` members as raw JSON; decode them here.
-T? _nullableRef<T>(Object? json, T Function(Map<String, dynamic>) fromJson) =>
-    json == null ? null : fromJson(json as Map<String, dynamic>);
-
-wire.RealTimeEstimate? _estimate(Object? json) =>
-    _nullableRef(json, wire.RealTimeEstimate.fromJson);
-wire.Stop? _stop(Object? json) => _nullableRef(json, wire.Stop.fromJson);
-wire.Route? _route(Object? json) => _nullableRef(json, wire.Route.fromJson);
-wire.Trip? _trip(Object? json) => _nullableRef(json, wire.Trip.fromJson);
 
 // Parses an ISO-8601 duration ("PT60S", "PT1M30S", optionally signed) or a bare seconds count into a
 // [Duration]. Mirrors the Kotlin SDK's durationFromWire: ISO first, then a numeric-seconds fallback; an
@@ -951,7 +939,7 @@ List<Departure> _mapDepartures(wire.DepartureBoard stop) => [
 
 TripDetails _mapTrip(wire.TripTimetable w) {
   final stoptimes = w.stoptimesForDate;
-  final geometry = _nullableRef(w.tripGeometry, wire.TripGeometry.fromJson);
+  final geometry = w.tripGeometry;
   return TripDetails(
     gtfsId: w.gtfsId,
     routeGtfsId: w.route.gtfsId,
