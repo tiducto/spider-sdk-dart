@@ -18,15 +18,16 @@ class FeedFreshness {
       };
 }
 
-/// A vehicle's live position. GTFS-RT producers populate wildly different subsets, so every field is optional.
+/// A vehicle's live position. GTFS-RT producers populate different subsets, so beyond the trip and position every
+/// field is optional.
 /// [tripId], [routeId], [stopId] and [vehicleId] are feed-prefixed (`<feedId>:<id>`), like routing's ids.
 class LiveVehicle {
-  final String? tripId;
+  final String tripId;
   final String? routeId;
   final String? vehicleId;
   final String? label;
-  final double? latitude;
-  final double? longitude;
+  final double latitude;
+  final double longitude;
   final double? bearing;
   final double? speed;
   final String? stopId;
@@ -34,12 +35,12 @@ class LiveVehicle {
   final OccupancyStatus? occupancy;
   final int? timestampEpochMs;
   const LiveVehicle({
-    this.tripId,
+    required this.tripId,
     this.routeId,
     this.vehicleId,
     this.label,
-    this.latitude,
-    this.longitude,
+    required this.latitude,
+    required this.longitude,
     this.bearing,
     this.speed,
     this.stopId,
@@ -182,7 +183,7 @@ class AlertInformedEntity {
 
 /// A service alert. Text is already resolved to one language; cause/effect/severity are raw GTFS-RT strings.
 class ServiceAlert {
-  final String? id;
+  final String id;
   final String? cause;
   final String? effect;
   final String? severityLevel;
@@ -192,7 +193,7 @@ class ServiceAlert {
   final List<AlertActivePeriod> activePeriods;
   final List<AlertInformedEntity> informedEntities;
   const ServiceAlert({
-    this.id,
+    required this.id,
     this.cause,
     this.effect,
     this.severityLevel,
@@ -384,12 +385,12 @@ FeedFreshness _mapFreshness(Map<String, dynamic> json) => FeedFreshness(
     );
 
 LiveVehicle _mapVehicle(Map<String, dynamic> v) => LiveVehicle(
-      tripId: v['tripId'] as String?,
+      tripId: v['tripId'] as String,
       routeId: v['routeId'] as String?,
       vehicleId: v['vehicleId'] as String?,
       label: v['label'] as String?,
-      latitude: (v['latitude'] as num?)?.toDouble(),
-      longitude: (v['longitude'] as num?)?.toDouble(),
+      latitude: (v['latitude'] as num).toDouble(),
+      longitude: (v['longitude'] as num).toDouble(),
       bearing: (v['bearing'] as num?)?.toDouble(),
       speed: (v['speed'] as num?)?.toDouble(),
       stopId: v['stopId'] as String?,
@@ -417,7 +418,7 @@ StopTimeUpdate _mapStopTimeUpdate(Map<String, dynamic> s) => StopTimeUpdate(
     );
 
 ServiceAlert _mapAlert(Map<String, dynamic> a) => ServiceAlert(
-      id: a['id'] as String?,
+      id: a['id'] as String,
       cause: a['cause'] as String?,
       effect: a['effect'] as String?,
       severityLevel: a['severityLevel'] as String?,

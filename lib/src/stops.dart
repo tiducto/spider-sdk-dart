@@ -22,8 +22,8 @@ class Stop {
   /// The modes of the routes serving the stop, each once (a station's cover all its platforms); empty when no
   /// route serves it. A mode this SDK doesn't know is [TransitMode.unknown].
   final List<TransitMode> modes;
-  final double? lat;
-  final double? lon;
+  final double lat;
+  final double lon;
   final String? country;
   final String? region;
   final String? district;
@@ -36,8 +36,8 @@ class Stop {
     this.locationType,
     this.wheelchairBoarding,
     this.modes = const [],
-    this.lat,
-    this.lon,
+    required this.lat,
+    required this.lon,
     this.country,
     this.region,
     this.district,
@@ -212,8 +212,8 @@ Stop _toStop(Map<String, dynamic> hit) => Stop(
       modes: (hit['modes'] as List<dynamic>? ?? const [])
           .map((m) => TransitMode.fromWire(m as String)!)
           .toList(),
-      lat: (hit['lat'] as num?)?.toDouble(),
-      lon: (hit['lon'] as num?)?.toDouble(),
+      lat: (hit['lat'] as num).toDouble(),
+      lon: (hit['lon'] as num).toDouble(),
       country: hit['country'] as String?,
       region: hit['region'] as String?,
       district: hit['district'] as String?,
