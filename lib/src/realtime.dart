@@ -10,7 +10,7 @@ import 'transport.dart';
 /// How fresh a realtime feed is. Timestamps are epoch milliseconds; `staleSeconds` is age in seconds.
 class FeedFreshness {
   final int? feedTimestampEpochMs;
-  final double? staleSeconds;
+  final int? staleSeconds;
   const FeedFreshness({this.feedTimestampEpochMs, this.staleSeconds});
   Map<String, dynamic> toJson() => {
         'feedTimestampEpochMs': feedTimestampEpochMs,
@@ -107,15 +107,16 @@ class StopTimeUpdate {
       };
 }
 
-/// A trip's live schedule deviation. Delay values are in seconds.
+/// A trip's live schedule deviation. Delay values are in seconds. [tripId], [routeId] and each
+/// [StopTimeUpdate.stopId] are feed-prefixed (`<feedId>:<id>`).
 class TripDelay {
-  final String? tripId;
+  final String tripId;
   final String? routeId;
   final int? delaySeconds;
   final String? scheduleRelationship;
   final List<StopTimeUpdate> stopTimeUpdates;
   const TripDelay(
-      {this.tripId,
+      {required this.tripId,
       this.routeId,
       this.delaySeconds,
       this.scheduleRelationship,
@@ -129,40 +130,28 @@ class TripDelay {
       };
 }
 
-/// Live deviations grouped by GTFS service date. The same `tripId` on two dates is two distinct instances,
-/// so delays are resolved per `(tripId, serviceDate)` — look one up with [delayFor].
+/// Live delays for one GTFS service date: those the feed reported, and the [missing] trip ids it didn't,
+/// exactly as requested. Look one up with [delayFor].
 class TripDelays {
-  final List<ServiceDateDelays> groups;
+  final String serviceDate;
+  final List<TripDelay> delays;
+  final List<String> missing;
   final FeedFreshness freshness;
-  const TripDelays(this.groups, this.freshness);
+  const TripDelays(this.serviceDate, this.delays, this.missing, this.freshness);
 
-  /// The delay for the ([tripId], [serviceDate]) instance, if the feed reported one.
-  TripDelay? delayFor(String tripId, String serviceDate) {
-    for (final group in groups) {
-      if (group.serviceDate != serviceDate) continue;
-      for (final delay in group.delays) {
-        if (delay.tripId == tripId) return delay;
-      }
+  /// The delay for [tripId] on [serviceDate], if the feed reported one.
+  TripDelay? delayFor(String tripId) {
+    for (final delay in delays) {
+      if (delay.tripId == tripId) return delay;
     }
     return null;
   }
 
   Map<String, dynamic> toJson() => {
-        'groups': groups.map((g) => g.toJson()).toList(),
-        'freshness': freshness.toJson()
-      };
-}
-
-/// Delays for one GTFS service date: those the feed reported, and the [missing] trip ids it didn't.
-class ServiceDateDelays {
-  final String serviceDate;
-  final List<TripDelay> delays;
-  final List<String> missing;
-  const ServiceDateDelays(this.serviceDate, this.delays, this.missing);
-  Map<String, dynamic> toJson() => {
         'serviceDate': serviceDate,
         'delays': delays.map((d) => d.toJson()).toList(),
         'missing': missing,
+        'freshness': freshness.toJson(),
       };
 }
 
@@ -239,7 +228,6 @@ class ServiceAlerts {
 
 const _emptyFreshness = FeedFreshness();
 
-// A fixed platform limit per request, counted across every service-date group.
 const _maxTripIds = 50;
 
 /// The realtime surface: live vehicle positions, schedule deviations, and service alerts. Poll-based —
@@ -298,42 +286,36 @@ class SpiderRealtime {
     }
   }
 
-  /// Live delays, resolved per `(tripId, serviceDate)` instance: group trip ids by the GTFS service date
-  /// (`YYYY-MM-DD`) they run on — pass each plan leg's or departure's `serviceDate` through. Grouping is
-  /// required because the same trip id runs on many dates (and two instances can overlap around midnight).
-  /// Takes up to 50 trip ids, counted across all dates; with none it returns no delays without a request. A
-  /// malformed date, or more than 50 trip ids, fails with [SpiderErrorCode.badRequest] (field `serviceDate` or
+  /// Live delays for up to 50 feed-prefixed [tripIds] (`<feedId>:<id>`) running on one GTFS [serviceDate]
+  /// (`YYYY-MM-DD`) — pass a plan leg's, departure's or trip's `serviceDate` and its trip id through. The ids
+  /// are de-duplicated and sorted, so equal requests share a cached response. A malformed date, no ids, a
+  /// blank id or more than 50 distinct ids fails with [SpiderErrorCode.badRequest] (field `serviceDate` or
   /// `tripIds`) without a request.
-  Future<SpiderResult<TripDelays>> delaysByServiceDate(
-      Map<String, List<String>> byServiceDate) async {
-    for (final serviceDate in byServiceDate.keys) {
-      final invalid = invalidServiceDate(serviceDate);
-      if (invalid != null) return Failure(invalid);
+  Future<SpiderResult<TripDelays>> delays(
+      String serviceDate, List<String> tripIds) async {
+    final invalidDate = invalidServiceDate(serviceDate);
+    if (invalidDate != null) return Failure(invalidDate);
+    if (tripIds.isEmpty) return Failure(missingInput('tripIds'));
+    if (tripIds.any((id) => id.trim().isEmpty)) {
+      return Failure(invalidInput('tripIds', malformed: true));
     }
-    final count = byServiceDate.values.fold(0, (sum, ids) => sum + ids.length);
-    if (count == 0) return const Success(TripDelays([], _emptyFreshness));
-    if (count > _maxTripIds) return Failure(invalidInput('tripIds'));
+    final ids = tripIds.toSet().toList()..sort();
+    if (ids.length > _maxTripIds) return Failure(invalidInput('tripIds'));
     try {
-      final body = {
-        'queries': byServiceDate.entries
-            .map((e) => {'serviceDate': e.key, 'tripIds': e.value})
+      final json = await _transport.getJson('/realtime/v1/delays', _identity,
+          query: {'serviceDate': serviceDate, 'tripIds': ids.join(',')});
+      return Success(TripDelays(
+        json['serviceDate'] as String,
+        (json['delays'] as List<dynamic>)
+            .map((d) => _mapDelay(d as Map<String, dynamic>))
             .toList(),
-      };
-      final json =
-          await _transport.postJson('/realtime/v1/delays', body, _identity);
-      final groups = (json['results'] as List<dynamic>? ?? const [])
-          .map((g) => _mapDelayGroup(g as Map<String, dynamic>))
-          .toList();
-      return Success(TripDelays(groups, _mapFreshness(json)));
+        (json['missing'] as List<dynamic>).map((e) => e as String).toList(),
+        _mapFreshness(json),
+      ));
     } catch (e) {
       return Failure(toSpiderError(e));
     }
   }
-
-  /// Live delays for [tripIds] all running on one [serviceDate] (`YYYY-MM-DD`) — the common single-day case.
-  Future<SpiderResult<TripDelays>> delays(
-          List<String> tripIds, String serviceDate) =>
-      delaysByServiceDate({serviceDate: tripIds});
 
   /// All active service alerts for the environment.
   Future<SpiderResult<ServiceAlerts>> alerts() async {
@@ -361,16 +343,10 @@ extension SpiderRealtimePolling on SpiderRealtime {
       _poll(intervalMs, (v) => jsonEncode(v.toJson()),
           () => vehicleForTrip(tripId));
 
-  Stream<SpiderResult<TripDelays>> pollDelaysByServiceDate(
-          Map<String, List<String>> byServiceDate,
-          {int? intervalMs}) =>
-      _poll(intervalMs, (v) => jsonEncode(v.toJson()),
-          () => delaysByServiceDate(byServiceDate));
-
   Stream<SpiderResult<TripDelays>> pollDelays(
-          List<String> tripIds, String serviceDate, {int? intervalMs}) =>
+          String serviceDate, List<String> tripIds, {int? intervalMs}) =>
       _poll(intervalMs, (v) => jsonEncode(v.toJson()),
-          () => delays(tripIds, serviceDate));
+          () => delays(serviceDate, tripIds));
 
   Stream<SpiderResult<ServiceAlerts>> pollAlerts({int? intervalMs}) =>
       _poll(intervalMs, (v) => jsonEncode(v.toJson()), () => alerts());
@@ -404,7 +380,7 @@ int? _secondsToMs(Object? value) => value is num ? value.toInt() * 1000 : null;
 
 FeedFreshness _mapFreshness(Map<String, dynamic> json) => FeedFreshness(
       feedTimestampEpochMs: _secondsToMs(json['feedTimestamp']),
-      staleSeconds: (json['staleSeconds'] as num?)?.toDouble(),
+      staleSeconds: (json['staleSeconds'] as num?)?.toInt(),
     );
 
 LiveVehicle _mapVehicle(Map<String, dynamic> v) => LiveVehicle(
@@ -422,22 +398,12 @@ LiveVehicle _mapVehicle(Map<String, dynamic> v) => LiveVehicle(
       timestampEpochMs: _secondsToMs(v['timestamp']),
     );
 
-ServiceDateDelays _mapDelayGroup(Map<String, dynamic> g) => ServiceDateDelays(
-      g['serviceDate'] as String? ?? '',
-      (g['delays'] as List<dynamic>? ?? const [])
-          .map((d) => _mapDelay(d as Map<String, dynamic>))
-          .toList(),
-      (g['missing'] as List<dynamic>? ?? const [])
-          .map((e) => e as String)
-          .toList(),
-    );
-
 TripDelay _mapDelay(Map<String, dynamic> d) => TripDelay(
-      tripId: d['tripId'] as String?,
+      tripId: d['tripId'] as String,
       routeId: d['routeId'] as String?,
       delaySeconds: (d['delaySeconds'] as num?)?.toInt(),
       scheduleRelationship: d['scheduleRelationship'] as String?,
-      stopTimeUpdates: (d['stopTimeUpdates'] as List<dynamic>? ?? const [])
+      stopTimeUpdates: (d['stopTimeUpdates'] as List<dynamic>)
           .map((s) => _mapStopTimeUpdate(s as Map<String, dynamic>))
           .toList(),
     );

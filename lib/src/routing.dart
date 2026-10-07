@@ -32,8 +32,8 @@ class Leg {
   final bool isRealtime;
   final RealtimeState? realtimeState;
   final String? serviceDate;
-  final String? fromName;
-  final String? toName;
+  final String fromName;
+  final String toName;
   final String? fromGtfsId;
   final String? toGtfsId;
 
@@ -58,8 +58,8 @@ class Leg {
   /// The colour for text drawn on [routeColor]: the raw GTFS hex without `#` (e.g. `"FFFFFF"`).
   final String? routeTextColor;
   final String? headsign;
-  final double? distanceMeters;
-  final double? durationSeconds;
+  final double distanceMeters;
+  final int durationSeconds;
   final String? tripGtfsId;
 
   /// Whether the rider stays on the same vehicle from the previous leg (it continues as another trip, often
@@ -83,8 +83,8 @@ class Leg {
     this.isRealtime = false,
     this.realtimeState,
     this.serviceDate,
-    this.fromName,
-    this.toName,
+    required this.fromName,
+    required this.toName,
     this.fromGtfsId,
     this.toGtfsId,
     this.fromPlatformCode,
@@ -97,8 +97,8 @@ class Leg {
     this.routeColor,
     this.routeTextColor,
     this.headsign,
-    this.distanceMeters,
-    this.durationSeconds,
+    required this.distanceMeters,
+    required this.durationSeconds,
     this.tripGtfsId,
     this.interlineWithPreviousLeg = false,
     this.bikesAllowed,
@@ -111,19 +111,19 @@ class Leg {
 
 /// A full origin-to-destination itinerary.
 class Itinerary {
-  final String? start;
-  final String? end;
+  final String start;
+  final String end;
   final int durationSeconds;
-  final int? waitingTimeSeconds;
+  final int waitingTimeSeconds;
   final int numberOfTransfers;
   @Deprecated('Always null: the API sends no accessibility score.')
   final double? accessibilityScore;
   final List<Leg> legs;
   const Itinerary({
-    this.start,
-    this.end,
+    required this.start,
+    required this.end,
     required this.durationSeconds,
-    this.waitingTimeSeconds,
+    required this.waitingTimeSeconds,
     required this.numberOfTransfers,
     this.accessibilityScore,
     required this.legs,
@@ -170,14 +170,14 @@ class Route {
   final List<RouteEdge> edges;
   final RoutePageInfo pageInfo;
   final List<RoutingError> routingErrors;
-  final String? searchDateTime;
+  final String searchDateTime;
   // Carries the originating request so planNext/planPrevious can page without re-deriving it. Library-private.
   final _PlanRequest _request;
   const Route._({
     required this.edges,
     required this.pageInfo,
     required this.routingErrors,
-    this.searchDateTime,
+    required this.searchDateTime,
     required _PlanRequest request,
   }) : _request = request;
 }
@@ -186,7 +186,7 @@ class Route {
 /// passed through as the feed gives them; null when it has none.
 class Departure {
   final int scheduledTimeEpochMs;
-  final int? realtimeTimeEpochMs;
+  final int realtimeTimeEpochMs;
   final bool isRealtime;
   final RealtimeState? realtimeState;
 
@@ -194,8 +194,8 @@ class Departure {
   /// no delay history.
   final Duration? typicalDelay;
   final String? headsign;
-  final String? tripGtfsId;
-  final String? routeGtfsId;
+  final String tripGtfsId;
+  final String routeGtfsId;
   final String? routeShortName;
   final String? routeLongName;
 
@@ -207,7 +207,7 @@ class Departure {
   final TransitMode? mode;
 
   /// The stop the vehicle leaves from: for a station, the platform within it.
-  final String? stopGtfsId;
+  final String stopGtfsId;
 
   /// The platform or track code (GTFS `platform_code`) of [stopGtfsId].
   final String? platformCode;
@@ -222,19 +222,19 @@ class Departure {
   final String serviceDate;
   const Departure({
     required this.scheduledTimeEpochMs,
-    this.realtimeTimeEpochMs,
+    required this.realtimeTimeEpochMs,
     required this.isRealtime,
     this.realtimeState,
     this.typicalDelay,
     this.headsign,
-    this.tripGtfsId,
-    this.routeGtfsId,
+    required this.tripGtfsId,
+    required this.routeGtfsId,
     this.routeShortName,
     this.routeLongName,
     this.routeColor,
     this.routeTextColor,
     this.mode,
-    this.stopGtfsId,
+    required this.stopGtfsId,
     this.platformCode,
     this.wheelchairAccessible,
     required this.serviceDate,
@@ -245,12 +245,12 @@ class Departure {
 class TripStop {
   final String gtfsId;
   final String name;
-  final double? lat;
-  final double? lon;
-  final int? scheduledArrivalEpochMs;
-  final int? scheduledDepartureEpochMs;
-  final int? realtimeArrivalEpochMs;
-  final int? realtimeDepartureEpochMs;
+  final double lat;
+  final double lon;
+  final int scheduledArrivalEpochMs;
+  final int scheduledDepartureEpochMs;
+  final int realtimeArrivalEpochMs;
+  final int realtimeDepartureEpochMs;
   final bool isRealtime;
 
   /// The typical (median) delay at this stop for this trip on the service date's day type; null when there is
@@ -266,12 +266,12 @@ class TripStop {
   const TripStop({
     required this.gtfsId,
     required this.name,
-    this.lat,
-    this.lon,
-    this.scheduledArrivalEpochMs,
-    this.scheduledDepartureEpochMs,
-    this.realtimeArrivalEpochMs,
-    this.realtimeDepartureEpochMs,
+    required this.lat,
+    required this.lon,
+    required this.scheduledArrivalEpochMs,
+    required this.scheduledDepartureEpochMs,
+    required this.realtimeArrivalEpochMs,
+    required this.realtimeDepartureEpochMs,
     required this.isRealtime,
     this.typicalDelay,
     this.wheelchairBoarding,
@@ -284,7 +284,7 @@ class TripStop {
 /// through as the feed gives them; null when it has none.
 class TripDetails {
   final String gtfsId;
-  final String? routeGtfsId;
+  final String routeGtfsId;
   final String? routeShortName;
   final String? routeLongName;
 
@@ -309,7 +309,7 @@ class TripDetails {
   final List<LatLon> geometry;
   const TripDetails({
     required this.gtfsId,
-    this.routeGtfsId,
+    required this.routeGtfsId,
     this.routeShortName,
     this.routeLongName,
     this.routeColor,
@@ -658,7 +658,7 @@ typedef _PlanPage = ({
   List<RouteEdge> edges,
   RoutePageInfo pageInfo,
   List<RoutingError> routingErrors,
-  String? searchDateTime,
+  String searchDateTime,
 });
 
 _PlanPage _decodePlanPage(Map<String, dynamic> json) {
@@ -826,50 +826,54 @@ RoutingError _mapRoutingError(wire.RoutingError w) => RoutingError(
 Itinerary _mapItinerary(wire.Itinerary w) => Itinerary(
       start: w.start,
       end: w.end,
-      durationSeconds: w.duration ?? 0,
+      durationSeconds: w.duration,
       waitingTimeSeconds: w.waitingTime,
       numberOfTransfers: w.numberOfTransfers,
       legs: w.legs.map(_mapLeg).toList(),
     );
 
 Leg _mapLeg(wire.Leg w) {
-  final points = w.legGeometry?.points;
+  final startEstimated = w.start.estimated;
+  final endEstimated = w.end.estimated;
+  final fromStop = w.from.stop;
+  final toStop = w.to.stop;
+  final route = w.route;
+  final trip = w.trip;
   return Leg(
-    mode: TransitMode.fromWire(w.mode?.wire),
+    mode: TransitMode.fromWire(w.mode.wire),
     startScheduled: w.start.scheduledTime,
     endScheduled: w.end.scheduledTime,
-    startEstimated: w.start.estimated?.time,
-    endEstimated: w.end.estimated?.time,
-    startDelay: _durationFromWire(w.start.estimated?.delay),
-    endDelay: _durationFromWire(w.end.estimated?.delay),
+    startEstimated: startEstimated?.time,
+    endEstimated: endEstimated?.time,
+    startDelay: _durationFromWire(startEstimated?.delay),
+    endDelay: _durationFromWire(endEstimated?.delay),
     typicalArrivalDelay: _durationFromSeconds(w.typicalArrivalDelay),
-    isRealtime: w.realTime ?? false,
-    realtimeState: RealtimeState.fromWire(w.realtimeState?.wire),
+    isRealtime: w.realTime,
+    realtimeState: RealtimeState.fromWire(w.realtimeState.wire),
     serviceDate: w.serviceDate,
     fromName: w.from.name,
     toName: w.to.name,
-    fromGtfsId: w.from.stop?.gtfsId,
-    toGtfsId: w.to.stop?.gtfsId,
-    fromPlatformCode: w.from.stop?.platformCode,
-    toPlatformCode: w.to.stop?.platformCode,
-    fromZoneId: w.from.stop?.zoneId,
-    toZoneId: w.to.stop?.zoneId,
-    routeGtfsId: w.route?.gtfsId,
-    routeShortName: w.route?.shortName,
-    routeLongName: w.route?.longName,
-    routeColor: w.route?.color,
-    routeTextColor: w.route?.textColor,
+    fromGtfsId: fromStop?.gtfsId,
+    toGtfsId: toStop?.gtfsId,
+    fromPlatformCode: fromStop?.platformCode,
+    toPlatformCode: toStop?.platformCode,
+    fromZoneId: fromStop?.zoneId,
+    toZoneId: toStop?.zoneId,
+    routeGtfsId: route?.gtfsId,
+    routeShortName: route?.shortName,
+    routeLongName: route?.longName,
+    routeColor: route?.color,
+    routeTextColor: route?.textColor,
     headsign: w.headsign,
     distanceMeters: w.distance,
     durationSeconds: w.duration,
-    tripGtfsId: w.trip?.gtfsId,
-    interlineWithPreviousLeg: w.interlineWithPreviousLeg ?? false,
-    bikesAllowed: BikesAllowed.fromWire(w.trip?.bikesAllowed?.wire),
+    tripGtfsId: trip?.gtfsId,
+    interlineWithPreviousLeg: w.interlineWithPreviousLeg,
+    bikesAllowed: BikesAllowed.fromWire(trip?.bikesAllowed.wire),
     fromWheelchair:
-        WheelchairBoarding.fromWire(w.from.stop?.wheelchairBoarding?.wire),
-    toWheelchair:
-        WheelchairBoarding.fromWire(w.to.stop?.wheelchairBoarding?.wire),
-    geometry: points != null ? decodePolyline(points) : const [],
+        WheelchairBoarding.fromWire(fromStop?.wheelchairBoarding.wire),
+    toWheelchair: WheelchairBoarding.fromWire(toStop?.wheelchairBoarding.wire),
+    geometry: decodePolyline(w.legGeometry.points),
   );
 }
 
@@ -909,68 +913,33 @@ Duration? _parseIsoDuration(String raw) {
   return Duration(microseconds: sign * micros);
 }
 
-List<Departure> _mapDepartures(wire.DepartureBoard stop) {
-  final out = <Departure>[];
-  for (final st in stop.stoptimesWithoutPatterns ??
-      const <wire.StopDeparturesStoptime>[]) {
-    final serviceDay = st.serviceDay;
-    final scheduledOffset = st.scheduledDeparture;
-    if (serviceDay == null || scheduledOffset == null) continue;
-    final trip = st.trip;
-    final route = trip?.route;
-    final rt = st.realtimeDeparture;
-    out.add(Departure(
-      scheduledTimeEpochMs: (serviceDay + scheduledOffset) * 1000,
-      realtimeTimeEpochMs: rt != null ? (serviceDay + rt) * 1000 : null,
-      isRealtime: st.realtime ?? false,
-      realtimeState: RealtimeState.fromWire(st.realtimeState?.wire),
-      typicalDelay: _durationFromSeconds(st.typicalDelay),
-      headsign: st.headsign,
-      tripGtfsId: trip?.gtfsId,
-      routeGtfsId: route?.gtfsId,
-      routeShortName: route?.shortName,
-      routeLongName: route?.longName,
-      routeColor: route?.color,
-      routeTextColor: route?.textColor,
-      mode: TransitMode.fromWire(route?.mode?.wire),
-      stopGtfsId: st.stop?.gtfsId,
-      platformCode: st.stop?.platformCode,
-      wheelchairAccessible:
-          WheelchairBoarding.fromWire(trip?.wheelchairAccessible?.wire),
-      serviceDate: serviceDateOf(serviceDay),
-    ));
-  }
-  return out;
-}
+List<Departure> _mapDepartures(wire.DepartureBoard stop) => [
+      for (final st in stop.stoptimesWithoutPatterns)
+        Departure(
+          scheduledTimeEpochMs: (st.serviceDay + st.scheduledDeparture) * 1000,
+          realtimeTimeEpochMs: (st.serviceDay + st.realtimeDeparture) * 1000,
+          isRealtime: st.realtime,
+          realtimeState: RealtimeState.fromWire(st.realtimeState.wire),
+          typicalDelay: _durationFromSeconds(st.typicalDelay),
+          headsign: st.headsign,
+          tripGtfsId: st.trip.gtfsId,
+          routeGtfsId: st.trip.route.gtfsId,
+          routeShortName: st.trip.route.shortName,
+          routeLongName: st.trip.route.longName,
+          routeColor: st.trip.route.color,
+          routeTextColor: st.trip.route.textColor,
+          mode: TransitMode.fromWire(st.trip.route.mode.wire),
+          stopGtfsId: st.stop.gtfsId,
+          platformCode: st.stop.platformCode,
+          wheelchairAccessible:
+              WheelchairBoarding.fromWire(st.trip.wheelchairAccessible.wire),
+          serviceDate: serviceDateOf(st.serviceDay),
+        ),
+    ];
 
 TripDetails _mapTrip(wire.TripTimetable w) {
-  final stops = <TripStop>[];
-  int? serviceDay;
-  for (final st in w.stoptimesForDate ?? const <wire.Stoptime>[]) {
-    serviceDay ??= st.serviceDay;
-    final s = st.stop;
-    if (s == null) continue;
-    final day = st.serviceDay;
-    int? at(int? offset) =>
-        (offset != null && day != null) ? (day + offset) * 1000 : null;
-    stops.add(TripStop(
-      gtfsId: s.gtfsId,
-      name: s.name,
-      lat: s.lat,
-      lon: s.lon,
-      scheduledArrivalEpochMs: at(st.scheduledArrival),
-      scheduledDepartureEpochMs: at(st.scheduledDeparture),
-      realtimeArrivalEpochMs: at(st.realtimeArrival),
-      realtimeDepartureEpochMs: at(st.realtimeDeparture),
-      isRealtime: st.realtime ?? false,
-      typicalDelay: _durationFromSeconds(st.typicalDelay),
-      wheelchairBoarding:
-          WheelchairBoarding.fromWire(s.wheelchairBoarding?.wire),
-      platformCode: s.platformCode,
-      zoneId: s.zoneId,
-    ));
-  }
-  final points = w.tripGeometry?.points;
+  final stoptimes = w.stoptimesForDate;
+  final geometry = w.tripGeometry;
   return TripDetails(
     gtfsId: w.gtfsId,
     routeGtfsId: w.route.gtfsId,
@@ -978,14 +947,35 @@ TripDetails _mapTrip(wire.TripTimetable w) {
     routeLongName: w.route.longName,
     routeColor: w.route.color,
     routeTextColor: w.route.textColor,
-    mode: TransitMode.fromWire(w.route.mode?.wire),
+    mode: TransitMode.fromWire(w.route.mode.wire),
     headsign: w.tripHeadsign,
     directionId: w.directionId,
-    bikesAllowed: BikesAllowed.fromWire(w.bikesAllowed?.wire),
+    bikesAllowed: BikesAllowed.fromWire(w.bikesAllowed.wire),
     wheelchairAccessible:
-        WheelchairBoarding.fromWire(w.wheelchairAccessible?.wire),
-    serviceDate: serviceDay == null ? null : serviceDateOf(serviceDay),
-    stops: stops,
-    geometry: points != null ? decodePolyline(points) : const [],
+        WheelchairBoarding.fromWire(w.wheelchairAccessible.wire),
+    serviceDate:
+        stoptimes.isEmpty ? null : serviceDateOf(stoptimes.first.serviceDay),
+    stops: [
+      for (final st in stoptimes)
+        TripStop(
+          gtfsId: st.stop.gtfsId,
+          name: st.stop.name,
+          lat: st.stop.lat,
+          lon: st.stop.lon,
+          scheduledArrivalEpochMs: (st.serviceDay + st.scheduledArrival) * 1000,
+          scheduledDepartureEpochMs:
+              (st.serviceDay + st.scheduledDeparture) * 1000,
+          realtimeArrivalEpochMs: (st.serviceDay + st.realtimeArrival) * 1000,
+          realtimeDepartureEpochMs:
+              (st.serviceDay + st.realtimeDeparture) * 1000,
+          isRealtime: st.realtime,
+          typicalDelay: _durationFromSeconds(st.typicalDelay),
+          wheelchairBoarding:
+              WheelchairBoarding.fromWire(st.stop.wheelchairBoarding.wire),
+          platformCode: st.stop.platformCode,
+          zoneId: st.stop.zoneId,
+        ),
+    ],
+    geometry: geometry == null ? const [] : decodePolyline(geometry.points),
   );
 }

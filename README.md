@@ -8,7 +8,7 @@ Native Dart package (single dependency: `package:http`), usable from Flutter (iO
 
 ```yaml
 dependencies:
-  spider_sdk: ^1.2.0
+  spider_sdk: ^1.3.0
 ```
 
 ## Quickstart

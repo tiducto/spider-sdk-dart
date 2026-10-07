@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.3.0 - 2026-10-07
+
+Targets Spider API contract `1.3`.
+
+### Breaking
+
+- **`realtime.delays(serviceDate, tripIds)` takes one service date** and calls
+  `GET /realtime/v1/delays?serviceDate=…&tripIds=…`. `delaysByServiceDate`, `pollDelaysByServiceDate` and
+  `ServiceDateDelays` are removed; `pollDelays(serviceDate, tripIds)` takes the same arguments in the same order.
+- **`TripDelays` is flat**: `serviceDate`, `delays`, `missing`, `freshness`; `delayFor(tripId)` drops its date.
+  `TripDelay.tripId` is non-null.
+- **Delays validate before sending**: no ids is `tripIds is required`, a blank id `tripIds is invalid`, more than
+  50 distinct ids `tripIds is out of range` (all `badRequest`, field `tripIds`). The ids are de-duplicated and
+  sorted, so equal requests share one URL and its CDN cache.
+- **`SpiderErrorCode.queryRetired` is removed.** A 410 or a `query_retired` body is no longer special-cased.
+- **`RoutingErrorCode.noTransitConnectionInSearchWindow` and `outsideBounds` are removed**; the API no longer
+  sends them.
+- **Exact nullability.** Fields the API always sends are non-null: `Leg.fromName`, `toName`, `distanceMeters`;
+  `Itinerary.start`, `end`, `waitingTimeSeconds`; `Route.searchDateTime`; `Departure.realtimeTimeEpochMs`,
+  `tripGtfsId`, `routeGtfsId`, `stopGtfsId`; `TripStop.lat`, `lon` and the four stop times;
+  `TripDetails.routeGtfsId`. Fields the API may null stay nullable.
+- **`Leg.durationSeconds` is an `int`**, like `Itinerary.durationSeconds`.
+- **`FeedFreshness.staleSeconds` is an `int`.**
+
+### Changed
+
+- **Realtime ids are feed-prefixed** (`<feedId>:<id>`), exactly as routing returns them, and are sent and
+  returned untouched.
+
 ## 1.2.0 - 2026-10-06
 
 Targets Spider API contract `1.2`.

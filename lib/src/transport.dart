@@ -239,8 +239,6 @@ class Transport {
 
 const _defaultSseEvent = 'message';
 
-const _queryRetired = 'query_retired';
-
 // Plan-limit refusal codes with their fallback messages; only the body code identifies them, never the status.
 const _planLimits = {
   'planning_limit_reached': (
@@ -253,7 +251,7 @@ const _planLimits = {
   ),
 };
 
-/// A plan-limit or `query_retired` body code (`code`, else gateway `error`) wins over the status.
+/// A plan-limit body code (`code`, else gateway `error`) wins over the status.
 TransportError httpFailure(String where, int status, String body) {
   final env = _parseErrorEnvelope(body);
   final bodyCode = env.code ?? env.error;
@@ -263,11 +261,6 @@ TransportError httpFailure(String where, int status, String body) {
     final message = env.message?.trim() ?? '';
     return TransportError(kind, message.isEmpty ? defaultMessage : message,
         httpStatus: status, serverCode: bodyCode);
-  }
-  if (bodyCode == _queryRetired || status == 410) {
-    return TransportError(TransportErrorKind.queryRetired,
-        '$where -> $status: ${env.message ?? 'this operation is retired'}',
-        httpStatus: status, serverCode: _queryRetired);
   }
   return TransportError(TransportErrorKind.http,
       '$where -> $status: ${env.message ?? _trunc(body)}',

@@ -27,12 +27,12 @@ SpiderClient setupWithRetry() {
 }
 
 /// A hand-rolled poll loop: refresh delays roughly every 15 seconds. Delays are scoped to the GTFS service
-/// date each trip runs on (pass the plan leg's `serviceDate`).
+/// date the trips run on (pass the plan leg's `serviceDate`).
 Future<void> poll(
-    SpiderClient client, List<String> tripIds, String serviceDate) async {
+    SpiderClient client, String serviceDate, List<String> tripIds) async {
   // [START poll]
   while (true) {
-    final result = await client.realtime.delays(tripIds, serviceDate);
+    final result = await client.realtime.delays(serviceDate, tripIds);
     switch (result) {
       case Success(:final value):
         _updateBoard(value);
@@ -96,18 +96,19 @@ Future<void> vehicleForTrip(SpiderClient client, String tripId) async {
   // [END vehicleForTrip]
 }
 
-/// Live schedule deviation for a set of trips running on one GTFS service date (`YYYY-MM-DD`).
+/// Live schedule deviation for feed-prefixed trip ids (e.g. `1:39822`) running on one GTFS service date
+/// (`YYYY-MM-DD`).
 Future<void> delays(
-    SpiderClient client, List<String> tripIds, String serviceDate) async {
+    SpiderClient client, String serviceDate, List<String> tripIds) async {
   // [START delays]
-  final result = await client.realtime.delays(tripIds, serviceDate);
+  final result = await client.realtime.delays(serviceDate, tripIds);
 
   if (result case Success(:final value)) {
-    for (final group in value.groups) {
-      for (final delay in group.delays) {
-        final minutes = (delay.delaySeconds ?? 0) ~/ 60;
-        print('${delay.tripId}: ${minutes >= 0 ? '+' : ''}$minutes min');
-      }
+    for (final delay in value.delays) {
+      final seconds = delay.delaySeconds;
+      if (seconds == null) continue;
+      final minutes = seconds ~/ 60;
+      print('${delay.tripId}: ${minutes >= 0 ? '+' : ''}$minutes min');
     }
   }
   // [END delays]
@@ -127,8 +128,8 @@ Future<void> alerts(SpiderClient client) async {
 }
 
 // Stand-in app hooks so the examples above read cleanly.
-void _updateBoard(TripDelays delays) => print(
-    'board: ${delays.groups.fold(0, (n, g) => n + g.delays.length)} trips');
+void _updateBoard(TripDelays delays) =>
+    print('board: ${delays.delays.length} trips');
 
 void _placeMarker(LiveVehicle vehicle) => print('marker for ${vehicle.tripId}');
 
