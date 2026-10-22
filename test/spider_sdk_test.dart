@@ -67,7 +67,7 @@ Map<String, dynamic> bodyOf(SpiderHttpRequest req) =>
 const stopsAB =
     PlanOptions(origin: Location.stop('A'), destination: Location.stop('B'));
 
-// Contract 1.3 response builders: every member is required (nullable ones explicitly null), so a fixture
+// Contract 1.4 response builders: every member is required (nullable ones explicitly null), so a fixture
 // spreads its overrides over a complete base.
 typedef Json = Map<String, dynamic>;
 
@@ -96,8 +96,8 @@ Json legJson([Json o = const {}]) => {
       'realtimeState': 'SCHEDULED',
       'realTime': false,
       'serviceDate': '2026-08-21',
-      'from': {'name': 'A', 'stop': stopJson('1:S1')},
-      'to': {'name': 'B', 'stop': stopJson('1:S2')},
+      'from': {'name': 'A', 'stop': stopJson('1:S1'), 'stopPosition': null},
+      'to': {'name': 'B', 'stop': stopJson('1:S2'), 'stopPosition': null},
       'route': routeJson('1:R12'),
       'headsign': 'Downtown',
       'distance': 1500.0,
@@ -156,6 +156,7 @@ Json stoptimeJson(String tripId, [Json o = const {}]) => {
       'realtime': false,
       'realtimeState': 'SCHEDULED',
       'typicalDelay': 0,
+      'stopPosition': null,
       'headsign': 'Airport',
       'stop': {'gtfsId': '1:ST-P1', 'platformCode': '1'},
       'trip': {
@@ -188,6 +189,8 @@ Json tripStoptimeJson(String stopId,
       'realtime': false,
       'realtimeState': 'SCHEDULED',
       'typicalDelay': 0,
+      'stopPosition': null,
+      'geometryIndex': null,
       'stop': {
         'gtfsId': stopId,
         'name': 'A',
@@ -447,6 +450,29 @@ void main() {
       expect(legs[1].interlineWithPreviousLeg, true);
       expect(legs[2].typicalArrivalDelay, isNull);
       expect(legs[2].interlineWithPreviousLeg, false);
+    });
+
+    test('plan maps the boarding and alighting stop positions', () async {
+      final body = planJson(itineraries: [
+        itineraryJson([
+          legJson({
+            'from': {'name': 'A', 'stop': stopJson('1:S1'), 'stopPosition': 2},
+            'to': {'name': 'B', 'stop': stopJson('1:S2'), 'stopPosition': 5},
+          }),
+          legJson({
+            'mode': 'WALK',
+            'from': {'name': 'B', 'stop': null, 'stopPosition': null},
+            'to': {'name': 'C', 'stop': null, 'stopPosition': null},
+            'route': null,
+            'trip': null,
+          }),
+        ])
+      ]);
+      final (client, _) = makeClient((_) => resp(body));
+      final result = await client.routing.plan(stopsAB);
+      final legs = (result as Success<Route>).value.edges.single.itinerary.legs;
+      expect((legs[0].fromStopPosition, legs[0].toStopPosition), (2, 5));
+      expect((legs[1].fromStopPosition, legs[1].toStopPosition), (null, null));
     });
 
     test('plan with arriveBy sets latestArrival', () async {
@@ -831,6 +857,18 @@ void main() {
       expect(fromStation.single.typicalDelay, Duration.zero);
     });
 
+    test('departures maps the stop position, null when absent', () async {
+      final body = departuresJson([
+        stoptimeJson('1:T1', {'stopPosition': 7}),
+        stoptimeJson('1:T2'),
+      ]);
+      final (client, _) = makeClient((_) => resp(body));
+      final departures =
+          ((await client.routing.departures('S')) as Success<List<Departure>>)
+              .value;
+      expect(departures.map((d) => d.stopPosition).toList(), [7, null]);
+    });
+
     test(
         'departures posts the default count and a 24 h time range to '
         '/routing/v1/departures', () async {
@@ -978,6 +1016,29 @@ void main() {
           ((await client.routing.trip('T1')) as Success<TripDetails>).value;
       expect(trip.stops.map((s) => s.typicalDelay).toList(),
           [const Duration(seconds: 30), null]);
+    });
+
+    test('trip maps the stop position and the geometry index per stop',
+        () async {
+      final body = tripJson([
+        tripStoptimeJson('1:S1', {'stopPosition': 3, 'geometryIndex': 2}),
+        tripStoptimeJson(
+            '1:S2', {'scheduledArrival': 36600, 'stopPosition': 5}),
+      ], {
+        'tripGeometry': {
+          'points': '_izlhA~rlgdF_{geC~ywl@_kwzCn`{nI',
+          'length': 3
+        },
+      });
+      final (client, _) = makeClient((_) => resp(body));
+      final trip =
+          ((await client.routing.trip('T1')) as Success<TripDetails>).value;
+      final [first, second] = trip.stops;
+      expect((first.stopPosition, second.stopPosition), (3, 5));
+      final point = trip.geometry[first.geometryIndex!];
+      expect(point.lat, closeTo(43.252, 1e-5));
+      expect(point.lon, closeTo(-126.453, 1e-5));
+      expect(second.geometryIndex, isNull);
     });
 
     test('trip rejects a malformed service date without a request', () async {

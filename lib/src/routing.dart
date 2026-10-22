@@ -37,6 +37,13 @@ class Leg {
   final String? fromGtfsId;
   final String? toGtfsId;
 
+  /// The boarding stop's position in the leg's trip: the [TripStop] of [SpiderRouting.trip] for [tripGtfsId]
+  /// and [serviceDate] with the same [TripStop.stopPosition] is that stop. Null on a walk.
+  final int? fromStopPosition;
+
+  /// The alighting stop's position in the leg's trip, as [fromStopPosition]. Null on a walk.
+  final int? toStopPosition;
+
   /// The platform or track code (GTFS `platform_code`) at the boarding stop.
   final String? fromPlatformCode;
 
@@ -87,6 +94,8 @@ class Leg {
     required this.toName,
     this.fromGtfsId,
     this.toGtfsId,
+    this.fromStopPosition,
+    this.toStopPosition,
     this.fromPlatformCode,
     this.toPlatformCode,
     this.fromZoneId,
@@ -216,6 +225,9 @@ class Departure {
   /// information.
   final WheelchairBoarding? wheelchairAccessible;
 
+  /// The departure's position in its trip, as the trip's [TripStop.stopPosition].
+  final int? stopPosition;
+
   /// The GTFS service date (`YYYY-MM-DD`) this departure's trip runs on — pass it with [tripGtfsId] to
   /// [SpiderRouting.trip] and to the realtime delays lookup. An after-midnight departure can carry the
   /// previous day's date.
@@ -237,6 +249,7 @@ class Departure {
     required this.stopGtfsId,
     this.platformCode,
     this.wheelchairAccessible,
+    this.stopPosition,
     required this.serviceDate,
   });
 }
@@ -263,6 +276,15 @@ class TripStop {
 
   /// The fare zone (GTFS `zone_id`), when the feed gives one.
   final String? zoneId;
+
+  /// The stop's position in the trip: increasing along it, not necessarily from 0 or consecutive. A
+  /// [Leg.fromStopPosition], [Leg.toStopPosition] or [Departure.stopPosition] equal to it names this stop, also
+  /// on a trip that visits one stop twice. Realtime that adds or removes stops can change it.
+  final int? stopPosition;
+
+  /// The index into [TripDetails.geometry] of where the stop sits on the trip's line; null when the trip has no
+  /// geometry or the stop has no point on it.
+  final int? geometryIndex;
   const TripStop({
     required this.gtfsId,
     required this.name,
@@ -277,6 +299,8 @@ class TripStop {
     this.wheelchairBoarding,
     this.platformCode,
     this.zoneId,
+    this.stopPosition,
+    this.geometryIndex,
   });
 }
 
@@ -855,6 +879,8 @@ Leg _mapLeg(wire.Leg w) {
     toName: w.to.name,
     fromGtfsId: fromStop?.gtfsId,
     toGtfsId: toStop?.gtfsId,
+    fromStopPosition: w.from.stopPosition,
+    toStopPosition: w.to.stopPosition,
     fromPlatformCode: fromStop?.platformCode,
     toPlatformCode: toStop?.platformCode,
     fromZoneId: fromStop?.zoneId,
@@ -933,6 +959,7 @@ List<Departure> _mapDepartures(wire.DepartureBoard stop) => [
           platformCode: st.stop.platformCode,
           wheelchairAccessible:
               WheelchairBoarding.fromWire(st.trip.wheelchairAccessible.wire),
+          stopPosition: st.stopPosition,
           serviceDate: serviceDateOf(st.serviceDay),
         ),
     ];
@@ -974,6 +1001,8 @@ TripDetails _mapTrip(wire.TripTimetable w) {
               WheelchairBoarding.fromWire(st.stop.wheelchairBoarding.wire),
           platformCode: st.stop.platformCode,
           zoneId: st.stop.zoneId,
+          stopPosition: st.stopPosition,
+          geometryIndex: st.geometryIndex,
         ),
     ],
     geometry: geometry == null ? const [] : decodePolyline(geometry.points),
