@@ -1125,16 +1125,21 @@ class Place {
   /// The stop's name; `Origin` or `Destination` for a coordinate.
   final String name;
 
+  /// The position in the leg's trip of this stop time, as the trip's `stopPosition`. Null unless the leg is a ride.
+  final int? stopPosition;
+
   /// Null when the place is not a stop, as for an origin or destination coordinate.
   final Stop? stop;
 
   const Place({
     required this.name,
+    required this.stopPosition,
     required this.stop,
   });
 
   factory Place.fromJson(Map<String, dynamic> json) => Place(
         name: json['name'] as String,
+        stopPosition: (json['stopPosition'] as num?)?.toInt(),
         stop: json['stop'] == null
             ? null
             : Stop.fromJson(json['stop'] as Map<String, dynamic>),
@@ -1142,6 +1147,7 @@ class Place {
 
   Map<String, dynamic> toJson() => {
         'name': name,
+        'stopPosition': stopPosition == null ? null : stopPosition!,
         'stop': stop == null ? null : stop!.toJson(),
       };
 }
@@ -1549,6 +1555,9 @@ class StopDeparturesStoptime {
   /// Null when the feed has none.
   final String? headsign;
 
+  /// The position in the trip of this departure, as the trip's `stopPosition`.
+  final int? stopPosition;
+
   /// The platform or stand the departure leaves from, which tells a station's platforms apart.
   final StopDeparturesStop stop;
   final StopDeparturesTrip trip;
@@ -1561,6 +1570,7 @@ class StopDeparturesStoptime {
     required this.realtimeState,
     required this.typicalDelay,
     required this.headsign,
+    required this.stopPosition,
     required this.stop,
     required this.trip,
   });
@@ -1574,6 +1584,7 @@ class StopDeparturesStoptime {
         realtimeState: RealtimeState.fromWire(json['realtimeState'] as String),
         typicalDelay: (json['typicalDelay'] as num?)?.toInt(),
         headsign: json['headsign'] as String?,
+        stopPosition: (json['stopPosition'] as num?)?.toInt(),
         stop: StopDeparturesStop.fromJson(json['stop'] as Map<String, dynamic>),
         trip: StopDeparturesTrip.fromJson(json['trip'] as Map<String, dynamic>),
       );
@@ -1586,6 +1597,7 @@ class StopDeparturesStoptime {
         'realtimeState': realtimeState.toJson(),
         'typicalDelay': typicalDelay == null ? null : typicalDelay!,
         'headsign': headsign == null ? null : headsign!,
+        'stopPosition': stopPosition == null ? null : stopPosition!,
         'stop': stop.toJson(),
         'trip': trip.toJson(),
       };
@@ -1877,6 +1889,12 @@ class Stoptime {
 
   /// The trip's usual delay at this stop in seconds: the median (p50) recorded on the service date's day type, from the environment's realtime history, never below 0 and never decreasing along the trip's pattern. Null when the trip has live realtime or there is no history.
   final int? typicalDelay;
+
+  /// The stop time's position in the trip: increasing along it, not necessarily from 0 or consecutive. Realtime that adds or removes stops can change it.
+  final int? stopPosition;
+
+  /// Index into the decoded `tripGeometry` points of where this stop sits on the trip's line. Null when `tripGeometry` is null or the stop has no point on it.
+  final int? geometryIndex;
   final TripStop stop;
 
   const Stoptime({
@@ -1888,6 +1906,8 @@ class Stoptime {
     required this.realtime,
     required this.realtimeState,
     required this.typicalDelay,
+    required this.stopPosition,
+    required this.geometryIndex,
     required this.stop,
   });
 
@@ -1900,6 +1920,8 @@ class Stoptime {
         realtime: json['realtime'] as bool,
         realtimeState: RealtimeState.fromWire(json['realtimeState'] as String),
         typicalDelay: (json['typicalDelay'] as num?)?.toInt(),
+        stopPosition: (json['stopPosition'] as num?)?.toInt(),
+        geometryIndex: (json['geometryIndex'] as num?)?.toInt(),
         stop: TripStop.fromJson(json['stop'] as Map<String, dynamic>),
       );
 
@@ -1912,6 +1934,8 @@ class Stoptime {
         'realtime': realtime,
         'realtimeState': realtimeState.toJson(),
         'typicalDelay': typicalDelay == null ? null : typicalDelay!,
+        'stopPosition': stopPosition == null ? null : stopPosition!,
+        'geometryIndex': geometryIndex == null ? null : geometryIndex!,
         'stop': stop.toJson(),
       };
 }
