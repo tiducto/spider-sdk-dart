@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.4.0
+
+Targets Spider API contract `1.4`.
+
+### Added
+
+- **`TripStop.stopPosition`, `Departure.stopPosition`, `Leg.fromStopPosition` and `Leg.toStopPosition`**: a stop's
+  position in its trip. A departure, or a leg's boarding and alighting stop, finds its `TripStop` by an equal
+  `stopPosition`, also on a trip that visits one stop twice.
+- **`TripStop.geometryIndex`**: the index into `TripDetails.geometry` of where the stop sits on the trip's line;
+  null when the trip has no geometry or the stop has no point on it.
+
+### Changed
+
+- **`Leg.geometry` and `TripDetails.geometry` decode at precision 1e6**, the precision the router encodes them at:
+  points land within about 0.1 m instead of 1 m, so a stop's point on the line (`geometryIndex`) is where the
+  router cut it. Earlier SDK versions misplace the lines of such a router.
+
 ## 1.3.1 - 2026-10-07
 
 ### Changed
