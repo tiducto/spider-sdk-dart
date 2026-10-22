@@ -104,7 +104,7 @@ Json legJson([Json o = const {}]) => {
       'duration': 900,
       'trip': {'gtfsId': '1:T1', 'bikesAllowed': 'NO_INFORMATION'},
       'interlineWithPreviousLeg': false,
-      'legGeometry': {'points': '_p~iF~ps|U'},
+      'legGeometry': {'points': '_izlhA~rlgdF'},
       ...o,
     };
 
@@ -233,7 +233,7 @@ final planBody = planJson(itineraries: [
         })
       },
       'trip': {'gtfsId': '1:T1', 'bikesAllowed': 'ALLOWED'},
-      'legGeometry': {'points': '_p~iF~ps|U_ulLnnqC_mqNvxq`@'},
+      'legGeometry': {'points': '_izlhA~rlgdF_{geC~ywl@_kwzCn`{nI'},
     })
   ], {
     'waitingTime': 120,
@@ -908,7 +908,7 @@ void main() {
         })
       ], {
         'bikesAllowed': 'NOT_ALLOWED',
-        'tripGeometry': {'points': '_p~iF~ps|U', 'length': 2},
+        'tripGeometry': {'points': '_izlhA~rlgdF', 'length': 2},
       });
       final (client, mock) = makeClient((_) => resp(body));
       final result = await client.routing.trip('T1', serviceDate: '2026-08-21');
@@ -1482,8 +1482,8 @@ void main() {
       expect(trip.wheelchairAccessible, WheelchairBoarding.unknown);
     });
 
-    test('polyline decodes the Google example', () {
-      final points = decodePolyline('_p~iF~ps|U_ulLnnqC_mqNvxq`@');
+    test('polyline decodes the Google example at precision 6', () {
+      final points = decodePolyline('_izlhA~rlgdF_{geC~ywl@_kwzCn`{nI');
       expect(points.length, 3);
       expect(points[0].lat, closeTo(38.5, 1e-5));
       expect(points[0].lon, closeTo(-120.2, 1e-5));

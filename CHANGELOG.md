@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.0
+
+Targets Spider API contract `1.4`.
+
+### Changed
+
+- **`Leg.geometry` and `TripDetails.geometry` decode at precision 1e6**, the precision the router encodes them at:
+  points land within about 0.1 m instead of 1 m, so a stop's point on the line (`geometryIndex`) is where the
+  router cut it. Earlier SDK versions misplace the lines of such a router.
+
 ## 1.3.1 - 2026-10-07
 
 ### Changed
