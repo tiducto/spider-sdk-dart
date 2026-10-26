@@ -125,12 +125,36 @@ enum RealtimeState {
   }
 }
 
-/// Why routing failed. Unrecognized values map to [RoutingErrorCode.unknown].
+/// Why the router declined the plan or found no transit route. Unrecognized values map to
+/// [RoutingErrorCode.unknown].
 enum RoutingErrorCode {
+  /// A stop id resolves to no stop or station ([InputField.from], [InputField.to] or [InputField.via]), or a
+  /// coordinate has no street near enough to link to ([InputField.from] or [InputField.to]).
   locationNotFound('LOCATION_NOT_FOUND'),
+
+  /// A direct-only plan found no walk (no [InputField]).
+  noDirectModeConnection('NO_DIRECT_MODE_CONNECTION'),
+
+  /// No stop is in walking range of the origin ([InputField.from]) or the destination ([InputField.to]).
   noStopsInRange('NO_STOPS_IN_RANGE'),
+
+  /// The origin and the destination lie in parts of the transit network that no trip connects (no
+  /// [InputField]).
   noTransitConnection('NO_TRANSIT_CONNECTION'),
+
+  /// The transit search ran but found no transit itinerary leaving inside the search window
+  /// ([InputField.dateTime]).
+  noTransitConnectionInSearchWindow('NO_TRANSIT_CONNECTION_IN_SEARCH_WINDOW'),
+
+  /// A coordinate lies outside the area the router covers ([InputField.from] or [InputField.to]).
+  outsideBounds('OUTSIDE_BOUNDS'),
+
+  /// The date is outside what the feed covers ([InputField.dateTime]).
   outsideServicePeriod('OUTSIDE_SERVICE_PERIOD'),
+
+  /// The origin and destination are the same stop, a station and one of its own platforms, identical
+  /// coordinates or coordinates that snap to the same street point, or every transit itinerary the search found
+  /// was dropped as worse than walking (no [InputField]).
   walkingBetterThanTransit('WALKING_BETTER_THAN_TRANSIT'),
   unknown('UNKNOWN');
 
@@ -151,10 +175,12 @@ enum InputField {
   /// The requested departure or arrival time.
   dateTime('DATE_TIME'),
 
-  /// The origin, e.g. an unknown origin stop id ([RoutingErrorCode.locationNotFound]).
+  /// The origin, e.g. an unknown origin stop id ([RoutingErrorCode.locationNotFound]) or a coordinate outside
+  /// the router's area ([RoutingErrorCode.outsideBounds]).
   from('FROM'),
 
-  /// The destination, e.g. an unknown destination stop id ([RoutingErrorCode.locationNotFound]).
+  /// The destination, e.g. an unknown destination stop id ([RoutingErrorCode.locationNotFound]) or a coordinate
+  /// outside the router's area ([RoutingErrorCode.outsideBounds]).
   to('TO'),
 
   /// A via location, e.g. an unknown via stop id ([RoutingErrorCode.locationNotFound]).
