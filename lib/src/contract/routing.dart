@@ -4,16 +4,16 @@
 class PlanTripRequest {
   final PlanDateTimeInput dateTime;
 
-  /// Where the journey starts. A stop id that resolves to no stop or station, a bare or foreign-prefixed one included, is a 200 with the `routingErrors` code `LOCATION_NOT_FOUND` on `FROM`.
+  /// Where the journey starts. A stop id that resolves to no stop or station, a bare or foreign-prefixed one included, is a 200 with the `routingErrors` code `LOCATION_NOT_FOUND` on `FROM`; so is a coordinate with no street near enough to link to, and one outside the area the router covers is `OUTSIDE_BOUNDS` on `FROM`.
   final PlanLabeledLocationInput origin;
 
-  /// Where the journey ends. A stop id that resolves to no stop or station, a bare or foreign-prefixed one included, is a 200 with the `routingErrors` code `LOCATION_NOT_FOUND` on `TO`.
+  /// Where the journey ends. A stop id that resolves to no stop or station, a bare or foreign-prefixed one included, is a 200 with the `routingErrors` code `LOCATION_NOT_FOUND` on `TO`; so is a coordinate with no street near enough to link to, and one outside the area the router covers is `OUTSIDE_BOUNDS` on `TO`.
   final PlanLabeledLocationInput destination;
 
   /// How much time after `dateTime` the search covers (before it, for `latestArrival`), as an ISO-8601 duration: above zero and at most the environment's search-window limit; rejected, never clamped. A cursor overrides it.
   final String searchWindow;
 
-  /// Locations the journey must visit or pass through, in the order given, all of one kind: every entry `visit` or every entry `passThrough`; mixing them is a 400 `via is invalid`. How many a request takes is an environment setting, and an environment set to 0 has via turned off; more is a 400 `via is out of range`. A via stop id that resolves to no stop or station is a 200 with the `routingErrors` code `LOCATION_NOT_FOUND` on `VIA`.
+  /// Locations the journey must visit or pass through, in the order given; `visit` and `passThrough` entries may be mixed. How many a request takes is an environment setting, and an environment set to 0 has via turned off; more is a 400 `via is out of range`. A via stop id that resolves to no stop or station is a 200 with the `routingErrors` code `LOCATION_NOT_FOUND` on `VIA`.
   final List<PlanViaLocationInput>? via;
   final PlanModesInput? modes;
   final PlanPreferencesInput? preferences;
@@ -97,10 +97,10 @@ class PlanTripRequest {
 class PlanStreamRequest {
   final PlanDateTimeInput dateTime;
 
-  /// Where the journey starts. A stop id that resolves to no stop or station, a bare or foreign-prefixed one included, is a 200 with the `routingErrors` code `LOCATION_NOT_FOUND` on `FROM`.
+  /// Where the journey starts. A stop id that resolves to no stop or station, a bare or foreign-prefixed one included, is a 200 with the `routingErrors` code `LOCATION_NOT_FOUND` on `FROM`; so is a coordinate with no street near enough to link to, and one outside the area the router covers is `OUTSIDE_BOUNDS` on `FROM`.
   final PlanLabeledLocationInput origin;
 
-  /// Where the journey ends. A stop id that resolves to no stop or station, a bare or foreign-prefixed one included, is a 200 with the `routingErrors` code `LOCATION_NOT_FOUND` on `TO`.
+  /// Where the journey ends. A stop id that resolves to no stop or station, a bare or foreign-prefixed one included, is a 200 with the `routingErrors` code `LOCATION_NOT_FOUND` on `TO`; so is a coordinate with no street near enough to link to, and one outside the area the router covers is `OUTSIDE_BOUNDS` on `TO`.
   final PlanLabeledLocationInput destination;
 
   /// The stream stops once it has sent at least this many itineraries; the final flush may send more. 1 up to the environment's itinerary limit; rejected, never clamped.
@@ -109,7 +109,7 @@ class PlanStreamRequest {
   /// The stream stops once it has searched this far past `dateTime` (before it, for `latestArrival`), on every path, a cursor's included. An ISO-8601 duration in whole minutes: at least `PT2H` and at most the environment's search-window limit; a value that is not a whole number of minutes is a 400 `maxWindow is invalid`. Rejected, never clamped.
   final String maxWindow;
 
-  /// Locations the journey must visit or pass through, in the order given, all of one kind: every entry `visit` or every entry `passThrough`; mixing them is a 400 `via is invalid`. How many a request takes is an environment setting, and an environment set to 0 has via turned off; more is a 400 `via is out of range`. A via stop id that resolves to no stop or station is a 200 with the `routingErrors` code `LOCATION_NOT_FOUND` on `VIA`.
+  /// Locations the journey must visit or pass through, in the order given; `visit` and `passThrough` entries may be mixed. How many a request takes is an environment setting, and an environment set to 0 has via turned off; more is a 400 `via is out of range`. A via stop id that resolves to no stop or station is a 200 with the `routingErrors` code `LOCATION_NOT_FOUND` on `VIA`.
   final List<PlanViaLocationInput>? via;
   final PlanModesInput? modes;
   final PlanPreferencesInput? preferences;
@@ -318,10 +318,10 @@ class PlanLocationInput {
 
 /// A WGS84 point.
 class PlanCoordinateInput {
-  /// Latitude in degrees, -90 to 90; rejected, never clamped.
+  /// Latitude in degrees, -90 to 90; rejected, never clamped. Rounded to 7 decimals (about 1 cm), ties away from zero.
   final double latitude;
 
-  /// Longitude in degrees, -180 to 180; rejected, never clamped.
+  /// Longitude in degrees, -180 to 180; rejected, never clamped. Rounded to 7 decimals (about 1 cm), ties away from zero.
   final double longitude;
 
   const PlanCoordinateInput({
@@ -362,7 +362,7 @@ class PlanStopLocationInput {
 
 /// Exactly one of `passThrough`, `visit`; neither or both is a 400 `via is invalid`.
 class PlanViaLocationInput {
-  /// The journey passes the location, on board or by changing vehicles there.
+  /// The journey passes the location: on board, alighting there, or starting there. A stop where the vehicle does not let passengers off is not passed on board, and walking there to board is not a pass.
   final PlanPassThroughViaLocationInput? passThrough;
 
   /// The journey stops at the location: it alights there and boards again after `minimumWaitTime`.
@@ -595,10 +595,10 @@ class PlanStreetPreferencesInput {
 
 /// Walking preferences.
 class WalkPreferencesInput {
-  /// Walking speed on flat ground in metres per second, at least 0.1 (0.1 included); rejected, never clamped.
+  /// Walking speed on flat ground in metres per second, at least 0.1 (0.1 included); rejected, never clamped. Rounded to a step of 0.05 below 2, 0.1 below 10 and 1 from 10, ties to even.
   final double? speed;
 
-  /// How much worse walking is than riding for the same time, a multiplier from 0.1 to 100000; rejected, never clamped.
+  /// How much worse walking is than riding for the same time, a multiplier from 0.1 to 100000; rejected, never clamped. Rounded to a step of 0.1 below 3, 0.5 below 10 and 1 from 10, ties to even.
   final double? reluctance;
 
   /// Generalized cost added for each boarding, an integer from 0 to 1000000; rejected, never clamped.
@@ -701,7 +701,7 @@ class TransferPreferencesInput {
 
 /// Boarding preferences.
 class BoardPreferencesInput {
-  /// How much worse waiting at a stop is than riding for the same time, a multiplier from 0.1 to 100000; rejected, never clamped.
+  /// How much worse waiting at a stop is than riding for the same time, a multiplier from 0.1 to 100000; rejected, never clamped. Rounded to a step of 0.1 below 3, 0.5 below 10 and 1 from 10, ties to even.
   final double? waitReluctance;
 
   /// Least time at the stop before boarding, as an ISO-8601 duration: `PT0S` to `PT1H`; rejected, never clamped.
@@ -818,7 +818,7 @@ class AccessibilityPreferencesInput {
 
 /// Wheelchair preferences.
 class WheelchairPreferencesInput {
-  /// Consider wheelchair accessibility in routing. The feed's accessibility data limits what this guarantees.
+  /// Plan for a wheelchair user: ride only trips the feed marks wheelchair accessible, board and alight only at stops it marks accessible (no information counts as not accessible), and walk strongly avoiding steps and ways mapped as not wheelchair accessible. The feed's accessibility data limits what this guarantees.
   final bool? enabled;
 
   const WheelchairPreferencesInput({
@@ -888,12 +888,12 @@ enum Reliability {
   String toJson() => wire;
 }
 
-/// One page of itineraries. An empty `itineraries` with empty `routingErrors` means the search ran and found nothing in the window. A plan the router declines has the reason in `routingErrors`; with `NO_STOPS_IN_RANGE` or `NO_TRANSIT_CONNECTION`, `itineraries` holds the direct walk when one exists, and is empty otherwise.
+/// One page of itineraries. A search that ran and kept no transit itinerary in the window says why in `routingErrors`: `NO_TRANSIT_CONNECTION_IN_SEARCH_WINDOW`, or `WALKING_BETTER_THAN_TRANSIT` when walking beat every transit itinerary found. A plan the router declines has the reason in `routingErrors`; with `NO_STOPS_IN_RANGE` or `NO_TRANSIT_CONNECTION`, `itineraries` holds the direct walk when one exists, and is empty otherwise.
 class PlanTripResponse {
   final List<Itinerary> itineraries;
   final PlanPageInfo pageInfo;
 
-  /// Why the plan was declined; empty when it was not.
+  /// Why the plan was declined or kept no transit itinerary in the window; empty otherwise.
   final List<RoutingError> routingErrors;
 
   /// The date-time the search started from; with a cursor, the cursor's.
@@ -980,6 +980,8 @@ class Leg {
 
   /// Seconds of delay applied to this leg's arrival at the requested `reliability`: that level's percentile (p50, p70 or p90) of the trip's recorded delay at the alighting stop on the service date's day type, from the environment's realtime history, never below 0 and never decreasing along the trip's pattern. Null when `reliability` is omitted, the trip has live realtime or there is no history, and on a walk leg.
   final int? typicalArrivalDelay;
+
+  /// The realtime state of the leg's trip; `SCHEDULED` on a walk leg.
   final RealtimeState realtimeState;
 
   /// True when the leg's times include realtime.
@@ -1246,7 +1248,7 @@ class Trip {
 }
 
 class Geometry {
-  /// Encoded polyline (precision 1e5).
+  /// Encoded polyline (precision 1e6).
   final String points;
 
   const Geometry({
@@ -1303,7 +1305,7 @@ class PlanPageInfo {
       };
 }
 
-/// Why the router declined the plan or found no transit route. `LOCATION_NOT_FOUND`: a stop id resolves to no stop or station (`inputField` `FROM`, `TO` or `VIA`). `NO_STOPS_IN_RANGE`: no stop is in walking range of the origin (`FROM`) or the destination (`TO`). `NO_TRANSIT_CONNECTION`: the origin and the destination lie in parts of the transit network that no trip connects (`inputField` null). `WALKING_BETTER_THAN_TRANSIT`: the origin and destination are the same stop, a station and one of its own platforms, or coordinates that snap to the same street point (`inputField` null). `OUTSIDE_SERVICE_PERIOD`: the date is outside what the feed covers (`DATE_TIME`). New codes may be added.
+/// Why the router declined the plan or found no transit route. `LOCATION_NOT_FOUND`: a stop id resolves to no stop or station (`inputField` `FROM`, `TO` or `VIA`), or a coordinate has no street near enough to link to (`FROM` or `TO`). `OUTSIDE_BOUNDS`: a coordinate lies outside the area the router covers (`FROM` or `TO`). `NO_STOPS_IN_RANGE`: no stop is in walking range of the origin (`FROM`) or the destination (`TO`). `NO_TRANSIT_CONNECTION`: the origin and the destination lie in parts of the transit network that no trip connects (`inputField` null). `WALKING_BETTER_THAN_TRANSIT`: the origin and destination are the same stop, a station and one of its own platforms, identical coordinates or coordinates that snap to the same street point, or every transit itinerary the search found was dropped as worse than walking (`inputField` null). `NO_TRANSIT_CONNECTION_IN_SEARCH_WINDOW`: the transit search ran but found no transit itinerary leaving inside the search window (`DATE_TIME`). `NO_DIRECT_MODE_CONNECTION`: a direct-only plan (`modes.directOnly`) found no walk (`inputField` null). `OUTSIDE_SERVICE_PERIOD`: the date is outside what the feed covers (`DATE_TIME`). New codes may be added.
 class RoutingError {
   final RoutingErrorCode code;
   final String description;
@@ -1334,8 +1336,11 @@ class RoutingError {
 
 enum RoutingErrorCode {
   locationNotFound('LOCATION_NOT_FOUND'),
+  noDirectModeConnection('NO_DIRECT_MODE_CONNECTION'),
   noStopsInRange('NO_STOPS_IN_RANGE'),
   noTransitConnection('NO_TRANSIT_CONNECTION'),
+  noTransitConnectionInSearchWindow('NO_TRANSIT_CONNECTION_IN_SEARCH_WINDOW'),
+  outsideBounds('OUTSIDE_BOUNDS'),
   outsideServicePeriod('OUTSIDE_SERVICE_PERIOD'),
   walkingBetterThanTransit('WALKING_BETTER_THAN_TRANSIT'),
   unknown('UNKNOWN');
@@ -1941,7 +1946,7 @@ class Stoptime {
 }
 
 class TripGeometry {
-  /// Encoded polyline (precision 1e5).
+  /// Encoded polyline (precision 1e6).
   final String points;
 
   /// Number of points.
@@ -2019,7 +2024,7 @@ class PlanStreamPageInfoEvent {
   /// The window the stream searched, as an ISO-8601 duration; null when no transit search ran, as for a declined, direct-only or unroutable plan.
   final String? searchWindowUsed;
 
-  /// Why the plan was declined; empty when it was not.
+  /// Why the plan was declined or kept no transit itinerary in the window; empty otherwise.
   final List<RoutingError> routingErrors;
 
   const PlanStreamPageInfoEvent({
