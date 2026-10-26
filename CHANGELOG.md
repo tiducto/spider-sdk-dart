@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.5.0
+
+Targets Spider API contract `1.5`.
+
+### Added
+
+- **`RoutingErrorCode.noDirectModeConnection`, `noTransitConnectionInSearchWindow` and `outsideBounds`**, the
+  contract's full set of eight codes. `outsideBounds` (on `InputField.from` or `to`) is a coordinate outside the
+  area the router covers; `noTransitConnectionInSearchWindow` (on `InputField.dateTime`) a transit search that
+  found no itinerary leaving inside the window; `noDirectModeConnection` a direct-only plan that found no walk.
+  Earlier SDK versions decode them as `RoutingErrorCode.unknown`.
+
+### Changed
+
+- **Visit and pass-through via locations may be mixed** in one plan, in the order given; before contract 1.5 the
+  router refused the mix with `via is invalid`.
+- **`RoutingErrorCode.locationNotFound` also covers a coordinate** with no street near enough to link to, and
+  `walkingBetterThanTransit` a search whose transit itineraries were all worse than walking. A search that kept
+  no transit itinerary in the window now says why in `Route.routingErrors` and `PlanStreamDone.routingErrors`.
+- **Docs follow contract 1.5**: the router rounds a coordinate to 7 decimals; `PlanOptions.wheelchairAccessible`
+  rides only accessible trips and boards and alights only at accessible stops; a pass-through is passed on
+  board, by alighting or by starting there; `Leg.realtimeState` is `RealtimeState.scheduled` on a walk leg.
+
 ## 1.4.0
 
 Targets Spider API contract `1.4`.

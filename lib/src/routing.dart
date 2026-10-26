@@ -30,6 +30,8 @@ class Leg {
   /// reliability was requested or the trip has no delay history.
   final Duration? typicalArrivalDelay;
   final bool isRealtime;
+
+  /// The realtime state of the leg's trip; [RealtimeState.scheduled] on a walk leg.
   final RealtimeState? realtimeState;
   final String? serviceDate;
   final String fromName;
@@ -164,9 +166,13 @@ class RoutePageInfo {
   });
 }
 
-/// A non-fatal routing problem (e.g. no transit connection in the window). An unknown stop id comes back as
-/// [RoutingErrorCode.locationNotFound] with [inputField] [InputField.from], [InputField.to] or
-/// [InputField.via], saying which input named it.
+/// A non-fatal routing problem: why the plan was declined or kept no transit itinerary in the window. An
+/// unknown stop id comes back as [RoutingErrorCode.locationNotFound] with [inputField] [InputField.from],
+/// [InputField.to] or [InputField.via], saying which input named it; so does an origin or destination
+/// coordinate with no street near enough to link to, and one outside the area the router covers is
+/// [RoutingErrorCode.outsideBounds]. A search that ran and kept no transit itinerary says why:
+/// [RoutingErrorCode.noTransitConnectionInSearchWindow], or [RoutingErrorCode.walkingBetterThanTransit] when
+/// walking beat every transit itinerary found.
 class RoutingError {
   final RoutingErrorCode code;
   final String description;
@@ -353,9 +359,10 @@ class TripDetails {
 /// neither = depart now). [allowedTransitModes] empty = all modes. [searchWindowMinutes] defaults to 60; the
 /// environment sets its maximum, and a window above it fails with [SpiderErrorCode.badRequest].
 ///
-/// Each [via] location takes 1–10 stop ids (field `via`) and a visit waits 0–1 h ([VisitVia.minimumWaitSeconds],
-/// field `via.visit.minimumWaitTime`); a visit takes a stop, so a coordinate visit is `via is invalid`. Outside
-/// that the call fails with [SpiderErrorCode.badRequest] without a request. The environment sets how many via
+/// The [via] locations apply in the order given, and visit and pass-through locations may be mixed. Each takes
+/// 1–10 stop ids (field `via`) and a visit waits 0–1 h ([VisitVia.minimumWaitSeconds], field
+/// `via.visit.minimumWaitTime`); a visit takes a stop, so a coordinate visit is `via is invalid`. Outside that
+/// the call fails with [SpiderErrorCode.badRequest] without a request. The environment sets how many via
 /// locations a plan may have.
 class PlanOptions {
   final Location origin;
@@ -366,6 +373,10 @@ class PlanOptions {
   final List<TransitMode> allowedTransitModes;
   final int? maxTransfers;
   final int? searchWindowMinutes;
+
+  /// Plans for a wheelchair user: rides only trips the feed marks wheelchair accessible, boards and alights only
+  /// at stops it marks accessible (no information counts as not accessible), and walks strongly avoiding steps
+  /// and ways mapped as not wheelchair accessible. The feed's accessibility data limits what this guarantees.
   final bool wheelchairAccessible;
 
   /// Plans each arrival with the trip's typical delay at this level ([Leg.typicalArrivalDelay]); null plans on

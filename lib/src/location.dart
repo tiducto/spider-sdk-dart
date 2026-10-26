@@ -2,7 +2,7 @@
 sealed class Location {
   const Location();
 
-  /// A geographic coordinate.
+  /// A geographic coordinate. The router rounds it to 7 decimals (about 1 cm), ties away from zero.
   const factory Location.coordinate(double latitude, double longitude) =
       CoordinateLocation;
 
@@ -21,11 +21,14 @@ final class StopLocation extends Location {
   const StopLocation(this.id);
 }
 
-/// A via constraint on a trip plan: pass through a set of stops, or visit a place with a minimum dwell.
+/// A via constraint on a trip plan: pass through a set of stops, or visit a place with a minimum dwell. A plan's
+/// via locations apply in order, and the two kinds may be mixed.
 sealed class ViaLocation {
   const ViaLocation();
 
-  /// Require the route to pass through any of the given stops (no dwell).
+  /// Require the route to pass through any of the given stops (no dwell): on board, alighting there, or starting
+  /// there. A stop where the vehicle does not let passengers off is not passed on board, and walking there to
+  /// board is not a pass.
   const factory ViaLocation.passThrough(List<String> stopIds) = PassThroughVia;
 
   /// Require the route to visit a stop, optionally dwelling at least [minimumWaitSeconds] (up to 3600) there. A

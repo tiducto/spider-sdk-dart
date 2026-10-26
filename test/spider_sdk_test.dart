@@ -67,7 +67,7 @@ Map<String, dynamic> bodyOf(SpiderHttpRequest req) =>
 const stopsAB =
     PlanOptions(origin: Location.stop('A'), destination: Location.stop('B'));
 
-// Contract 1.4 response builders: every member is required (nullable ones explicitly null), so a fixture
+// Contract 1.5 response builders: every member is required (nullable ones explicitly null), so a fixture
 // spreads its overrides over a complete base.
 typedef Json = Map<String, dynamic>;
 
@@ -614,6 +614,65 @@ void main() {
           [InputField.from, InputField.to, InputField.via]);
     });
 
+    test('plan maps every contract routing error code', () async {
+      final codes = {
+        'LOCATION_NOT_FOUND': RoutingErrorCode.locationNotFound,
+        'NO_DIRECT_MODE_CONNECTION': RoutingErrorCode.noDirectModeConnection,
+        'NO_STOPS_IN_RANGE': RoutingErrorCode.noStopsInRange,
+        'NO_TRANSIT_CONNECTION': RoutingErrorCode.noTransitConnection,
+        'NO_TRANSIT_CONNECTION_IN_SEARCH_WINDOW':
+            RoutingErrorCode.noTransitConnectionInSearchWindow,
+        'OUTSIDE_BOUNDS': RoutingErrorCode.outsideBounds,
+        'OUTSIDE_SERVICE_PERIOD': RoutingErrorCode.outsideServicePeriod,
+        'WALKING_BETTER_THAN_TRANSIT':
+            RoutingErrorCode.walkingBetterThanTransit,
+      };
+      final body = planJson(routingErrors: [
+        for (final code in codes.keys)
+          {'code': code, 'inputField': null, 'description': code}
+      ]);
+      final (client, _) = makeClient((_) => resp(body));
+      final result = await client.routing.plan(stopsAB);
+      final errors = (result as Success<Route>).value.routingErrors;
+      expect(errors.map((e) => e.code).toList(), codes.values.toList());
+      expect(
+          RoutingErrorCode.values.where((c) => c != RoutingErrorCode.unknown),
+          unorderedEquals(codes.values));
+    });
+
+    test(
+        'plan maps OUTSIDE_BOUNDS and NO_TRANSIT_CONNECTION_IN_SEARCH_WINDOW '
+        'with their input fields', () async {
+      final body = planJson(routingErrors: [
+        {
+          'code': 'OUTSIDE_BOUNDS',
+          'inputField': 'TO',
+          'description': 'outside the area'
+        },
+        {
+          'code': 'NO_TRANSIT_CONNECTION_IN_SEARCH_WINDOW',
+          'inputField': 'DATE_TIME',
+          'description': 'nothing in the window'
+        },
+        {
+          'code': 'NO_DIRECT_MODE_CONNECTION',
+          'inputField': null,
+          'description': 'no walk'
+        },
+      ]);
+      final (client, _) = makeClient((_) => resp(body));
+      final result = await client.routing.plan(stopsAB);
+      final errors = (result as Success<Route>).value.routingErrors;
+      expect(errors.map((e) => (e.code, e.inputField)).toList(), [
+        (RoutingErrorCode.outsideBounds, InputField.to),
+        (
+          RoutingErrorCode.noTransitConnectionInSearchWindow,
+          InputField.dateTime
+        ),
+        (RoutingErrorCode.noDirectModeConnection, null),
+      ]);
+    });
+
     group('via limits', () {
       Future<(SpiderResult<Route>, MockHttpClient)> planVia(
           List<ViaLocation> via) async {
@@ -681,6 +740,33 @@ void main() {
         expect((via[2] as Map)['visit'], {
           'stopLocationIds': ['W']
         });
+      });
+
+      test('send mixed visit and pass-through locations in order', () async {
+        final (result, mock) = await planVia([
+          ViaLocation.visit(const Location.stop('V'), minimumWaitSeconds: 120),
+          const ViaLocation.passThrough(['P1', 'P2']),
+          ViaLocation.visit(const Location.stop('W')),
+        ]);
+        expect(result, isA<Success<Route>>());
+        expect(bodyOf(mock.requests.single)['via'], [
+          {
+            'visit': {
+              'stopLocationIds': ['V'],
+              'minimumWaitTime': 'PT120S'
+            }
+          },
+          {
+            'passThrough': {
+              'stopLocationIds': ['P1', 'P2']
+            }
+          },
+          {
+            'visit': {
+              'stopLocationIds': ['W']
+            }
+          },
+        ]);
       });
 
       test('leave the number of via locations to the server', () async {
@@ -1478,7 +1564,7 @@ void main() {
       expect(RealtimeState.fromWire('UPDATED'), RealtimeState.updated);
       expect(RealtimeState.fromWire('SOMETHING_NEW'), RealtimeState.unknown);
       expect(RoutingErrorCode.fromWire('OUTSIDE_BOUNDS'),
-          RoutingErrorCode.unknown);
+          RoutingErrorCode.outsideBounds);
       expect(
           RoutingErrorCode.fromWire('SOMETHING_NEW'), RoutingErrorCode.unknown);
       expect(InputField.fromWire('VIA'), InputField.via);
