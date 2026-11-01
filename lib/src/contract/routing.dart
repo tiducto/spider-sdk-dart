@@ -30,7 +30,7 @@ class PlanTripRequest {
   /// `pageInfo.endCursor` of a page, to fetch the page after it. Never with `before`. A `startCursor` here is a 400 `after is invalid`.
   final String? after;
 
-  /// Delay-aware planning level; omitted or null plans on the timetable alone.
+  /// Delay-aware planning level: each leg's arrival is planned with its `typicalArrivalDelay` at this level. Boarding keeps the scheduled departure, and a trip with live realtime uses its realtime times. Omitted or null plans on the timetable alone.
   final Reliability? reliability;
 
   const PlanTripRequest({
@@ -120,7 +120,7 @@ class PlanStreamRequest {
   /// `pageInfo.endCursor` of a page, to fetch the page after it. Never with `before`. A `startCursor` here is a 400 `after is invalid`.
   final String? after;
 
-  /// Delay-aware planning level; omitted or null plans on the timetable alone.
+  /// Delay-aware planning level: each leg's arrival is planned with its `typicalArrivalDelay` at this level. Boarding keeps the scheduled departure, and a trip with live realtime uses its realtime times. Omitted or null plans on the timetable alone.
   final Reliability? reliability;
 
   const PlanStreamRequest({
@@ -194,11 +194,15 @@ class DeparturesRequest {
   /// Unix seconds the board starts at, from 0 to 4102444799 (2099-12-31T23:59:59Z). Absent or 0 means now.
   final int? startTime;
 
+  /// The level `typicalDelay` is given at; the times do not depend on it. Omitted or null, `typicalDelay` is null. A value outside `Reliability` is a 400 `reliability is invalid`.
+  final Reliability? reliability;
+
   const DeparturesRequest({
     required this.id,
     required this.numberOfDepartures,
     required this.timeRange,
     this.startTime,
+    this.reliability,
   });
 
   factory DeparturesRequest.fromJson(Map<String, dynamic> json) =>
@@ -207,6 +211,9 @@ class DeparturesRequest {
         numberOfDepartures: (json['numberOfDepartures'] as num).toInt(),
         timeRange: (json['timeRange'] as num).toInt(),
         startTime: (json['startTime'] as num?)?.toInt(),
+        reliability: json['reliability'] == null
+            ? null
+            : Reliability.fromWire(json['reliability'] as String),
       );
 
   Map<String, dynamic> toJson() => {
@@ -214,6 +221,7 @@ class DeparturesRequest {
         'numberOfDepartures': numberOfDepartures,
         'timeRange': timeRange,
         if (startTime != null) 'startTime': startTime!,
+        if (reliability != null) 'reliability': reliability!.toJson(),
       };
 }
 
@@ -222,22 +230,30 @@ class TripRequest {
   /// Feed-prefixed trip id (`<feedId>:<id>`). A bare or foreign-prefixed id resolves to nothing, and `trip` is null.
   final String id;
 
-  /// The service date, `YYYY-MM-DD` (`YYYYMMDD` also works). Absent means today in the feed's time zone, whether or not the feed covers it. A value that is not a real date is a 400 `serviceDate is invalid`.
-  final String? serviceDate;
+  /// The trip's GTFS service date, `YYYY-MM-DD` (`YYYYMMDD` also works). Absent or null is a 400 `serviceDate is required`, and a value that is not a real date a 400 `serviceDate is invalid`.
+  final String serviceDate;
+
+  /// The level `typicalDelay` is given at; the times do not depend on it. Omitted or null, `typicalDelay` is null. A value outside `Reliability` is a 400 `reliability is invalid`.
+  final Reliability? reliability;
 
   const TripRequest({
     required this.id,
-    this.serviceDate,
+    required this.serviceDate,
+    this.reliability,
   });
 
   factory TripRequest.fromJson(Map<String, dynamic> json) => TripRequest(
         id: json['id'] as String,
-        serviceDate: json['serviceDate'] as String?,
+        serviceDate: json['serviceDate'] as String,
+        reliability: json['reliability'] == null
+            ? null
+            : Reliability.fromWire(json['reliability'] as String),
       );
 
   Map<String, dynamic> toJson() => {
         'id': id,
-        if (serviceDate != null) 'serviceDate': serviceDate!,
+        'serviceDate': serviceDate,
+        if (reliability != null) 'reliability': reliability!.toJson(),
       };
 }
 
@@ -867,7 +883,7 @@ enum TransitMode {
   String toJson() => wire;
 }
 
-/// Planning level: `STANDARD` plans arrivals with the p50 delay, `SAFE` p70, `VERY_SAFE` p90; omitted plans on the timetable. Each leg's arrival is planned with that trip's typical delay at the stop on the service date's day type, from the environment's realtime history. Boarding keeps the scheduled departure, and a trip with live realtime uses its realtime times.
+/// Delay level: `STANDARD`, `SAFE` and `VERY_SAFE` are the p50, p70 and p90 of the trip's recorded delay at a stop, on the service date's day type, from the environment's realtime history. Omitted means the timetable, on every operation.
 enum Reliability {
   standard('STANDARD'),
   safe('SAFE'),
@@ -978,7 +994,7 @@ class Leg {
   final LegTime start;
   final LegTime end;
 
-  /// Seconds of delay applied to this leg's arrival at the requested `reliability`: that level's percentile (p50, p70 or p90) of the trip's recorded delay at the alighting stop on the service date's day type, from the environment's realtime history, never below 0 and never decreasing along the trip's pattern. Null when `reliability` is omitted, the trip has live realtime or there is no history, and on a walk leg.
+  /// Seconds of delay applied to this leg's arrival at the requested `reliability`: that level's percentile of the trip's recorded delay at the alighting stop on the service date's day type, from the environment's realtime history. Never below 0. At each level, no trip arrives at a stop, delay applied, before an earlier trip of the same pattern does. Null when `reliability` is omitted, when the trip has live realtime, a canceled trip included, or when there is no history, and on a walk leg.
   final int? typicalArrivalDelay;
 
   /// The realtime state of the leg's trip; `SCHEDULED` on a walk leg.
@@ -1544,6 +1560,9 @@ class StopDeparturesStoptime {
   /// Unix seconds at the start of the trip's service day; it plus a seconds field gives that time as Unix seconds.
   final int serviceDay;
 
+  /// The GTFS service date of the departure's trip, `YYYY-MM-DD`, as `Leg.serviceDate`. For a departure past 24:00 of its service day, it is the day before the departure's calendar date.
+  final String serviceDate;
+
   /// Seconds after `serviceDay`.
   final int scheduledDeparture;
 
@@ -1554,7 +1573,7 @@ class StopDeparturesStoptime {
   final bool realtime;
   final RealtimeState realtimeState;
 
-  /// The trip's usual delay at this stop in seconds: the median (p50) recorded on the service date's day type, from the environment's realtime history, never below 0 and never decreasing along the trip's pattern. Null when the trip has live realtime or there is no history.
+  /// Seconds of delay at the requested `reliability`: that level's percentile of the trip's recorded delay at this stop on the service date's day type, from the environment's realtime history. Never below 0. At each level, no trip arrives at a stop, delay applied, before an earlier trip of the same pattern does. Null when `reliability` is omitted, when the trip has live realtime, a canceled trip included, or when there is no history.
   final int? typicalDelay;
 
   /// Null when the feed has none.
@@ -1569,6 +1588,7 @@ class StopDeparturesStoptime {
 
   const StopDeparturesStoptime({
     required this.serviceDay,
+    required this.serviceDate,
     required this.scheduledDeparture,
     required this.realtimeDeparture,
     required this.realtime,
@@ -1583,6 +1603,7 @@ class StopDeparturesStoptime {
   factory StopDeparturesStoptime.fromJson(Map<String, dynamic> json) =>
       StopDeparturesStoptime(
         serviceDay: (json['serviceDay'] as num).toInt(),
+        serviceDate: json['serviceDate'] as String,
         scheduledDeparture: (json['scheduledDeparture'] as num).toInt(),
         realtimeDeparture: (json['realtimeDeparture'] as num).toInt(),
         realtime: json['realtime'] as bool,
@@ -1596,6 +1617,7 @@ class StopDeparturesStoptime {
 
   Map<String, dynamic> toJson() => {
         'serviceDay': serviceDay,
+        'serviceDate': serviceDate,
         'scheduledDeparture': scheduledDeparture,
         'realtimeDeparture': realtimeDeparture,
         'realtime': realtime,
@@ -1892,7 +1914,7 @@ class Stoptime {
   final bool realtime;
   final RealtimeState realtimeState;
 
-  /// The trip's usual delay at this stop in seconds: the median (p50) recorded on the service date's day type, from the environment's realtime history, never below 0 and never decreasing along the trip's pattern. Null when the trip has live realtime or there is no history.
+  /// Seconds of delay at the requested `reliability`: that level's percentile of the trip's recorded delay at this stop on the service date's day type, from the environment's realtime history. Never below 0. At each level, no trip arrives at a stop, delay applied, before an earlier trip of the same pattern does. Null when `reliability` is omitted, when the trip has live realtime, a canceled trip included, or when there is no history.
   final int? typicalDelay;
 
   /// The stop time's position in the trip: increasing along it, not necessarily from 0 or consecutive. Realtime that adds or removes stops can change it.
@@ -1965,6 +1987,51 @@ class TripGeometry {
   Map<String, dynamic> toJson() => {
         'points': points,
         'length': length,
+      };
+}
+
+/// `estimatedDelays` is the history table, or null when the trip id resolves to no trip, the stop position is not on the trip, or the trip has no history at that stop on the service date's day type and no earlier trip of the pattern shifts its arrival at any level.
+class EstimatedDelaysResponse {
+  /// Three entries, in the order `STANDARD`, `SAFE`, `VERY_SAFE`. History only: live realtime never changes them, so for a live trip they are present while `typicalDelay` is null. For a trip without live realtime they equal `trip`'s `typicalDelay` wherever that is not null, unless a live trip ahead of it in the pattern shifts that value; a level with no shift is 0.
+  final List<EstimatedDelay>? estimatedDelays;
+
+  const EstimatedDelaysResponse({
+    required this.estimatedDelays,
+  });
+
+  factory EstimatedDelaysResponse.fromJson(Map<String, dynamic> json) =>
+      EstimatedDelaysResponse(
+        estimatedDelays: (json['estimatedDelays'] as List<dynamic>?)
+            ?.map((e) => EstimatedDelay.fromJson(e as Map<String, dynamic>))
+            .toList(),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'estimatedDelays': estimatedDelays == null
+            ? null
+            : estimatedDelays!.map((e) => e.toJson()).toList(),
+      };
+}
+
+class EstimatedDelay {
+  final Reliability reliability;
+
+  /// Seconds: the level's percentile of the trip's recorded delay at this stop on the service date's day type, from the environment's realtime history; never below 0.
+  final int delay;
+
+  const EstimatedDelay({
+    required this.reliability,
+    required this.delay,
+  });
+
+  factory EstimatedDelay.fromJson(Map<String, dynamic> json) => EstimatedDelay(
+        reliability: Reliability.fromWire(json['reliability'] as String),
+        delay: (json['delay'] as num).toInt(),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'reliability': reliability.toJson(),
+        'delay': delay,
       };
 }
 

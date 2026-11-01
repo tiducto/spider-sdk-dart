@@ -23,6 +23,9 @@ class FeedFreshness {
 /// [tripId], [routeId], [stopId] and [vehicleId] are feed-prefixed (`<feedId>:<id>`), like routing's ids.
 class LiveVehicle {
   final String tripId;
+
+  /// The GTFS service date (`YYYY-MM-DD`) of the trip run the vehicle is on.
+  final String serviceDate;
   final String? routeId;
   final String? vehicleId;
   final String? label;
@@ -36,6 +39,7 @@ class LiveVehicle {
   final int? timestampEpochMs;
   const LiveVehicle({
     required this.tripId,
+    required this.serviceDate,
     this.routeId,
     this.vehicleId,
     this.label,
@@ -50,6 +54,7 @@ class LiveVehicle {
   });
   Map<String, dynamic> toJson() => {
         'tripId': tripId,
+        'serviceDate': serviceDate,
         'routeId': routeId,
         'vehicleId': vehicleId,
         'label': label,
@@ -237,16 +242,21 @@ class SpiderRealtime {
   final Transport _transport;
   SpiderRealtime(this._transport);
 
-  /// Live positions for up to 50 trips. No trip ids returns empty positions without a request; more than 50
-  /// fails with [SpiderErrorCode.badRequest] (field `tripIds`) without a request.
-  Future<SpiderResult<VehiclePositions>> vehicles(List<String> tripIds) async {
+  /// Live positions for up to 50 trips running on one GTFS [serviceDate] (`YYYY-MM-DD`) — pass a plan leg's or
+  /// departure's `serviceDate`, the run the vehicle is on. No trip ids returns empty positions without a
+  /// request; a malformed date or more than 50 ids fails with [SpiderErrorCode.badRequest] (field
+  /// `serviceDate` or `tripIds`) without a request.
+  Future<SpiderResult<VehiclePositions>> vehicles(
+      String serviceDate, List<String> tripIds) async {
+    final invalidDate = invalidServiceDate(serviceDate);
+    if (invalidDate != null) return Failure(invalidDate);
     if (tripIds.isEmpty) {
       return const Success(VehiclePositions([], [], _emptyFreshness));
     }
     if (tripIds.length > _maxTripIds) return Failure(invalidInput('tripIds'));
     try {
       final json = await _transport.getJson('/realtime/v1/vehicles', _identity,
-          query: {'tripIds': tripIds.join(',')});
+          query: {'serviceDate': serviceDate, 'tripIds': tripIds.join(',')});
       final vehicles = (json['vehicles'] as List<dynamic>? ?? const [])
           .map((v) => _mapVehicle(v as Map<String, dynamic>))
           .toList();
@@ -262,12 +272,18 @@ class SpiderRealtime {
     }
   }
 
-  /// The live vehicle for a single trip. A 404 is a normal "no vehicle currently reporting", not an error.
-  Future<SpiderResult<LiveVehicleUpdate>> vehicleForTrip(String tripId) async {
+  /// The live vehicle for a single trip run on GTFS [serviceDate] (`YYYY-MM-DD`) — pass the leg's or
+  /// departure's `serviceDate`. A 404 is a normal "no vehicle currently reporting", not an error. A malformed
+  /// date fails with [SpiderErrorCode.badRequest] (field `serviceDate`) without a request.
+  Future<SpiderResult<LiveVehicleUpdate>> vehicleForTrip(
+      String tripId, String serviceDate) async {
+    final invalidDate = invalidServiceDate(serviceDate);
+    if (invalidDate != null) return Failure(invalidDate);
     try {
       final path =
           '/realtime/v1/vehicles/by-trip/${Uri.encodeComponent(tripId)}';
-      final resp = await _transport.getRaw(path);
+      final resp =
+          await _transport.getRaw(path, query: {'serviceDate': serviceDate});
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
         final failure = httpFailure('GET $path', resp.statusCode, resp.body);
         // A 404 means no vehicle is reporting, unless its body names a plan-limit refusal.
@@ -335,14 +351,15 @@ class SpiderRealtime {
 /// Change-detecting realtime polling. Each stream calls the underlying surface on an interval and yields a
 /// value only when the result changes from the previous one. Cancel the subscription to stop polling.
 extension SpiderRealtimePolling on SpiderRealtime {
-  Stream<SpiderResult<VehiclePositions>> pollVehicles(List<String> tripIds,
-          {int? intervalMs}) =>
-      _poll(intervalMs, (v) => jsonEncode(v.toJson()), () => vehicles(tripIds));
-
-  Stream<SpiderResult<LiveVehicleUpdate>> pollVehicleForTrip(String tripId,
-          {int? intervalMs}) =>
+  Stream<SpiderResult<VehiclePositions>> pollVehicles(
+          String serviceDate, List<String> tripIds, {int? intervalMs}) =>
       _poll(intervalMs, (v) => jsonEncode(v.toJson()),
-          () => vehicleForTrip(tripId));
+          () => vehicles(serviceDate, tripIds));
+
+  Stream<SpiderResult<LiveVehicleUpdate>> pollVehicleForTrip(
+          String tripId, String serviceDate, {int? intervalMs}) =>
+      _poll(intervalMs, (v) => jsonEncode(v.toJson()),
+          () => vehicleForTrip(tripId, serviceDate));
 
   Stream<SpiderResult<TripDelays>> pollDelays(
           String serviceDate, List<String> tripIds, {int? intervalMs}) =>
@@ -386,6 +403,7 @@ FeedFreshness _mapFreshness(Map<String, dynamic> json) => FeedFreshness(
 
 LiveVehicle _mapVehicle(Map<String, dynamic> v) => LiveVehicle(
       tripId: v['tripId'] as String,
+      serviceDate: v['serviceDate'] as String,
       routeId: v['routeId'] as String?,
       vehicleId: v['vehicleId'] as String?,
       label: v['label'] as String?,

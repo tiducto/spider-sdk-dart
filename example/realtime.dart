@@ -45,12 +45,14 @@ Future<void> poll(
 }
 
 /// The SDK's built-in polling stream does the loop for you and only yields when
-/// the data changes. Cancel the subscription to stop.
+/// the data changes. Cancel the subscription to stop. Vehicles are scoped to the trip run (pass the plan leg's
+/// or departure's `serviceDate`).
 StreamSubscription<SpiderResult<VehiclePositions>> pollHelper(
-    SpiderClient client, List<String> tripIds) {
+    SpiderClient client, String serviceDate, List<String> tripIds) {
   // [START pollHelper]
-  final sub =
-      client.realtime.pollVehicles(tripIds, intervalMs: 10000).listen((update) {
+  final sub = client.realtime
+      .pollVehicles(serviceDate, tripIds, intervalMs: 10000)
+      .listen((update) {
     switch (update) {
       case Success(:final value):
         for (final vehicle in value.vehicles) {
@@ -64,10 +66,11 @@ StreamSubscription<SpiderResult<VehiclePositions>> pollHelper(
   return sub;
 }
 
-/// One-shot live positions for a set of trips.
-Future<void> vehicles(SpiderClient client, List<String> tripIds) async {
+/// One-shot live positions for a set of trips running on one service date.
+Future<void> vehicles(
+    SpiderClient client, String serviceDate, List<String> tripIds) async {
   // [START vehicles]
-  final result = await client.realtime.vehicles(tripIds);
+  final result = await client.realtime.vehicles(serviceDate, tripIds);
 
   if (result case Success(:final value)) {
     for (final vehicle in value.vehicles) {
@@ -77,10 +80,11 @@ Future<void> vehicles(SpiderClient client, List<String> tripIds) async {
   // [END vehicles]
 }
 
-/// The live vehicle for a single trip — `null` when none is reporting.
-Future<void> vehicleForTrip(SpiderClient client, String tripId) async {
+/// The live vehicle for a single trip run — `null` when none is reporting.
+Future<void> vehicleForTrip(
+    SpiderClient client, String tripId, String serviceDate) async {
   // [START vehicleForTrip]
-  final result = await client.realtime.vehicleForTrip(tripId);
+  final result = await client.realtime.vehicleForTrip(tripId, serviceDate);
 
   switch (result) {
     case Success(:final value):
