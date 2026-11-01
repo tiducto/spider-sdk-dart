@@ -511,10 +511,10 @@ Future<void> departuresWithRealtime(SpiderClient client) async {
   // [END departuresWithRealtime]
 }
 
-/// Look up a single trip's timetable.
+/// Look up a single trip run's timetable (its service date comes from a leg or departure).
 Future<void> tripLookup(SpiderClient client) async {
   // [START tripLookup]
-  final result = await client.routing.trip('1:12345');
+  final result = await client.routing.trip('1:12345', '2026-08-21');
 
   if (result case Success(:final value)) {
     for (final stop in value.stops) {

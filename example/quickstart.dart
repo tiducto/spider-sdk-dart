@@ -85,14 +85,15 @@ Future<void> handleErrors(SpiderClient client) async {
 }
 
 /// The same client reaches the stops and realtime surfaces too.
-Future<void> otherSurfaces(SpiderClient client, String tripId) async {
+Future<void> otherSurfaces(
+    SpiderClient client, String tripId, String serviceDate) async {
   // [START otherSurfaces]
   final stops = await client.stops.search(const StopFilter(name: 'central'));
   if (stops case Success(:final value)) {
     print('found ${value.length} stops');
   }
 
-  final vehicle = await client.realtime.vehicleForTrip(tripId);
+  final vehicle = await client.realtime.vehicleForTrip(tripId, serviceDate);
   if (vehicle case Success(:final value)) {
     print('live vehicle: ${value.vehicle?.vehicleId}');
   }

@@ -205,8 +205,8 @@ class Departure {
   final bool isRealtime;
   final RealtimeState? realtimeState;
 
-  /// The typical (median) delay at this stop for this trip on the service date's day type; null when there is
-  /// no delay history.
+  /// The typical delay at this stop for this trip at the requested reliability; null when no reliability is
+  /// passed, the trip has live realtime, or there is no history.
   final Duration? typicalDelay;
   final String? headsign;
   final String tripGtfsId;
@@ -272,8 +272,8 @@ class TripStop {
   final int realtimeDepartureEpochMs;
   final bool isRealtime;
 
-  /// The typical (median) delay at this stop for this trip on the service date's day type; null when there is
-  /// no delay history.
+  /// The typical delay at this stop for this trip at the requested reliability; null when no reliability is
+  /// passed, the trip has live realtime, or there is no history.
   final Duration? typicalDelay;
   final WheelchairBoarding? wheelchairBoarding;
 
@@ -332,9 +332,9 @@ class TripDetails {
   /// information.
   final WheelchairBoarding? wheelchairAccessible;
 
-  /// The GTFS service date (`YYYY-MM-DD`) of this trip instance — the value to pass to the realtime delays
-  /// lookup. Null when the trip has no stop times on the requested date.
-  final String? serviceDate;
+  /// The GTFS service date (`YYYY-MM-DD`) of this trip run, as requested — the value to pass to the realtime
+  /// delays lookup.
+  final String serviceDate;
   final List<TripStop> stops;
   final List<LatLon> geometry;
   const TripDetails({
@@ -349,9 +349,26 @@ class TripDetails {
     this.directionId,
     this.bikesAllowed,
     this.wheelchairAccessible,
-    this.serviceDate,
+    required this.serviceDate,
     required this.stops,
     required this.geometry,
+  });
+}
+
+/// A trip's recorded delay at one stop at each [Reliability] level, from the environment's realtime history.
+class EstimatedDelays {
+  /// The p50 ([Reliability.standard]).
+  final Duration standard;
+
+  /// The p70 ([Reliability.safe]).
+  final Duration safe;
+
+  /// The p90 ([Reliability.verySafe]).
+  final Duration verySafe;
+  const EstimatedDelays({
+    required this.standard,
+    required this.safe,
+    required this.verySafe,
   });
 }
 
@@ -477,11 +494,12 @@ class SpiderRouting {
   /// Departures from a stop, soonest first: up to [numberOfDepartures] (default 30; the environment sets the
   /// maximum) within [timeRangeSeconds] (default 24 h) of [startTime] (default now). A [timeRangeSeconds] that
   /// isn't above 0 and at most 24 h fails with [SpiderErrorCode.badRequest] (field `timeRange`) without a
-  /// request.
+  /// request. [reliability] is the level [Departure.typicalDelay] is given at; null leaves it null.
   Future<SpiderResult<List<Departure>>> departures(String stopId,
       {int numberOfDepartures = _defaultNumberOfDepartures,
       DateTime? startTime,
-      int timeRangeSeconds = _maxTimeRangeSeconds}) async {
+      int timeRangeSeconds = _maxTimeRangeSeconds,
+      Reliability? reliability}) async {
     if (timeRangeSeconds <= 0 || timeRangeSeconds > _maxTimeRangeSeconds) {
       return Failure(invalidInput('timeRange'));
     }
@@ -493,6 +511,7 @@ class SpiderRouting {
             ? null
             : (startTime.millisecondsSinceEpoch / 1000).floor(),
         timeRange: timeRangeSeconds,
+        reliability: _reliabilityInput(reliability),
       ).toJson();
       final departures = await _transport.postJson(
           '/routing/v1/departures', body, _decodeDepartures);
@@ -506,24 +525,49 @@ class SpiderRouting {
     }
   }
 
-  /// A single trip's stops, times, and geometry. [serviceDate] (`YYYY-MM-DD`, e.g. a [Departure.serviceDate]
-  /// or [Leg.serviceDate]) picks the trip instance and defaults to today; a malformed date fails with
-  /// [SpiderErrorCode.badRequest] without sending a request.
-  Future<SpiderResult<TripDetails>> trip(String tripId,
-      {String? serviceDate}) async {
-    final invalid =
-        serviceDate == null ? null : invalidServiceDate(serviceDate);
+  /// A single trip run's stops, times, and geometry. [serviceDate] (`YYYY-MM-DD`, a [Leg.serviceDate] or
+  /// [Departure.serviceDate]) picks the run; a malformed date fails with [SpiderErrorCode.badRequest] without
+  /// sending a request. [reliability] is the level [TripStop.typicalDelay] is given at; null leaves it null.
+  Future<SpiderResult<TripDetails>> trip(String tripId, String serviceDate,
+      {Reliability? reliability}) async {
+    final invalid = invalidServiceDate(serviceDate);
     if (invalid != null) return Failure(invalid);
     try {
-      final body =
-          wire.TripRequest(id: tripId, serviceDate: serviceDate).toJson();
-      final trip =
-          await _transport.postJson('/routing/v1/trip', body, _decodeTrip);
+      final body = wire.TripRequest(
+        id: tripId,
+        serviceDate: serviceDate,
+        reliability: _reliabilityInput(reliability),
+      ).toJson();
+      final trip = await _transport.postJson(
+          '/routing/v1/trip', body, (json) => _decodeTrip(json, serviceDate));
       if (trip == null) {
         throw TransportError(TransportErrorKind.noData,
             'routing returned no trip for id=$tripId');
       }
       return Success(trip);
+    } catch (e) {
+      return Failure(toSpiderError(e));
+    }
+  }
+
+  /// The trip run's recorded delay at the stop at [stopPosition] (a [TripStop.stopPosition]) at each
+  /// reliability level; null when the trip, the stop position or its history is unknown. History only, so live
+  /// realtime never changes them: they are present for a live trip whose [TripStop.typicalDelay] is null. For a
+  /// trip without live realtime they equal [trip]'s [TripStop.typicalDelay] at that level wherever that is not
+  /// null; a level with no shift is zero. A malformed [serviceDate] fails with [SpiderErrorCode.badRequest]
+  /// without sending a request.
+  Future<SpiderResult<EstimatedDelays?>> estimatedDelays(
+      String tripId, String serviceDate, int stopPosition) async {
+    final invalid = invalidServiceDate(serviceDate);
+    if (invalid != null) return Failure(invalid);
+    try {
+      return Success(await _transport.getJson(
+          '/routing/v1/estimated-delays', _decodeEstimatedDelays,
+          query: {
+            'tripId': tripId,
+            'serviceDate': serviceDate,
+            'stopPosition': '$stopPosition',
+          }));
     } catch (e) {
       return Failure(toSpiderError(e));
     }
@@ -719,9 +763,36 @@ List<Departure>? _decodeDepartures(Map<String, dynamic> json) {
   return stop == null ? null : _mapDepartures(stop);
 }
 
-TripDetails? _decodeTrip(Map<String, dynamic> json) {
+TripDetails? _decodeTrip(Map<String, dynamic> json, String serviceDate) {
   final trip = wire.TripResponse.fromJson(json).trip;
-  return trip == null ? null : _mapTrip(trip);
+  return trip == null ? null : _mapTrip(trip, serviceDate);
+}
+
+EstimatedDelays? _decodeEstimatedDelays(Map<String, dynamic> json) {
+  final List<wire.EstimatedDelay>? entries;
+  try {
+    entries = wire.EstimatedDelaysResponse.fromJson(json).estimatedDelays;
+  } catch (e) {
+    throw SpiderDecodingError(
+        'failed to decode GET /routing/v1/estimated-delays', e);
+  }
+  if (entries == null) return null;
+  final byLevel = {for (final e in entries) e.reliability: e.delay};
+  Duration level(wire.Reliability reliability) {
+    final seconds = byLevel[reliability];
+    if (seconds == null) {
+      throw SpiderDecodingError(
+          'failed to decode GET /routing/v1/estimated-delays',
+          'no ${reliability.wire} entry');
+    }
+    return Duration(seconds: seconds);
+  }
+
+  return EstimatedDelays(
+    standard: level(wire.Reliability.standard),
+    safe: level(wire.Reliability.safe),
+    verySafe: level(wire.Reliability.verySafe),
+  );
 }
 
 Future<PlanStreamEvent?> _parseRecordInBackground(String event, String data) =>
@@ -971,11 +1042,11 @@ List<Departure> _mapDepartures(wire.DepartureBoard stop) => [
           wheelchairAccessible:
               WheelchairBoarding.fromWire(st.trip.wheelchairAccessible.wire),
           stopPosition: st.stopPosition,
-          serviceDate: serviceDateOf(st.serviceDay),
+          serviceDate: st.serviceDate,
         ),
     ];
 
-TripDetails _mapTrip(wire.TripTimetable w) {
+TripDetails _mapTrip(wire.TripTimetable w, String serviceDate) {
   final stoptimes = w.stoptimesForDate;
   final geometry = w.tripGeometry;
   return TripDetails(
@@ -991,8 +1062,7 @@ TripDetails _mapTrip(wire.TripTimetable w) {
     bikesAllowed: BikesAllowed.fromWire(w.bikesAllowed.wire),
     wheelchairAccessible:
         WheelchairBoarding.fromWire(w.wheelchairAccessible.wire),
-    serviceDate:
-        stoptimes.isEmpty ? null : serviceDateOf(stoptimes.first.serviceDay),
+    serviceDate: serviceDate,
     stops: [
       for (final st in stoptimes)
         TripStop(

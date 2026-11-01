@@ -6,7 +6,6 @@ import 'package:spider_sdk/src/contract/contract_version.dart'
 import 'package:spider_sdk/src/contract/routing.dart' as wire;
 import 'package:spider_sdk/src/polyline.dart' show decodePolyline;
 import 'package:spider_sdk/src/routing.dart' show parsePlanStreamRecord;
-import 'package:spider_sdk/src/service_date.dart' show serviceDateOf;
 import 'package:spider_sdk/src/version.dart' show sdkVersion;
 import 'package:test/test.dart';
 
@@ -151,6 +150,7 @@ String streamPageInfoJson(
 
 Json stoptimeJson(String tripId, [Json o = const {}]) => {
       'serviceDay': 1784066400,
+      'serviceDate': '2026-07-15',
       'scheduledDeparture': 36000,
       'realtimeDeparture': 36000,
       'realtime': false,
@@ -833,7 +833,6 @@ void main() {
       expect(error.serverCode, isNull);
     });
 
-    // serviceDay 1784066400 = 2026-07-14T22:00Z, noon minus 12 h on 2026-07-15 in Europe/Prague (CEST).
     test(
         'departures keeps every row the router returns and carries the '
         'service date', () async {
@@ -871,7 +870,7 @@ void main() {
       expect(departures[0].serviceDate, '2026-07-15');
       // A row whose headsign is the stop's own name is a real departure, not a terminating trip.
       expect(departures[1].headsign, 'main square');
-      // 24:40 on the 15th's timetable runs on the 16th's clock but keeps the 15th's service date.
+      // 24:40 on the 15th's timetable runs on the 16th's clock but keeps the wire's service date, the 15th.
       expect(departures[1].serviceDate, '2026-07-15');
     });
 
@@ -968,6 +967,25 @@ void main() {
           {'id': 'S', 'numberOfDepartures': 30, 'timeRange': 86400});
     });
 
+    test('departures sends reliability only when set', () async {
+      final (client, mock) = makeClient((_) => resp(departuresJson(const [])));
+      await client.routing.departures('S');
+      await client.routing.departures('S', reliability: Reliability.verySafe);
+      expect(bodyOf(mock.requests[0]).containsKey('reliability'), isFalse);
+      expect(bodyOf(mock.requests[1])['reliability'], 'VERY_SAFE');
+    });
+
+    test('departures reads the service date from the wire', () async {
+      final body = departuresJson([
+        stoptimeJson('1:T1', {'serviceDate': '2026-07-14'}),
+      ]);
+      final (client, _) = makeClient((_) => resp(body));
+      final departures =
+          ((await client.routing.departures('S')) as Success<List<Departure>>)
+              .value;
+      expect(departures.single.serviceDate, '2026-07-14');
+    });
+
     test('departures sends the start time in Unix seconds', () async {
       final (client, mock) = makeClient((_) => resp(departuresJson(const [])));
       await client.routing.departures('S',
@@ -1001,20 +1019,33 @@ void main() {
       expect(bodyOf(mock.requests.single)['timeRange'], 1);
     });
 
-    test('trip without a service date leaves it to the server (today)',
+    test('trip posts the service date, and reliability only when set',
         () async {
       final (client, mock) = makeClient((_) => resp(tripJson(const [])));
-      final result = await client.routing.trip('T1');
+      final result = await client.routing.trip('T1', '2026-08-21');
       expect(result, isA<Success<TripDetails>>());
       final req = mock.requests.single;
       expect(req.method, 'POST');
       expect(req.uri.path, '/routing/v1/trip');
-      expect(bodyOf(req), {'id': 'T1'});
+      expect(bodyOf(req), {'id': 'T1', 'serviceDate': '2026-08-21'});
+
+      await client.routing
+          .trip('T1', '2026-08-21', reliability: Reliability.safe);
+      expect(bodyOf(mock.requests[1]),
+          {'id': 'T1', 'serviceDate': '2026-08-21', 'reliability': 'SAFE'});
+    });
+
+    test('trip carries the requested service date', () async {
+      final (client, _) = makeClient((_) => resp(tripJson(const [])));
+      final trip = ((await client.routing.trip('T1', '2026-08-20'))
+              as Success<TripDetails>)
+          .value;
+      expect(trip.serviceDate, '2026-08-20');
     });
 
     test('trip for an unknown id (trip null) is notFound', () async {
       final (client, _) = makeClient((_) => resp('{"trip":null}'));
-      final result = await client.routing.trip('1:NOPE');
+      final result = await client.routing.trip('1:NOPE', '2026-08-21');
       final error = (result as Failure<TripDetails>).error;
       expect(error.code, SpiderErrorCode.notFound);
       expect(error.message, contains('1:NOPE'));
@@ -1035,7 +1066,7 @@ void main() {
         'tripGeometry': {'points': '_izlhA~rlgdF', 'length': 2},
       });
       final (client, mock) = makeClient((_) => resp(body));
-      final result = await client.routing.trip('T1', serviceDate: '2026-08-21');
+      final result = await client.routing.trip('T1', '2026-08-21');
       final trip = (result as Success<TripDetails>).value;
       expect(trip.mode, TransitMode.bus);
       expect(trip.bikesAllowed, BikesAllowed.notAllowed);
@@ -1064,8 +1095,9 @@ void main() {
         }),
       });
       final (client, _) = makeClient((_) => resp(body));
-      final trip =
-          ((await client.routing.trip('T1')) as Success<TripDetails>).value;
+      final trip = ((await client.routing.trip('T1', '2026-08-21'))
+              as Success<TripDetails>)
+          .value;
       expect(trip.routeGtfsId, '1:R12');
       expect(trip.routeColor, '00A0E2');
       expect(trip.routeTextColor, '000000');
@@ -1084,8 +1116,9 @@ void main() {
               'mode': 'BUS',
             })
           })));
-      final bare =
-          ((await bareClient.routing.trip('T1')) as Success<TripDetails>).value;
+      final bare = ((await bareClient.routing.trip('T1', '2026-08-21'))
+              as Success<TripDetails>)
+          .value;
       expect(bare.routeColor, isNull);
       expect(bare.routeTextColor, isNull);
       expect(bare.wheelchairAccessible, isNull);
@@ -1098,8 +1131,9 @@ void main() {
             '1:S2', {'scheduledArrival': 36600, 'typicalDelay': null}),
       ]);
       final (client, _) = makeClient((_) => resp(body));
-      final trip =
-          ((await client.routing.trip('T1')) as Success<TripDetails>).value;
+      final trip = ((await client.routing.trip('T1', '2026-08-21'))
+              as Success<TripDetails>)
+          .value;
       expect(trip.stops.map((s) => s.typicalDelay).toList(),
           [const Duration(seconds: 30), null]);
     });
@@ -1117,8 +1151,9 @@ void main() {
         },
       });
       final (client, _) = makeClient((_) => resp(body));
-      final trip =
-          ((await client.routing.trip('T1')) as Success<TripDetails>).value;
+      final trip = ((await client.routing.trip('T1', '2026-08-21'))
+              as Success<TripDetails>)
+          .value;
       final [first, second] = trip.stops;
       expect((first.stopPosition, second.stopPosition), (3, 5));
       final point = trip.geometry[first.geometryIndex!];
@@ -1128,9 +1163,9 @@ void main() {
     });
 
     test('trip rejects a malformed service date without a request', () async {
-      for (final date in ['20260821', '2026-02-30', '2026-8-21', 'today']) {
+      for (final date in ['', '20260821', '2026-02-30', '2026-8-21', 'today']) {
         final (client, mock) = makeClient((_) => resp('{}'));
-        final result = await client.routing.trip('T1', serviceDate: date);
+        final result = await client.routing.trip('T1', date);
         final error = (result as Failure<TripDetails>).error;
         expect(error.code, SpiderErrorCode.badRequest, reason: date);
         expect(error.field, 'serviceDate');
@@ -1139,11 +1174,111 @@ void main() {
       }
     });
 
-    test('service date is the UTC date of noon on the service day', () {
-      expect(serviceDateOf(1784066400), '2026-07-15'); // Prague, summer
-      expect(serviceDateOf(1774735200), '2026-03-29'); // Prague, spring-forward
-      expect(serviceDateOf(1792882800), '2026-10-25'); // Prague, fall-back
-      expect(serviceDateOf(1784098800), '2026-07-15'); // Los Angeles, summer
+    String estimatedDelaysJson(List<Json>? entries) =>
+        jsonEncode({'estimatedDelays': entries});
+
+    test('estimatedDelays GETs the trip run and stop position', () async {
+      final (client, mock) = makeClient((_) => resp(estimatedDelaysJson([
+            {'reliability': 'STANDARD', 'delay': 30},
+            {'reliability': 'SAFE', 'delay': 60},
+            {'reliability': 'VERY_SAFE', 'delay': 120},
+          ])));
+      final result =
+          await client.routing.estimatedDelays('1:T1', '2026-08-21', 4);
+      final delays = (result as Success<EstimatedDelays?>).value!;
+      expect((
+        delays.standard,
+        delays.safe,
+        delays.verySafe
+      ), (
+        const Duration(seconds: 30),
+        const Duration(minutes: 1),
+        const Duration(minutes: 2)
+      ));
+      final req = mock.requests.single;
+      expect(req.method, 'GET');
+      expect(req.body, isNull);
+      expect(req.uri.path, '/routing/v1/estimated-delays');
+      expect(req.uri.queryParameters,
+          {'tripId': '1:T1', 'serviceDate': '2026-08-21', 'stopPosition': '4'});
+      expect(req.headers['apikey'], 'secret-key');
+      expect(req.headers['x-spider-contract-version'], contractVersion);
+    });
+
+    test('estimatedDelays maps entries by level, not position', () async {
+      final (client, _) = makeClient((_) => resp(estimatedDelaysJson([
+            {'reliability': 'VERY_SAFE', 'delay': 90},
+            {'reliability': 'STANDARD', 'delay': 0},
+            {'reliability': 'SAFE', 'delay': 45},
+          ])));
+      final delays =
+          ((await client.routing.estimatedDelays('1:T1', '2026-08-21', 0))
+                  as Success<EstimatedDelays?>)
+              .value!;
+      expect(delays.standard, Duration.zero);
+      expect(delays.safe, const Duration(seconds: 45));
+      expect(delays.verySafe, const Duration(seconds: 90));
+    });
+
+    test('estimatedDelays null is a success', () async {
+      final (client, _) = makeClient((_) => resp(estimatedDelaysJson(null)));
+      final result =
+          await client.routing.estimatedDelays('1:NOPE', '2026-08-21', 0);
+      expect((result as Success<EstimatedDelays?>).value, isNull);
+    });
+
+    test(
+        'estimatedDelays with a level missing or unknown is a decoding failure',
+        () async {
+      for (final entries in [
+        [
+          {'reliability': 'STANDARD', 'delay': 30},
+          {'reliability': 'SAFE', 'delay': 60},
+        ],
+        [
+          {'reliability': 'STANDARD', 'delay': 30},
+          {'reliability': 'SAFE', 'delay': 60},
+          {'reliability': 'EXTREME', 'delay': 120},
+        ],
+        [
+          {'reliability': 'STANDARD', 'delay': '30'},
+        ],
+      ]) {
+        final (client, _) =
+            makeClient((_) => resp(estimatedDelaysJson(entries)));
+        final result =
+            await client.routing.estimatedDelays('1:T1', '2026-08-21', 0);
+        expect((result as Failure<EstimatedDelays?>).error.code,
+            SpiderErrorCode.decoding,
+            reason: '$entries');
+      }
+    });
+
+    test('estimatedDelays rejects a malformed service date without a request',
+        () async {
+      for (final date in ['', '20260821', '2026-02-30']) {
+        final (client, mock) = makeClient((_) => resp('{}'));
+        final result = await client.routing.estimatedDelays('1:T1', date, 0);
+        final error = (result as Failure<EstimatedDelays?>).error;
+        expect(error.code, SpiderErrorCode.badRequest, reason: date);
+        expect(error.field, 'serviceDate');
+        expect(mock.requests, isEmpty);
+      }
+    });
+
+    test('an estimatedDelays 400 is a badRequest naming the field', () async {
+      final (client, _) = makeClient((_) => resp(
+          jsonEncode({
+            'code': 'bad_request',
+            'message': 'stopPosition is invalid',
+            'field': 'stopPosition'
+          }),
+          status: 400));
+      final result =
+          await client.routing.estimatedDelays('1:T1', '2026-08-21', -1);
+      final error = (result as Failure<EstimatedDelays?>).error;
+      expect(error.code, SpiderErrorCode.badRequest);
+      expect(error.field, 'stopPosition');
     });
   });
 
@@ -1341,9 +1476,10 @@ void main() {
   group('realtime', () {
     test('vehicles maps and converts seconds to millis', () async {
       const body =
-          '{"vehicles":[{"tripId":"1:T1","latitude":49.1,"longitude":16.6,"occupancyStatus":"FEW_SEATS_AVAILABLE","timestamp":1700000000}],"missing":["1:T9"],"feedTimestamp":1700000000,"staleSeconds":3}';
+          '{"vehicles":[{"tripId":"1:T1","serviceDate":"2026-07-15","latitude":49.1,"longitude":16.6,"occupancyStatus":"FEW_SEATS_AVAILABLE","timestamp":1700000000}],"missing":["1:T9"],"feedTimestamp":1700000000,"staleSeconds":3}';
       final (client, mock) = makeClient((_) => resp(body));
-      final result = await client.realtime.vehicles(['1:T1', '1:T9']);
+      final result =
+          await client.realtime.vehicles('2026-07-15', ['1:T1', '1:T9']);
       final positions = (result as Success<VehiclePositions>).value;
       expect(positions.vehicles[0].timestampEpochMs, 1700000000 * 1000);
       expect(
@@ -1351,14 +1487,17 @@ void main() {
       expect(positions.missing, ['1:T9']);
       expect(positions.freshness.staleSeconds, 3);
       expect(positions.freshness.feedTimestampEpochMs, 1700000000 * 1000);
-      expect(mock.requests[0].uri.queryParameters['tripIds'], '1:T1,1:T9');
+      expect(positions.vehicles[0].serviceDate, '2026-07-15');
+      expect(mock.requests[0].uri.queryParameters,
+          {'serviceDate': '2026-07-15', 'tripIds': '1:T1,1:T9'});
     });
 
     test('each call targets its /v1 path', () async {
       final calls = <(String, String), Future<Object?> Function(SpiderClient)>{
-        ('GET', '/realtime/v1/vehicles'): (c) => c.realtime.vehicles(['1:T1']),
+        ('GET', '/realtime/v1/vehicles'): (c) =>
+            c.realtime.vehicles('2026-07-15', ['1:T1']),
         ('GET', '/realtime/v1/vehicles/by-trip/1%3AT1'): (c) =>
-            c.realtime.vehicleForTrip('1:T1'),
+            c.realtime.vehicleForTrip('1:T1', '2026-07-15'),
         ('GET', '/realtime/v1/delays'): (c) =>
             c.realtime.delays('2026-07-15', ['1:T1']),
         ('GET', '/realtime/v1/alerts'): (c) => c.realtime.alerts(),
@@ -1374,12 +1513,13 @@ void main() {
     test('vehicles keeps feed-prefixed ids as the service sends them',
         () async {
       const body =
-          '{"vehicles":[{"tripId":"1:T1","routeId":"1:R1","vehicleId":"1:V7","stopId":"1:S1","latitude":49.19,"longitude":16.6}],"missing":[]}';
+          '{"vehicles":[{"tripId":"1:T1","serviceDate":"2026-07-14","routeId":"1:R1","vehicleId":"1:V7","stopId":"1:S1","latitude":49.19,"longitude":16.6}],"missing":[]}';
       final (client, _) = makeClient((_) => resp(body));
-      final result = await client.realtime.vehicles(['1:T1']);
+      final result = await client.realtime.vehicles('2026-07-15', ['1:T1']);
       final vehicle = (result as Success<VehiclePositions>).value.vehicles[0];
       expect(vehicle.vehicleId, '1:V7');
       expect(vehicle.tripId, '1:T1');
+      expect(vehicle.serviceDate, '2026-07-14');
       expect(vehicle.stopId, '1:S1');
       expect(vehicle.latitude, 49.19);
       expect(vehicle.longitude, 16.6);
@@ -1388,7 +1528,7 @@ void main() {
     test('vehicles with no trip ids is an empty success without a request',
         () async {
       final (client, mock) = makeClient((_) => resp('{}'));
-      final result = await client.realtime.vehicles(const []);
+      final result = await client.realtime.vehicles('2026-07-15', const []);
       final positions = (result as Success<VehiclePositions>).value;
       expect(positions.vehicles, isEmpty);
       expect(positions.missing, isEmpty);
@@ -1399,22 +1539,23 @@ void main() {
     test('vehicles takes up to 50 trip ids and rejects more without a request',
         () async {
       final (client, mock) = makeClient((_) => resp('{}'));
-      final result =
-          await client.realtime.vehicles(List.generate(51, (i) => '1:T$i'));
+      final result = await client.realtime
+          .vehicles('2026-07-15', List.generate(51, (i) => '1:T$i'));
       final error = (result as Failure<VehiclePositions>).error;
       expect(error.code, SpiderErrorCode.badRequest);
       expect(error.field, 'tripIds');
       expect(error.message, 'tripIds is out of range');
       expect(mock.requests, isEmpty);
       final (okClient, okMock) = makeClient((_) => resp('{"vehicles":[]}'));
-      await okClient.realtime.vehicles(List.generate(50, (i) => '1:T$i'));
+      await okClient.realtime
+          .vehicles('2026-07-15', List.generate(50, (i) => '1:T$i'));
       expect(okMock.requests, hasLength(1));
     });
 
     test('a realtime 400 is a badRequest naming the field', () async {
       final (client, _) =
           makeClient((_) => resp('tripIds is out of range', status: 400));
-      final result = await client.realtime.vehicles(['1:T1']);
+      final result = await client.realtime.vehicles('2026-07-15', ['1:T1']);
       final error = (result as Failure<VehiclePositions>).error;
       expect(error.code, SpiderErrorCode.badRequest);
       expect(error.field, 'tripIds');
@@ -1423,15 +1564,54 @@ void main() {
     test('a vehicleForTrip 400 is a badRequest naming the field', () async {
       final (client, _) =
           makeClient((_) => resp('tripId is invalid', status: 400));
-      final result = await client.realtime.vehicleForTrip('1:T1');
+      final result = await client.realtime.vehicleForTrip('1:T1', '2026-07-15');
       final error = (result as Failure<LiveVehicleUpdate>).error;
       expect(error.code, SpiderErrorCode.badRequest);
       expect(error.field, 'tripId');
     });
 
+    test('vehicleForTrip GETs the trip run and decodes its service date',
+        () async {
+      const body =
+          '{"vehicle":{"tripId":"1:T1","serviceDate":"2026-07-14","latitude":49.1,"longitude":16.6},"feedTimestamp":1700000000}';
+      final (client, mock) = makeClient((_) => resp(body));
+      final result = await client.realtime.vehicleForTrip('1:T1', '2026-07-14');
+      final vehicle = (result as Success<LiveVehicleUpdate>).value.vehicle!;
+      expect(vehicle.serviceDate, '2026-07-14');
+      final req = mock.requests.single;
+      expect(req.uri.path, '/realtime/v1/vehicles/by-trip/1%3AT1');
+      expect(req.uri.queryParameters, {'serviceDate': '2026-07-14'});
+    });
+
+    test(
+        'vehicles and vehicleForTrip reject a malformed service date without '
+        'a request', () async {
+      for (final date in ['', '20260715', '2026-02-30']) {
+        final (client, mock) = makeClient((_) => resp('{}'));
+        final positions = await client.realtime.vehicles(date, ['1:T1']);
+        final vehicle = await client.realtime.vehicleForTrip('1:T1', date);
+        for (final error in [
+          (positions as Failure<VehiclePositions>).error,
+          (vehicle as Failure<LiveVehicleUpdate>).error,
+        ]) {
+          expect(error.code, SpiderErrorCode.badRequest, reason: date);
+          expect(error.field, 'serviceDate');
+        }
+        expect(mock.requests, isEmpty);
+      }
+    });
+
+    test('the vehicle polls send the service date', () async {
+      final (client, mock) = makeClient((_) => resp('{}'));
+      await client.realtime.pollVehicles('2026-07-15', ['1:T1']).first;
+      await client.realtime.pollVehicleForTrip('1:T1', '2026-07-15').first;
+      expect(mock.requests.map((r) => r.uri.queryParameters['serviceDate']),
+          ['2026-07-15', '2026-07-15']);
+    });
+
     test('vehicleForTrip 404 is a soft null', () async {
       final (client, _) = makeClient((_) => resp('{}', status: 404));
-      final result = await client.realtime.vehicleForTrip('1:T1');
+      final result = await client.realtime.vehicleForTrip('1:T1', '2026-07-15');
       expect((result as Success<LiveVehicleUpdate>).value.vehicle, isNull);
     });
 
@@ -1624,8 +1804,9 @@ void main() {
 
       final (client, _) = makeClient((_) =>
           resp(tripJson(const [], {'wheelchairAccessible': 'SOMETHING_NEW'})));
-      final trip =
-          ((await client.routing.trip('T1')) as Success<TripDetails>).value;
+      final trip = ((await client.routing.trip('T1', '2026-08-21'))
+              as Success<TripDetails>)
+          .value;
       expect(trip.wheelchairAccessible, WheelchairBoarding.unknown);
     });
 
@@ -2173,11 +2354,14 @@ void main() {
         <String, Future<SpiderResult<Object?>> Function(SpiderClient)>{
       'plan': (c) => c.routing.plan(stopsAB),
       'departures': (c) => c.routing.departures('S'),
-      'trip': (c) => c.routing.trip('T1'),
+      'trip': (c) => c.routing.trip('T1', '2026-08-21'),
+      'estimatedDelays': (c) =>
+          c.routing.estimatedDelays('1:T1', '2026-08-21', 0),
       'stops.search': (c) => c.stops.search(const StopFilter(name: 'M')),
       'stops.byId': (c) => c.stops.byId('1:S1'),
-      'realtime.vehicles': (c) => c.realtime.vehicles(['1:T1']),
-      'realtime.vehicleForTrip': (c) => c.realtime.vehicleForTrip('1:T1'),
+      'realtime.vehicles': (c) => c.realtime.vehicles('2026-07-15', ['1:T1']),
+      'realtime.vehicleForTrip': (c) =>
+          c.realtime.vehicleForTrip('1:T1', '2026-07-15'),
       'realtime.delays': (c) => c.realtime.delays('2026-07-15', ['1:T1']),
       'realtime.alerts': (c) => c.realtime.alerts(),
     };

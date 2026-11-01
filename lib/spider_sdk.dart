@@ -23,6 +23,7 @@ export 'src/routing.dart'
         Departure,
         TripStop,
         TripDetails,
+        EstimatedDelays,
         PlanOptions;
 export 'src/stops.dart'
     show SpiderStops, Stop, StopFilter, GeoPoint, GeoBoundingBox;

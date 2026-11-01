@@ -199,11 +199,16 @@ enum InputField {
   }
 }
 
-/// How much typical delay a plan budgets for at each arrival: [standard] the median (p50), [safe] the 70th
-/// percentile, [verySafe] the 90th.
+/// The delay level used for planning (plan) and for `typicalDelay` (departures, trip): a percentile of the
+/// trip's recorded delay.
 enum Reliability {
+  /// The median (p50).
   standard('STANDARD'),
+
+  /// The 70th percentile (p70).
   safe('SAFE'),
+
+  /// The 90th percentile (p90).
   verySafe('VERY_SAFE');
 
   const Reliability(this.wire);
