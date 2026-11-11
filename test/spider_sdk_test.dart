@@ -1508,8 +1508,7 @@ void main() {
           '"suburb":"Brno-střed","distance":670},'
           '{"id":"ruian-19153635","type":"address","name":"Údolní 244/53","lat":49.198361,"lon":16.594827,'
           '"category":"building","city":"Brno"},'
-          '{"id":"s","type":"street","name":"Údolní","lat":49,"lon":16,"category":"street"},'
-          '{"id":"m","type":"place","name":"Brno","lat":49.2,"lon":16.6,"category":"municipality"},'
+          '{"id":"m","type":"place","name":"Brno","lat":49,"lon":16,"category":"municipality"},'
           '{"id":"osm-w29239083","type":"poi","name":"Vaňkovka","lat":49.18904,"lon":16.614627,"category":"mall"}'
           ']}';
       final (client, _) = makeClient((_) => resp(body));
@@ -1519,7 +1518,6 @@ void main() {
       expect(hits.map((h) => h.type).toList(), [
         PlaceType.stop,
         PlaceType.address,
-        PlaceType.street,
         PlaceType.place,
         PlaceType.poi,
       ]);
@@ -1541,7 +1539,7 @@ void main() {
       expect(address.suburb, isNull);
       expect(address.distance, isNull);
       expect(hits[2].lat, 49.0);
-      expect(hits[4].category, 'mall');
+      expect(hits[3].category, 'mall');
     });
 
     test('an unknown type is unknown and unknown keys are ignored', () async {
@@ -1554,6 +1552,17 @@ void main() {
           .value;
       expect(hits.single.type, PlaceType.unknown);
       expect(hits.single.name, 'Přístaviště');
+    });
+
+    test('a street hit is unknown', () async {
+      const body = '{"hits":[{"id":"s","type":"street","name":"Údolní",'
+          '"lat":49.19,"lon":16.6,"category":"street"}]}';
+      final (client, _) = makeClient((_) => resp(body));
+      final hits =
+          ((await client.places.search('Údolní')) as Success<List<PlaceHit>>)
+              .value;
+      expect(hits.single.type, PlaceType.unknown);
+      expect(hits.single.category, 'street');
     });
 
     test('search rejects a limit outside 1–20 without a request', () async {

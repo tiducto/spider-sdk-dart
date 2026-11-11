@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.7.1
+
+Targets Spider API contract `1.7`.
+
+### Removed (breaking)
+
+- **`PlaceType.street`**: place search no longer returns streets, so a `street` hit now decodes as
+  `PlaceType.unknown`. A query without a house number lists stops, municipalities and points of interest, and no
+  addresses; a query with one lists individual addresses.
+
 ## 1.7.0
 
 Targets Spider API contract `1.7`.
@@ -156,7 +166,7 @@ keeps its shape.
   `planPrevious`.
 - **`Itinerary.accessibilityScore` and `Leg.accessibilityScore`** are always null.
 
-### Removed
+### Removed (breaking)
 
 - The persisted-query transport, and the `persisted_query_rejected` `serverCode` on a 403, which the API no
   longer sends: a 403 that isn't a plan-limit refusal is `unauthorized`, like any other. No public symbol is
@@ -237,7 +247,7 @@ Targets Spider API contract `1.0`. The first stable release: from here on, break
   `StopFilter.modes` (stops served by at least one of the modes). Search text also matches a stop's code, town
   and district.
 
-### Removed
+### Removed (breaking)
 
 - `SpiderContractMismatchError`: a gateway declaring another contract major is no longer an error, so every
   call reports its failures through `SpiderResult`.
@@ -257,7 +267,7 @@ Targets Spider API contract `0.7`.
   repeats `planStream`'s parameters plus a raw cursor `String` read off `PlanStreamDone.pageInfo`. `planStream`
   no longer takes `after`/`before`.
 
-### Removed
+### Removed (breaking)
 
 - **`planUntil` / `planNextUntil` / `planPreviousUntil`** — the client-side window-walkers. Drive continuation
   from `PlanStreamDone.pageInfo` (stream) or `planNext` / `planPrevious` (batch) instead.

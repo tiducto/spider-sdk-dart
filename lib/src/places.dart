@@ -11,9 +11,6 @@ enum PlaceType {
   /// A single address. Listed when the query holds a house number.
   address('address'),
 
-  /// A street, standing for its addresses when the query holds no house number.
-  street('street'),
-
   /// A municipality.
   place('place'),
 
@@ -34,7 +31,7 @@ enum PlaceType {
   }
 }
 
-/// One place search hit: a stop, an address, a street, a municipality or a point of interest. Every hit carries
+/// One place search hit: a stop, an address, a municipality or a point of interest. Every hit carries
 /// the same administrative labels a [Stop] does, so hits of different types are labelled alike.
 class PlaceHit {
   /// For a [PlaceType.stop], the stop's feed-prefixed id (`<feedId>:<id>`), usable wherever routing takes a stop
@@ -48,7 +45,7 @@ class PlaceHit {
   final double lon;
 
   /// What kind of place it is, e.g. `university` or `hospital` for a point of interest, `municipality` for a
-  /// municipality, `building` for an address, `street` for a street. Null for a stop. New values may be added.
+  /// municipality, `building` for an address. Null for a stop. New values may be added.
   final String? category;
   final String? country;
   final String? region;
@@ -78,7 +75,7 @@ class PlaceHit {
 const _defaultLimit = 10;
 const _maxLimit = 20;
 
-/// The places surface: one search over the environment's service area across stops, addresses, streets,
+/// The places surface: one search over the environment's service area across stops, addresses,
 /// municipalities and points of interest.
 class SpiderPlaces {
   final Transport _transport;
@@ -86,7 +83,8 @@ class SpiderPlaces {
 
   /// Searches places by free text, best match first. [query] is 2 to 100 characters after trimming; abbreviated
   /// and spelled-out forms find each other, and text without diacritics matches text with them. A query with a
-  /// house number (`Údolní 53`) lists individual addresses; without one, a street stands for its addresses.
+  /// house number (`Údolní 53`) lists individual addresses; without one, it lists stops, municipalities and points
+  /// of interest, and no addresses.
   ///
   /// With [near], the nearer of two equally good matches comes first and every hit carries
   /// [PlaceHit.distance].
