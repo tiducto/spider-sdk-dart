@@ -1473,6 +1473,147 @@ void main() {
     });
   });
 
+  group('places', () {
+    test('search GETs q and the default limit, without a location', () async {
+      final (client, mock) = makeClient((_) => resp('{"hits":[]}'));
+      final result = await client.places.search('Hlavní nádraží');
+      expect((result as Success<List<PlaceHit>>).value, isEmpty);
+      final req = mock.requests.single;
+      expect(req.method, 'GET');
+      expect(req.uri.path, '/places/v1/search');
+      expect(req.uri.queryParameters, {'q': 'Hlavní nádraží', 'limit': '10'});
+      expect(req.body, isNull);
+      expect(req.headers['apikey'], 'secret-key');
+      expect(req.headers['x-spider-contract-version'], contractVersion);
+    });
+
+    test('search sends a location as latitude and longitude', () async {
+      final (client, mock) = makeClient((_) => resp('{"hits":[]}'));
+      await client.places
+          .search('Údolní 53', near: const GeoPoint(49.19, 16.6), limit: 5);
+      final uri = mock.requests.single.uri;
+      expect(uri.queryParameters, {
+        'q': 'Údolní 53',
+        'limit': '5',
+        'latitude': '49.19',
+        'longitude': '16.6',
+      });
+      expect(uri.query, contains('q=%C3%9Adoln%C3%AD+53'));
+    });
+
+    test('search maps hits, labels, category and distance', () async {
+      const body = '{"hits":['
+          '{"id":"1:U1234Z1","type":"stop","name":"Hlavní nádraží","lat":49.190612,"lon":16.612951,'
+          '"country":"Česko","region":"Jihomoravský kraj","district":"okres Brno-město","city":"Brno",'
+          '"suburb":"Brno-střed","distance":670},'
+          '{"id":"ruian-19153635","type":"address","name":"Údolní 244/53","lat":49.198361,"lon":16.594827,'
+          '"category":"building","city":"Brno"},'
+          '{"id":"s","type":"street","name":"Údolní","lat":49,"lon":16,"category":"street"},'
+          '{"id":"m","type":"place","name":"Brno","lat":49.2,"lon":16.6,"category":"municipality"},'
+          '{"id":"osm-w29239083","type":"poi","name":"Vaňkovka","lat":49.18904,"lon":16.614627,"category":"mall"}'
+          ']}';
+      final (client, _) = makeClient((_) => resp(body));
+      final hits =
+          ((await client.places.search('Brno')) as Success<List<PlaceHit>>)
+              .value;
+      expect(hits.map((h) => h.type).toList(), [
+        PlaceType.stop,
+        PlaceType.address,
+        PlaceType.street,
+        PlaceType.place,
+        PlaceType.poi,
+      ]);
+      final stop = hits[0];
+      expect(stop.id, '1:U1234Z1');
+      expect(stop.name, 'Hlavní nádraží');
+      expect(stop.lat, 49.190612);
+      expect(stop.lon, 16.612951);
+      expect(stop.category, isNull);
+      expect(stop.country, 'Česko');
+      expect(stop.region, 'Jihomoravský kraj');
+      expect(stop.district, 'okres Brno-město');
+      expect(stop.city, 'Brno');
+      expect(stop.suburb, 'Brno-střed');
+      expect(stop.distance, 670);
+      final address = hits[1];
+      expect(address.category, 'building');
+      expect(address.city, 'Brno');
+      expect(address.suburb, isNull);
+      expect(address.distance, isNull);
+      expect(hits[2].lat, 49.0);
+      expect(hits[4].category, 'mall');
+    });
+
+    test('an unknown type is unknown and unknown keys are ignored', () async {
+      const body =
+          '{"hits":[{"id":"x","type":"ferry_terminal","name":"Přístaviště",'
+          '"lat":49.23,"lon":16.52,"rank":3,"extra":{"a":1}}],"total":1}';
+      final (client, _) = makeClient((_) => resp(body));
+      final hits = ((await client.places.search('Přístaviště'))
+              as Success<List<PlaceHit>>)
+          .value;
+      expect(hits.single.type, PlaceType.unknown);
+      expect(hits.single.name, 'Přístaviště');
+    });
+
+    test('search rejects a limit outside 1–20 without a request', () async {
+      for (final limit in [0, 21]) {
+        final (client, mock) = makeClient((_) => resp('{"hits":[]}'));
+        final result = await client.places.search('Brno', limit: limit);
+        final error = (result as Failure<List<PlaceHit>>).error;
+        expect(error.code, SpiderErrorCode.badRequest, reason: '$limit');
+        expect(error.field, 'limit');
+        expect(error.message, 'limit is out of range');
+        expect(mock.requests, isEmpty);
+      }
+      for (final limit in [1, 20]) {
+        final (client, mock) = makeClient((_) => resp('{"hits":[]}'));
+        await client.places.search('Brno', limit: limit);
+        expect(mock.requests.single.uri.queryParameters['limit'], '$limit');
+      }
+    });
+
+    test('a 400 envelope is a badRequest naming the field', () async {
+      final (client, _) = makeClient((_) => resp(
+          jsonEncode({
+            'code': 'bad_request',
+            'message': 'q is out of range',
+            'field': 'q',
+          }),
+          status: 400));
+      final result = await client.places.search('B');
+      final error = (result as Failure<List<PlaceHit>>).error;
+      expect(error.code, SpiderErrorCode.badRequest);
+      expect(error.httpStatus, 400);
+      expect(error.serverCode, 'bad_request');
+      expect(error.field, 'q');
+    });
+
+    test('a 429 is rateLimited and a 401 unauthorized', () async {
+      for (final (status, code, expected) in [
+        (429, 'rate_limited', SpiderErrorCode.rateLimited),
+        (401, 'key_invalid', SpiderErrorCode.unauthorized),
+      ]) {
+        final (client, _) = makeClient((_) =>
+            resp(jsonEncode({'code': code, 'message': 'x'}), status: status));
+        final error =
+            ((await client.places.search('Brno')) as Failure<List<PlaceHit>>)
+                .error;
+        expect(error.code, expected, reason: code);
+        expect(error.serverCode, code);
+      }
+    });
+
+    test('a hit missing a required member is a decoding failure', () async {
+      final (client, _) = makeClient(
+          (_) => resp('{"hits":[{"id":"x","type":"stop","name":"A"}]}'));
+      final error =
+          ((await client.places.search('Brno')) as Failure<List<PlaceHit>>)
+              .error;
+      expect(error.code, SpiderErrorCode.decoding);
+    });
+  });
+
   group('realtime', () {
     test('vehicles maps and converts seconds to millis', () async {
       const body =
@@ -2359,6 +2500,7 @@ void main() {
           c.routing.estimatedDelays('1:T1', '2026-08-21', 0),
       'stops.search': (c) => c.stops.search(const StopFilter(name: 'M')),
       'stops.byId': (c) => c.stops.byId('1:S1'),
+      'places.search': (c) => c.places.search('Brno'),
       'realtime.vehicles': (c) => c.realtime.vehicles('2026-07-15', ['1:T1']),
       'realtime.vehicleForTrip': (c) =>
           c.realtime.vehicleForTrip('1:T1', '2026-07-15'),

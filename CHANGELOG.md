@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.7.0
+
+Targets Spider API contract `1.7`.
+
+### Added
+
+- **`client.places.search(query, {near, limit = 10})`**: one search across stops, addresses, streets,
+  municipalities and points of interest, best match first, as `PlaceHit`s (`id`, `type`, `name`, `lat`, `lon`,
+  `category`, the same `country`/`region`/`district`/`city`/`suburb` labels a `Stop` carries, and `distance`).
+  A query with a house number lists individual addresses. With `near` (a `GeoPoint`), the nearer of equally good
+  matches ranks first and each hit carries `distance` in metres. A stop hit's `id` is the stop id routing takes.
+  `limit` outside 1–20 fails with `SpiderErrorCode.badRequest` (field `limit`) without a request. Calls
+  `GET /places/v1/search`.
+- **`PlaceType`**: `stop`, `address`, `street`, `place` (a municipality), `poi`; a type this SDK doesn't know is
+  `PlaceType.unknown`.
+- **`SpiderClientOptions.places`**: the places surface's retry options, like `stops`.
+
 ## 1.6.0
 
 Targets Spider API contract `1.6`.

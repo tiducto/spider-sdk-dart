@@ -1,4 +1,4 @@
-// Stop-search examples for the Spider Dart SDK. The docs site inlines the
+// Stop- and place-search examples for the Spider Dart SDK. The docs site inlines the
 // named regions below (between the START/END markers) as code samples.
 import 'package:spider_sdk/spider_sdk.dart';
 
@@ -78,4 +78,26 @@ Future<void> stopById(SpiderClient client) async {
       print('lookup failed: ${error.code.name} — ${error.message}');
   }
   // [END stopById]
+}
+
+/// Search places — stops, addresses, streets, municipalities and points of
+/// interest — near a point, nearest of equally good matches first. A query
+/// with a house number lists individual addresses.
+Future<void> searchPlaces(SpiderClient client) async {
+  // [START searchPlaces]
+  final result = await client.places.search(
+    'Údolní 53',
+    near: const GeoPoint(49.19, 16.61),
+    limit: 5,
+  );
+
+  switch (result) {
+    case Success(:final value):
+      for (final hit in value) {
+        print('${hit.type.name}: ${hit.name}, ${hit.city} — ${hit.distance} m');
+      }
+    case Failure(:final error):
+      print('search failed: ${error.code.name} — ${error.message}');
+  }
+  // [END searchPlaces]
 }

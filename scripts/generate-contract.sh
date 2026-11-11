@@ -90,4 +90,4 @@ echo "==> Formatting the generated Dart"
     && "$DART" format "$CONTRACT_DIR/routing.dart" "$CONTRACT_DIR/contract_version.dart" >/dev/null )
 
 echo "==> Done. Wire models -> lib/src/contract/routing.dart"
-echo "    The stops + realtime wire types are hand-written (lib/src/stops.dart + lib/src/realtime.dart), not generated."
+echo "    The stops, places + realtime wire types are hand-written (lib/src/stops.dart, lib/src/places.dart + lib/src/realtime.dart), not generated."
