@@ -1,4 +1,4 @@
-/// The Dart SDK for the Spider transit API — trip planning, stop search, and live realtime data behind one
+/// The Dart SDK for the Spider transit API — trip planning, stop and place search, and live realtime data behind one
 /// typed client.
 library;
 
@@ -9,6 +9,7 @@ export 'src/errors.dart' show SpiderError, SpiderErrorCode;
 export 'src/location.dart';
 export 'src/plan_stream_event.dart';
 export 'src/polyline.dart' show LatLon;
+export 'src/places.dart' show SpiderPlaces, PlaceHit, PlaceType;
 export 'src/realtime.dart';
 export 'src/result.dart';
 export 'src/routing.dart'

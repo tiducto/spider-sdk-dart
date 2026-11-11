@@ -1,4 +1,5 @@
 import 'contract/contract_version.dart' as c;
+import 'places.dart';
 import 'realtime.dart';
 import 'routing.dart';
 import 'stops.dart';
@@ -11,7 +12,7 @@ class AutoRetryOptions {
   const AutoRetryOptions({this.maxAttempts});
 }
 
-/// Feature toggles for one surface (routing / stops / realtime).
+/// Feature toggles for one surface (routing / stops / places / realtime).
 class FeatureOptions {
   final AutoRetryOptions? autoRetry;
   const FeatureOptions({this.autoRetry});
@@ -27,18 +28,25 @@ class SpiderClientOptions {
 
   final FeatureOptions? routing;
   final FeatureOptions? stops;
+  final FeatureOptions? places;
   final FeatureOptions? realtime;
 
   const SpiderClientOptions(
-      {this.httpClient, this.timeout, this.routing, this.stops, this.realtime});
+      {this.httpClient,
+      this.timeout,
+      this.routing,
+      this.stops,
+      this.places,
+      this.realtime});
 }
 
 /// The Spider API client. Construct once with your environment base URL and API key, then reach a surface:
-/// [routing], [stops], [realtime]. Each surface gets its own transport (own retry config) sharing
+/// [routing], [stops], [places], [realtime]. Each surface gets its own transport (own retry config) sharing
 /// the same base URL, key, HTTP client and timeout.
 class SpiderClient {
   final SpiderRouting routing;
   final SpiderStops stops;
+  final SpiderPlaces places;
   final SpiderRealtime realtime;
 
   factory SpiderClient(String baseUrl, String apiKey,
@@ -61,14 +69,16 @@ class SpiderClient {
     return SpiderClient._(
       SpiderRouting(transportFor(options.routing)),
       SpiderStops(transportFor(options.stops)),
+      SpiderPlaces(transportFor(options.places)),
       SpiderRealtime(transportFor(options.realtime)),
-      // A retry-free transport over the same shared HTTP client the three surfaces use, so the connection
+      // A retry-free transport over the same shared HTTP client the surfaces use, so the connection
       // warmup() opens is the one their calls reuse.
       transportFor(null),
     );
   }
 
-  SpiderClient._(this.routing, this.stops, this.realtime, this._warmup);
+  SpiderClient._(
+      this.routing, this.stops, this.places, this.realtime, this._warmup);
 
   final Transport _warmup;
 
@@ -78,7 +88,7 @@ class SpiderClient {
   /// Pre-warms the connection to the environment's API host so the first real call doesn't pay for cold
   /// TLS/connection setup (~0.6s on mobile, otherwise nearly doubling the first trip-planning call). Fires ONE
   /// `GET {baseUrl}/ping` — authenticated with the client apikey — through the SDK's shared HTTP client, so the
-  /// connection it opens is the one [routing]/[stops]/[realtime] calls then reuse.
+  /// connection it opens is the one [routing]/[stops]/[places]/[realtime] calls then reuse.
   ///
   /// Best-effort and never throws: any failure — transport error, timeout, or a non-2xx (e.g. a `404` before
   /// the gateway `/ping` route is deployed) — still warmed the connection, so the measured round-trip

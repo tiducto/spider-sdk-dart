@@ -1,6 +1,6 @@
 # spider_sdk (Dart / Flutter)
 
-The Dart SDK for **Spider** — the managed transit API by Tiducto. Trip planning, stop search, and live realtime data behind one typed client that speaks the published API contract and attaches auth for you.
+The Dart SDK for **Spider** — the managed transit API by Tiducto. Trip planning, stop and place search, and live realtime data behind one typed client that speaks the published API contract and attaches auth for you.
 
 Native Dart package (single dependency: `package:http`), usable from Flutter (iOS/Android/web/desktop) and plain Dart. Sibling of the Kotlin, TypeScript, and Swift SDKs — same domain model, Dart idioms (`Future`, `Stream`, sealed classes).
 
@@ -44,13 +44,14 @@ Ordinary failures are values — every call returns a `SpiderResult<T>` (`Succes
 
 - **`client.routing`** — trip planning (with paging and a streaming `planStream`), departures, and single-trip lookups.
 - **`client.stops`** — text search, geo queries (nearest / bounding box), and lookup by GTFS id.
+- **`client.places`** — one search across stops, addresses, streets, municipalities and points of interest, optionally ranked by distance from a location.
 - **`client.realtime`** — poll-based live vehicle positions, delays, and alerts, plus change-detecting `poll…` streams (no push connections).
 
 **Full API reference and guides → [docs.tiducto.eu](https://docs.tiducto.eu).** Product overview → [tiducto.eu](https://tiducto.eu).
 
 ## Contract & codegen
 
-The routing wire models under `lib/src/contract/` are generated from the published contract by `scripts/generate-contract.sh` (via `tiducto/spider-codegen`) and committed — the package carries the types, not the spec. Routing, stop and realtime calls go to the contract's `/routing/v1`, `/stops/v1` and `/realtime/v1` operations on your environment's host. `client.contractVersion` reports the contract version this SDK speaks. Don't hand-edit generated files; re-run the script.
+The routing wire models under `lib/src/contract/` are generated from the published contract by `scripts/generate-contract.sh` (via `tiducto/spider-codegen`) and committed — the package carries the types, not the spec. Routing, stop, place and realtime calls go to the contract's `/routing/v1`, `/stops/v1`, `/places/v1` and `/realtime/v1` operations on your environment's host. `client.contractVersion` reports the contract version this SDK speaks. Don't hand-edit generated files; re-run the script.
 
 ## License
 
