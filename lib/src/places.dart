@@ -1,6 +1,6 @@
 import 'errors.dart';
 import 'result.dart';
-import 'stops.dart' show GeoPoint;
+import 'stops.dart' show GeoPoint, Stop, stopFromHit;
 import 'transport.dart';
 
 /// What a [PlaceHit] is.
@@ -56,6 +56,9 @@ class PlaceHit {
   /// Metres from the location passed to [SpiderPlaces.search]; null when no location was passed.
   final int? distance;
 
+  /// For a [PlaceType.stop], the stop as stop search returns it; null for any other type.
+  final Stop? stop;
+
   const PlaceHit({
     required this.id,
     required this.type,
@@ -69,6 +72,7 @@ class PlaceHit {
     this.city,
     this.suburb,
     this.distance,
+    this.stop,
   });
 }
 
@@ -124,17 +128,23 @@ List<PlaceHit> _parseSearchResponse(Map<String, dynamic> json) {
   }
 }
 
-PlaceHit _toPlaceHit(Map<String, dynamic> hit) => PlaceHit(
-      id: hit['id'] as String,
-      type: PlaceType.fromWire(hit['type'] as String),
-      name: hit['name'] as String,
-      lat: (hit['lat'] as num).toDouble(),
-      lon: (hit['lon'] as num).toDouble(),
-      category: hit['category'] as String?,
-      country: hit['country'] as String?,
-      region: hit['region'] as String?,
-      district: hit['district'] as String?,
-      city: hit['city'] as String?,
-      suburb: hit['suburb'] as String?,
-      distance: (hit['distance'] as num?)?.toInt(),
-    );
+PlaceHit _toPlaceHit(Map<String, dynamic> hit) {
+  final type = PlaceType.fromWire(hit['type'] as String);
+  return PlaceHit(
+    id: hit['id'] as String,
+    type: type,
+    name: hit['name'] as String,
+    lat: (hit['lat'] as num).toDouble(),
+    lon: (hit['lon'] as num).toDouble(),
+    category: hit['category'] as String?,
+    country: hit['country'] as String?,
+    region: hit['region'] as String?,
+    district: hit['district'] as String?,
+    city: hit['city'] as String?,
+    suburb: hit['suburb'] as String?,
+    distance: (hit['distance'] as num?)?.toInt(),
+    stop: type == PlaceType.stop && hit['gtfsId'] is String
+        ? stopFromHit(hit)
+        : null,
+  );
+}

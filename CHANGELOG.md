@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.8.0
+
+Targets Spider API contract `1.8`.
+
+### Added
+
+- **`PlaceHit.stop`**: a stop hit's stop as a `Stop`, with the same members and values stop search returns
+  (`gtfsId`, `name`, `code`, `wheelchairBoarding`, `modes`, `lat`/`lon` and the admin labels); null for any other
+  type.
+
+### Removed (breaking)
+
+- **`Stop.locationType`**: contract 1.8 dropped it from stop search before launch.
+
 ## 1.7.1
 
 Targets Spider API contract `1.7`.

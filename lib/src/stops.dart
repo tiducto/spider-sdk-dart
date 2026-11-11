@@ -11,10 +11,6 @@ class Stop {
   /// The short public code riders know the stop by (GTFS `stop_code`), when the feed gives one.
   final String? code;
 
-  /// GTFS `location_type`: `0` a stop or platform, `1` a station. Null when the feed doesn't set it, which
-  /// means a stop.
-  final int? locationType;
-
   /// Whether a rider in a wheelchair can board here, from the stop's own GTFS `wheelchair_boarding`; null
   /// when the feed has no information, [WheelchairBoarding.unknown] for a code GTFS doesn't define.
   final WheelchairBoarding? wheelchairBoarding;
@@ -33,7 +29,6 @@ class Stop {
     required this.gtfsId,
     required this.name,
     this.code,
-    this.locationType,
     this.wheelchairBoarding,
     this.modes = const [],
     required this.lat,
@@ -200,14 +195,14 @@ Map<String, dynamic> _buildSearchRequest(StopFilter filter) {
 
 List<Stop> _parseSearchResponse(Map<String, dynamic> json) {
   final hits = json['hits'] as List<dynamic>? ?? const [];
-  return hits.map((h) => _toStop(h as Map<String, dynamic>)).toList();
+  return hits.map((h) => stopFromHit(h as Map<String, dynamic>)).toList();
 }
 
-Stop _toStop(Map<String, dynamic> hit) => Stop(
+/// Maps a stop search hit, or a place search hit's stop members, to a [Stop].
+Stop stopFromHit(Map<String, dynamic> hit) => Stop(
       gtfsId: hit['gtfsId'] as String,
       name: hit['name'] as String,
       code: hit['code'] as String?,
-      locationType: (hit['locationType'] as num?)?.toInt(),
       wheelchairBoarding: _wheelchairFromGtfs(hit['wheelchairBoarding']),
       modes: (hit['modes'] as List<dynamic>? ?? const [])
           .map((m) => TransitMode.fromWire(m as String)!)
