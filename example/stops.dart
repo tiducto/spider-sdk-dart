@@ -80,9 +80,9 @@ Future<void> stopById(SpiderClient client) async {
   // [END stopById]
 }
 
-/// Search places — stops, addresses, streets, municipalities and points of
-/// interest — near a point, nearest of equally good matches first. A query
-/// with a house number lists individual addresses.
+/// Search places — stops, addresses, municipalities and points of interest —
+/// near a point, nearest of equally good matches first. A query with a house
+/// number lists individual addresses; without one, no addresses are listed.
 Future<void> searchPlaces(SpiderClient client) async {
   // [START searchPlaces]
   final result = await client.places.search(
