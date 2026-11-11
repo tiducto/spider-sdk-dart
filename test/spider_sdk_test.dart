@@ -1300,9 +1300,9 @@ void main() {
       expect(body2['filter'], r'country = "CZ" AND city = "Br\"no"');
     });
 
-    test('search maps code, location type and wheelchair boarding', () async {
+    test('search maps code and wheelchair boarding', () async {
       const body = '{"hits":['
-          '{"gtfsId":"1:U1","name":"Station","code":"ZV","locationType":1,"wheelchairBoarding":1,"lat":49.19,"lon":16.6},'
+          '{"gtfsId":"1:U1","name":"Station","code":"ZV","wheelchairBoarding":1,"lat":49.19,"lon":16.6},'
           '{"gtfsId":"1:U2","name":"Stop","wheelchairBoarding":2,"lat":49.2,"lon":16.61},'
           '{"gtfsId":"1:U3","name":"Bare","wheelchairBoarding":0,"lat":49.21,"lon":16.62},'
           '{"gtfsId":"1:U4","name":"Odd","wheelchairBoarding":7,"lat":49.22,"lon":16.63}'
@@ -1313,10 +1313,8 @@ void main() {
       expect(stops[0].lat, 49.19);
       expect(stops[0].lon, 16.6);
       expect(stops[0].code, 'ZV');
-      expect(stops[0].locationType, 1);
       expect(stops[0].wheelchairBoarding, WheelchairBoarding.possible);
       expect(stops[1].code, isNull);
-      expect(stops[1].locationType, isNull);
       expect(stops[1].wheelchairBoarding, WheelchairBoarding.notPossible);
       expect(stops[2].wheelchairBoarding, isNull);
       expect(stops[3].wheelchairBoarding, WheelchairBoarding.unknown);
@@ -1475,7 +1473,7 @@ void main() {
 
   group('places', () {
     test('search GETs q and the default limit, without a location', () async {
-      final (client, mock) = makeClient((_) => resp('{"hits":[]}'));
+      final (client, mock) = makeClient((_) => resp('{"hits":[],"query":"q"}'));
       final result = await client.places.search('Hlavní nádraží');
       expect((result as Success<List<PlaceHit>>).value, isEmpty);
       final req = mock.requests.single;
@@ -1488,7 +1486,7 @@ void main() {
     });
 
     test('search sends a location as latitude and longitude', () async {
-      final (client, mock) = makeClient((_) => resp('{"hits":[]}'));
+      final (client, mock) = makeClient((_) => resp('{"hits":[],"query":"q"}'));
       await client.places
           .search('Údolní 53', near: const GeoPoint(49.19, 16.6), limit: 5);
       final uri = mock.requests.single.uri;
@@ -1503,14 +1501,15 @@ void main() {
 
     test('search maps hits, labels, category and distance', () async {
       const body = '{"hits":['
-          '{"id":"1:U1234Z1","type":"stop","name":"Hlavní nádraží","lat":49.190612,"lon":16.612951,'
-          '"country":"Česko","region":"Jihomoravský kraj","district":"okres Brno-město","city":"Brno",'
+          '{"id":"1:U1234Z1","type":"stop","gtfsId":"1:U1234Z1","name":"Hlavní nádraží","code":"1",'
+          '"wheelchairBoarding":1,"modes":["TRAM","BUS"],"lat":49.190612,"lon":16.612951,"country":"Česko",'
+          '"region":"Jihomoravský kraj","district":"okres Brno-město","city":"Brno",'
           '"suburb":"Brno-střed","distance":670},'
           '{"id":"ruian-19153635","type":"address","name":"Údolní 244/53","lat":49.198361,"lon":16.594827,'
           '"category":"building","city":"Brno"},'
           '{"id":"m","type":"place","name":"Brno","lat":49,"lon":16,"category":"municipality"},'
           '{"id":"osm-w29239083","type":"poi","name":"Vaňkovka","lat":49.18904,"lon":16.614627,"category":"mall"}'
-          ']}';
+          '],"query":"Brno"}';
       final (client, _) = makeClient((_) => resp(body));
       final hits =
           ((await client.places.search('Brno')) as Success<List<PlaceHit>>)
@@ -1533,6 +1532,17 @@ void main() {
       expect(stop.city, 'Brno');
       expect(stop.suburb, 'Brno-střed');
       expect(stop.distance, 670);
+      final asStop = stop.stop!;
+      expect(asStop.gtfsId, '1:U1234Z1');
+      expect(asStop.name, 'Hlavní nádraží');
+      expect(asStop.code, '1');
+      expect(asStop.wheelchairBoarding, WheelchairBoarding.possible);
+      expect(asStop.modes, [TransitMode.tram, TransitMode.bus]);
+      expect(asStop.lat, 49.190612);
+      expect(asStop.lon, 16.612951);
+      expect(asStop.city, 'Brno');
+      expect(asStop.suburb, 'Brno-střed');
+      expect(hits.skip(1).map((h) => h.stop), everyElement(isNull));
       final address = hits[1];
       expect(address.category, 'building');
       expect(address.city, 'Brno');
@@ -1545,7 +1555,7 @@ void main() {
     test('an unknown type is unknown and unknown keys are ignored', () async {
       const body =
           '{"hits":[{"id":"x","type":"ferry_terminal","name":"Přístaviště",'
-          '"lat":49.23,"lon":16.52,"rank":3,"extra":{"a":1}}],"total":1}';
+          '"lat":49.23,"lon":16.52,"rank":3,"extra":{"a":1}}],"total":1,"query":"Přístaviště"}';
       final (client, _) = makeClient((_) => resp(body));
       final hits = ((await client.places.search('Přístaviště'))
               as Success<List<PlaceHit>>)
@@ -1556,7 +1566,7 @@ void main() {
 
     test('a street hit is unknown', () async {
       const body = '{"hits":[{"id":"s","type":"street","name":"Údolní",'
-          '"lat":49.19,"lon":16.6,"category":"street"}]}';
+          '"lat":49.19,"lon":16.6,"category":"street"}],"query":"Údolní"}';
       final (client, _) = makeClient((_) => resp(body));
       final hits =
           ((await client.places.search('Údolní')) as Success<List<PlaceHit>>)
@@ -1567,7 +1577,8 @@ void main() {
 
     test('search rejects a limit outside 1–20 without a request', () async {
       for (final limit in [0, 21]) {
-        final (client, mock) = makeClient((_) => resp('{"hits":[]}'));
+        final (client, mock) =
+            makeClient((_) => resp('{"hits":[],"query":"q"}'));
         final result = await client.places.search('Brno', limit: limit);
         final error = (result as Failure<List<PlaceHit>>).error;
         expect(error.code, SpiderErrorCode.badRequest, reason: '$limit');
@@ -1576,7 +1587,8 @@ void main() {
         expect(mock.requests, isEmpty);
       }
       for (final limit in [1, 20]) {
-        final (client, mock) = makeClient((_) => resp('{"hits":[]}'));
+        final (client, mock) =
+            makeClient((_) => resp('{"hits":[],"query":"q"}'));
         await client.places.search('Brno', limit: limit);
         expect(mock.requests.single.uri.queryParameters['limit'], '$limit');
       }
