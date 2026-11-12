@@ -74,6 +74,15 @@ class Leg {
   /// Whether the rider stays on the same vehicle from the previous leg (it continues as another trip, often
   /// under another line); such a change isn't counted in [Itinerary.numberOfTransfers].
   final bool interlineWithPreviousLeg;
+
+  /// How the rider boards the trip at the leg's start, e.g. [PickupDropoffType.coordinateWithDriver] at a stop
+  /// on request. [PickupDropoffType.scheduled] on a walk leg and on a leg with [interlineWithPreviousLeg],
+  /// where the rider is already on board.
+  final PickupDropoffType pickupType;
+
+  /// How the rider alights from the trip at the leg's end. [PickupDropoffType.scheduled] on a walk leg and on
+  /// a leg the next leg continues with [interlineWithPreviousLeg], where the rider stays on board.
+  final PickupDropoffType dropoffType;
   final BikesAllowed? bikesAllowed;
   @Deprecated('Always null: the API sends no accessibility score.')
   final double? accessibilityScore;
@@ -112,6 +121,8 @@ class Leg {
     required this.durationSeconds,
     this.tripGtfsId,
     this.interlineWithPreviousLeg = false,
+    this.pickupType = PickupDropoffType.scheduled,
+    this.dropoffType = PickupDropoffType.scheduled,
     this.bikesAllowed,
     this.accessibilityScore,
     this.fromWheelchair,
@@ -234,6 +245,13 @@ class Departure {
   /// The departure's position in its trip, as the trip's [TripStop.stopPosition].
   final int? stopPosition;
 
+  /// How a rider boards here, e.g. [PickupDropoffType.coordinateWithDriver] at a stop on request. Never
+  /// [PickupDropoffType.none]: the board leaves out departures nobody can board.
+  final PickupDropoffType pickupType;
+
+  /// How a rider alights here.
+  final PickupDropoffType dropoffType;
+
   /// The GTFS service date (`YYYY-MM-DD`) this departure's trip runs on — pass it with [tripGtfsId] to
   /// [SpiderRouting.trip] and to the realtime delays lookup. An after-midnight departure can carry the
   /// previous day's date.
@@ -256,6 +274,8 @@ class Departure {
     this.platformCode,
     this.wheelchairAccessible,
     this.stopPosition,
+    this.pickupType = PickupDropoffType.scheduled,
+    this.dropoffType = PickupDropoffType.scheduled,
     required this.serviceDate,
   });
 }
@@ -291,6 +311,13 @@ class TripStop {
   /// The index into [TripDetails.geometry] of where the stop sits on the trip's line; null when the trip has no
   /// geometry or the stop has no point on it.
   final int? geometryIndex;
+
+  /// How a rider boards here, e.g. [PickupDropoffType.coordinateWithDriver] at a stop on request. Null when the
+  /// stop is canceled: the trip is canceled or realtime skips the stop.
+  final PickupDropoffType? pickupType;
+
+  /// How a rider alights here. Null when the stop is canceled, as [pickupType].
+  final PickupDropoffType? dropoffType;
   const TripStop({
     required this.gtfsId,
     required this.name,
@@ -307,6 +334,8 @@ class TripStop {
     this.zoneId,
     this.stopPosition,
     this.geometryIndex,
+    this.pickupType,
+    this.dropoffType,
   });
 }
 
@@ -977,6 +1006,8 @@ Leg _mapLeg(wire.Leg w) {
     durationSeconds: w.duration,
     tripGtfsId: trip?.gtfsId,
     interlineWithPreviousLeg: w.interlineWithPreviousLeg,
+    pickupType: PickupDropoffType.fromWire(w.pickupType.wire),
+    dropoffType: PickupDropoffType.fromWire(w.dropoffType.wire),
     bikesAllowed: BikesAllowed.fromWire(trip?.bikesAllowed.wire),
     fromWheelchair:
         WheelchairBoarding.fromWire(fromStop?.wheelchairBoarding.wire),
@@ -998,6 +1029,9 @@ Duration? _durationFromWire(String? raw) {
       : Duration(
           microseconds: (seconds * Duration.microsecondsPerSecond).round());
 }
+
+PickupDropoffType? _pickupDropoff(wire.PickupDropoffType? w) =>
+    w == null ? null : PickupDropoffType.fromWire(w.wire);
 
 Duration? _durationFromSeconds(int? seconds) =>
     seconds == null ? null : Duration(seconds: seconds);
@@ -1042,6 +1076,8 @@ List<Departure> _mapDepartures(wire.DepartureBoard stop) => [
           wheelchairAccessible:
               WheelchairBoarding.fromWire(st.trip.wheelchairAccessible.wire),
           stopPosition: st.stopPosition,
+          pickupType: PickupDropoffType.fromWire(st.pickupType.wire),
+          dropoffType: PickupDropoffType.fromWire(st.dropoffType.wire),
           serviceDate: st.serviceDate,
         ),
     ];
@@ -1084,6 +1120,8 @@ TripDetails _mapTrip(wire.TripTimetable w, String serviceDate) {
           zoneId: st.stop.zoneId,
           stopPosition: st.stopPosition,
           geometryIndex: st.geometryIndex,
+          pickupType: _pickupDropoff(st.pickupType),
+          dropoffType: _pickupDropoff(st.dropoffType),
         ),
     ],
     geometry: geometry == null ? const [] : decodePolyline(geometry.points),

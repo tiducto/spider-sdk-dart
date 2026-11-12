@@ -125,6 +125,33 @@ enum RealtimeState {
   }
 }
 
+/// Whether and how a rider boards or alights at a stop (GTFS `pickup_type` / `drop_off_type`). Unrecognized
+/// values map to [PickupDropoffType.unknown].
+enum PickupDropoffType {
+  /// Regularly, as scheduled (GTFS 0, or the field left empty).
+  scheduled('SCHEDULED'),
+
+  /// Not at all (GTFS 1).
+  none('NONE'),
+
+  /// Only after phoning the agency (GTFS 2).
+  callAgency('CALL_AGENCY'),
+
+  /// Only by arranging it with the driver: a stop on request (GTFS 3).
+  coordinateWithDriver('COORDINATE_WITH_DRIVER'),
+  unknown('UNKNOWN');
+
+  const PickupDropoffType(this.wire);
+  final String wire;
+
+  static PickupDropoffType fromWire(String value) {
+    for (final e in values) {
+      if (e.wire == value) return e;
+    }
+    return PickupDropoffType.unknown;
+  }
+}
+
 /// Why the router declined the plan or found no transit route. Unrecognized values map to
 /// [RoutingErrorCode.unknown].
 enum RoutingErrorCode {
