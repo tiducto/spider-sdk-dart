@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.9.0
+
+Targets Spider API contract `1.9`.
+
+### Added
+
+- **`PickupDropoffType`**: whether and how a rider boards or alights at a stop, from the feed's GTFS
+  `pickup_type` / `drop_off_type`: `scheduled`, `none`, `callAgency` (only after phoning the agency) and
+  `coordinateWithDriver` (a stop on request: the rider signals the driver to stop); a type this SDK doesn't know
+  is `unknown`. An app can show a stop on request as such in a plan, on a departure board and on a trip's stops.
+- **`Leg.pickupType` and `Leg.dropoffType`**: how the rider boards at the leg's start and alights at its end;
+  `scheduled` on a walk leg and where the rider stays on board across an interlined pair.
+- **`Departure.pickupType` and `Departure.dropoffType`**: how a rider boards and alights at the departure's
+  stop. Never `none` for boarding: the board leaves out departures nobody can board.
+- **`TripStop.pickupType` and `TripStop.dropoffType`**: how a rider boards and alights at each stop of the trip;
+  null when the stop is canceled (the trip is canceled or realtime skips the stop).
+
 ## 1.8.0
 
 Targets Spider API contract `1.8`.

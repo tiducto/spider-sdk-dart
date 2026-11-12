@@ -66,7 +66,7 @@ Map<String, dynamic> bodyOf(SpiderHttpRequest req) =>
 const stopsAB =
     PlanOptions(origin: Location.stop('A'), destination: Location.stop('B'));
 
-// Contract 1.5 response builders: every member is required (nullable ones explicitly null), so a fixture
+// Contract 1.9 response builders: every member is required (nullable ones explicitly null), so a fixture
 // spreads its overrides over a complete base.
 typedef Json = Map<String, dynamic>;
 
@@ -102,6 +102,8 @@ Json legJson([Json o = const {}]) => {
       'distance': 1500.0,
       'duration': 900,
       'trip': {'gtfsId': '1:T1', 'bikesAllowed': 'NO_INFORMATION'},
+      'pickupType': 'SCHEDULED',
+      'dropoffType': 'SCHEDULED',
       'interlineWithPreviousLeg': false,
       'legGeometry': {'points': '_izlhA~rlgdF'},
       ...o,
@@ -156,6 +158,8 @@ Json stoptimeJson(String tripId, [Json o = const {}]) => {
       'realtime': false,
       'realtimeState': 'SCHEDULED',
       'typicalDelay': 0,
+      'pickupType': 'SCHEDULED',
+      'dropoffType': 'SCHEDULED',
       'stopPosition': null,
       'headsign': 'Airport',
       'stop': {'gtfsId': '1:ST-P1', 'platformCode': '1'},
@@ -189,6 +193,8 @@ Json tripStoptimeJson(String stopId,
       'realtime': false,
       'realtimeState': 'SCHEDULED',
       'typicalDelay': 0,
+      'pickupType': 'SCHEDULED',
+      'dropoffType': 'SCHEDULED',
       'stopPosition': null,
       'geometryIndex': null,
       'stop': {
@@ -473,6 +479,34 @@ void main() {
       final legs = (result as Success<Route>).value.edges.single.itinerary.legs;
       expect((legs[0].fromStopPosition, legs[0].toStopPosition), (2, 5));
       expect((legs[1].fromStopPosition, legs[1].toStopPosition), (null, null));
+    });
+
+    test('plan maps the boarding and alighting pickup/dropoff types', () async {
+      final body = planJson(itineraries: [
+        itineraryJson([
+          legJson({
+            'pickupType': 'COORDINATE_WITH_DRIVER',
+            'dropoffType': 'CALL_AGENCY',
+          }),
+          legJson({
+            'mode': 'WALK',
+            'route': null,
+            'trip': null,
+          }),
+        ])
+      ]);
+      final (client, _) = makeClient((_) => resp(body));
+      final result = await client.routing.plan(stopsAB);
+      final legs = (result as Success<Route>).value.edges.single.itinerary.legs;
+      expect((
+        legs[0].pickupType,
+        legs[0].dropoffType
+      ), (
+        PickupDropoffType.coordinateWithDriver,
+        PickupDropoffType.callAgency
+      ));
+      expect((legs[1].pickupType, legs[1].dropoffType),
+          (PickupDropoffType.scheduled, PickupDropoffType.scheduled));
     });
 
     test('plan with arriveBy sets latestArrival', () async {
@@ -954,6 +988,24 @@ void main() {
       expect(departures.map((d) => d.stopPosition).toList(), [7, null]);
     });
 
+    test('departures maps the pickup and dropoff types', () async {
+      final body = departuresJson([
+        stoptimeJson('1:T1', {
+          'pickupType': 'COORDINATE_WITH_DRIVER',
+          'dropoffType': 'NONE',
+        }),
+        stoptimeJson('1:T2'),
+      ]);
+      final (client, _) = makeClient((_) => resp(body));
+      final departures =
+          ((await client.routing.departures('S')) as Success<List<Departure>>)
+              .value;
+      expect(departures.map((d) => (d.pickupType, d.dropoffType)).toList(), [
+        (PickupDropoffType.coordinateWithDriver, PickupDropoffType.none),
+        (PickupDropoffType.scheduled, PickupDropoffType.scheduled),
+      ]);
+    });
+
     test(
         'departures posts the default count and a 24 h time range to '
         '/routing/v1/departures', () async {
@@ -1160,6 +1212,35 @@ void main() {
       expect(point.lat, closeTo(43.252, 1e-5));
       expect(point.lon, closeTo(-126.453, 1e-5));
       expect(second.geometryIndex, isNull);
+    });
+
+    test('trip maps the pickup and dropoff types, null on a canceled stop',
+        () async {
+      final body = tripJson([
+        tripStoptimeJson('1:S1', {
+          'pickupType': 'COORDINATE_WITH_DRIVER',
+          'dropoffType': 'COORDINATE_WITH_DRIVER',
+        }),
+        tripStoptimeJson('1:S2', {
+          'scheduledArrival': 36600,
+          'realtimeState': 'CANCELED',
+          'pickupType': null,
+          'dropoffType': null,
+        }),
+      ]);
+      final (client, _) = makeClient((_) => resp(body));
+      final trip = ((await client.routing.trip('T1', '2026-08-21'))
+              as Success<TripDetails>)
+          .value;
+      final [first, second] = trip.stops;
+      expect((
+        first.pickupType,
+        first.dropoffType
+      ), (
+        PickupDropoffType.coordinateWithDriver,
+        PickupDropoffType.coordinateWithDriver
+      ));
+      expect((second.pickupType, second.dropoffType), (null, null));
     });
 
     test('trip rejects a malformed service date without a request', () async {
@@ -1911,6 +1992,10 @@ void main() {
           RoutingErrorCode.fromWire('SOMETHING_NEW'), RoutingErrorCode.unknown);
       expect(InputField.fromWire('VIA'), InputField.via);
       expect(InputField.fromWire('FROM_PLACE'), InputField.unknown);
+      expect(PickupDropoffType.fromWire('CALL_AGENCY'),
+          PickupDropoffType.callAgency);
+      expect(PickupDropoffType.fromWire('SOMETHING_NEW'),
+          PickupDropoffType.unknown);
     });
 
     test('an unknown wire value decodes to unknown through the plan mapping',

@@ -1023,6 +1023,12 @@ class Leg {
   /// Null on a walk leg.
   final Trip? trip;
 
+  /// How the rider boards the leg's trip at `from`. `SCHEDULED` on a walk leg and on a leg with `interlineWithPreviousLeg`, where the rider is already on board.
+  final PickupDropoffType pickupType;
+
+  /// How the rider alights from the leg's trip at `to`. `SCHEDULED` on a walk leg and on a leg the next leg continues with `interlineWithPreviousLeg`, where the rider stays on board.
+  final PickupDropoffType dropoffType;
+
   /// True on a transit leg ridden in the same vehicle as the previous leg: the vehicle carries on as another trip, often under another line number, and the rider stays on board. That change is not counted in `numberOfTransfers`. False on every other leg.
   final bool interlineWithPreviousLeg;
   final Geometry legGeometry;
@@ -1042,6 +1048,8 @@ class Leg {
     required this.distance,
     required this.duration,
     required this.trip,
+    required this.pickupType,
+    required this.dropoffType,
     required this.interlineWithPreviousLeg,
     required this.legGeometry,
   });
@@ -1065,6 +1073,8 @@ class Leg {
         trip: json['trip'] == null
             ? null
             : Trip.fromJson(json['trip'] as Map<String, dynamic>),
+        pickupType: PickupDropoffType.fromWire(json['pickupType'] as String),
+        dropoffType: PickupDropoffType.fromWire(json['dropoffType'] as String),
         interlineWithPreviousLeg: json['interlineWithPreviousLeg'] as bool,
         legGeometry:
             Geometry.fromJson(json['legGeometry'] as Map<String, dynamic>),
@@ -1086,6 +1096,8 @@ class Leg {
         'distance': distance,
         'duration': duration,
         'trip': trip == null ? null : trip!.toJson(),
+        'pickupType': pickupType.toJson(),
+        'dropoffType': dropoffType.toJson(),
         'interlineWithPreviousLeg': interlineWithPreviousLeg,
         'legGeometry': legGeometry.toJson(),
       };
@@ -1457,6 +1469,28 @@ enum RealtimeState {
   String toJson() => wire;
 }
 
+/// Whether and how a rider boards (`pickupType`) or alights (`dropoffType`) at a stop, from the GTFS `pickup_type` / `drop_off_type`: `SCHEDULED` regularly (0, or the field left empty), `NONE` not at all (1), `CALL_AGENCY` only after phoning the agency (2), `COORDINATE_WITH_DRIVER` only by arranging it with the driver, a stop on request (3).
+enum PickupDropoffType {
+  callAgency('CALL_AGENCY'),
+  coordinateWithDriver('COORDINATE_WITH_DRIVER'),
+  none('NONE'),
+  scheduled('SCHEDULED'),
+  unknown('UNKNOWN');
+
+  const PickupDropoffType(this.wire);
+
+  final String wire;
+
+  static PickupDropoffType fromWire(String? value) {
+    for (final e in PickupDropoffType.values) {
+      if (e.wire == value) return e;
+    }
+    return PickupDropoffType.unknown;
+  }
+
+  String toJson() => wire;
+}
+
 enum WheelchairBoarding {
   notPossible('NOT_POSSIBLE'),
   noInformation('NO_INFORMATION'),
@@ -1576,6 +1610,12 @@ class StopDeparturesStoptime {
   /// Seconds of delay at the requested `reliability`: that level's percentile of the trip's recorded delay at this stop on the service date's day type, from the environment's realtime history. Never below 0. At each level, no trip arrives at a stop, delay applied, before an earlier trip of the same pattern does. Null when `reliability` is omitted, when the trip has live realtime, a canceled trip included, or when there is no history.
   final int? typicalDelay;
 
+  /// How a rider boards here. Never `NONE`: the board leaves out departures nobody can board.
+  final PickupDropoffType pickupType;
+
+  /// How a rider alights here.
+  final PickupDropoffType dropoffType;
+
   /// Null when the feed has none.
   final String? headsign;
 
@@ -1594,6 +1634,8 @@ class StopDeparturesStoptime {
     required this.realtime,
     required this.realtimeState,
     required this.typicalDelay,
+    required this.pickupType,
+    required this.dropoffType,
     required this.headsign,
     required this.stopPosition,
     required this.stop,
@@ -1609,6 +1651,8 @@ class StopDeparturesStoptime {
         realtime: json['realtime'] as bool,
         realtimeState: RealtimeState.fromWire(json['realtimeState'] as String),
         typicalDelay: (json['typicalDelay'] as num?)?.toInt(),
+        pickupType: PickupDropoffType.fromWire(json['pickupType'] as String),
+        dropoffType: PickupDropoffType.fromWire(json['dropoffType'] as String),
         headsign: json['headsign'] as String?,
         stopPosition: (json['stopPosition'] as num?)?.toInt(),
         stop: StopDeparturesStop.fromJson(json['stop'] as Map<String, dynamic>),
@@ -1623,6 +1667,8 @@ class StopDeparturesStoptime {
         'realtime': realtime,
         'realtimeState': realtimeState.toJson(),
         'typicalDelay': typicalDelay == null ? null : typicalDelay!,
+        'pickupType': pickupType.toJson(),
+        'dropoffType': dropoffType.toJson(),
         'headsign': headsign == null ? null : headsign!,
         'stopPosition': stopPosition == null ? null : stopPosition!,
         'stop': stop.toJson(),
@@ -1917,6 +1963,12 @@ class Stoptime {
   /// Seconds of delay at the requested `reliability`: that level's percentile of the trip's recorded delay at this stop on the service date's day type, from the environment's realtime history. Never below 0. At each level, no trip arrives at a stop, delay applied, before an earlier trip of the same pattern does. Null when `reliability` is omitted, when the trip has live realtime, a canceled trip included, or when there is no history.
   final int? typicalDelay;
 
+  /// How a rider boards here. Null when the stop is canceled: the trip is canceled or realtime skips the stop.
+  final PickupDropoffType? pickupType;
+
+  /// How a rider alights here. Null when the stop is canceled: the trip is canceled or realtime skips the stop.
+  final PickupDropoffType? dropoffType;
+
   /// The stop time's position in the trip: increasing along it, not necessarily from 0 or consecutive. Realtime that adds or removes stops can change it.
   final int? stopPosition;
 
@@ -1933,6 +1985,8 @@ class Stoptime {
     required this.realtime,
     required this.realtimeState,
     required this.typicalDelay,
+    required this.pickupType,
+    required this.dropoffType,
     required this.stopPosition,
     required this.geometryIndex,
     required this.stop,
@@ -1947,6 +2001,12 @@ class Stoptime {
         realtime: json['realtime'] as bool,
         realtimeState: RealtimeState.fromWire(json['realtimeState'] as String),
         typicalDelay: (json['typicalDelay'] as num?)?.toInt(),
+        pickupType: json['pickupType'] == null
+            ? null
+            : PickupDropoffType.fromWire(json['pickupType'] as String),
+        dropoffType: json['dropoffType'] == null
+            ? null
+            : PickupDropoffType.fromWire(json['dropoffType'] as String),
         stopPosition: (json['stopPosition'] as num?)?.toInt(),
         geometryIndex: (json['geometryIndex'] as num?)?.toInt(),
         stop: TripStop.fromJson(json['stop'] as Map<String, dynamic>),
@@ -1961,6 +2021,8 @@ class Stoptime {
         'realtime': realtime,
         'realtimeState': realtimeState.toJson(),
         'typicalDelay': typicalDelay == null ? null : typicalDelay!,
+        'pickupType': pickupType == null ? null : pickupType!.toJson(),
+        'dropoffType': dropoffType == null ? null : dropoffType!.toJson(),
         'stopPosition': stopPosition == null ? null : stopPosition!,
         'geometryIndex': geometryIndex == null ? null : geometryIndex!,
         'stop': stop.toJson(),
