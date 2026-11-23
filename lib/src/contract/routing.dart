@@ -197,12 +197,16 @@ class DeparturesRequest {
   /// The level `typicalDelay` is given at; the times do not depend on it. Omitted or null, `typicalDelay` is null. A value outside `Reliability` is a 400 `reliability is invalid`.
   final Reliability? reliability;
 
+  /// Modes the board leaves out: a departure whose route's `mode` is listed gives no row. They are left out before `numberOfDepartures` counts, so the board holds up to `numberOfDepartures` rows of the other modes within `timeRange`. Absent or empty leaves out nothing. A value outside `TransitMode` is a 400 `excludeModes is invalid`.
+  final List<TransitMode>? excludeModes;
+
   const DeparturesRequest({
     required this.id,
     required this.numberOfDepartures,
     required this.timeRange,
     this.startTime,
     this.reliability,
+    this.excludeModes,
   });
 
   factory DeparturesRequest.fromJson(Map<String, dynamic> json) =>
@@ -214,6 +218,9 @@ class DeparturesRequest {
         reliability: json['reliability'] == null
             ? null
             : Reliability.fromWire(json['reliability'] as String),
+        excludeModes: (json['excludeModes'] as List<dynamic>?)
+            ?.map((e) => TransitMode.fromWire(e as String))
+            .toList(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -222,6 +229,8 @@ class DeparturesRequest {
         'timeRange': timeRange,
         if (startTime != null) 'startTime': startTime!,
         if (reliability != null) 'reliability': reliability!.toJson(),
+        if (excludeModes != null)
+          'excludeModes': excludeModes!.map((e) => e.toJson()).toList(),
       };
 }
 
@@ -486,13 +495,17 @@ class PlanModesInput {
       };
 }
 
-/// Transit modes the search may use.
+/// Transit modes the search may use: either the modes it may ride (`transit`) or the modes it leaves out (`exclude`). Both non-empty in one request is a 400 `modes.transit is invalid`.
 class PlanTransitModesInput {
-  /// The modes an itinerary may ride, each with an optional reluctance. Absent means every mode.
+  /// The modes an itinerary may ride, each with an optional reluctance. Absent or empty means every mode.
   final List<PlanTransitModePreferenceInput>? transit;
+
+  /// The modes no itinerary may ride; every other mode stays usable, including one `TransitMode` gains later. Absent or empty excludes nothing. A value outside `TransitMode` is a 400 `modes.transit.exclude is invalid`. Never with a non-empty `transit`.
+  final List<TransitMode>? exclude;
 
   const PlanTransitModesInput({
     this.transit,
+    this.exclude,
   });
 
   factory PlanTransitModesInput.fromJson(Map<String, dynamic> json) =>
@@ -501,11 +514,16 @@ class PlanTransitModesInput {
             ?.map((e) => PlanTransitModePreferenceInput.fromJson(
                 e as Map<String, dynamic>))
             .toList(),
+        exclude: (json['exclude'] as List<dynamic>?)
+            ?.map((e) => TransitMode.fromWire(e as String))
+            .toList(),
       );
 
   Map<String, dynamic> toJson() => {
         if (transit != null)
           'transit': transit!.map((e) => e.toJson()).toList(),
+        if (exclude != null)
+          'exclude': exclude!.map((e) => e.toJson()).toList(),
       };
 }
 
