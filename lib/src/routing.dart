@@ -402,8 +402,11 @@ class EstimatedDelays {
 }
 
 /// Options for a trip-plan search. [departAt]/[arriveBy] are mutually exclusive (arriveBy wins if both set;
-/// neither = depart now). [allowedTransitModes] empty = all modes. [searchWindowMinutes] defaults to 60; the
-/// environment sets its maximum, and a window above it fails with [SpiderErrorCode.badRequest].
+/// neither = depart now). [allowedTransitModes] empty = all modes. [excludedTransitModes] are the modes no
+/// itinerary may ride, every other mode staying usable; empty excludes nothing. [TransitMode.walk] and
+/// [TransitMode.unknown] are ignored in both, and both non-empty fails with [SpiderErrorCode.badRequest]
+/// (field `modes.transit`, `modes.transit is invalid`) without a request. [searchWindowMinutes] defaults to
+/// 60; the environment sets its maximum, and a window above it fails with [SpiderErrorCode.badRequest].
 ///
 /// The [via] locations apply in the order given, and visit and pass-through locations may be mixed. Each takes
 /// 1–10 stop ids (field `via`) and a visit waits 0–1 h ([VisitVia.minimumWaitSeconds], field
@@ -428,6 +431,9 @@ class PlanOptions {
   /// Plans each arrival with the trip's typical delay at this level ([Leg.typicalArrivalDelay]); null plans on
   /// the timetable.
   final Reliability? reliability;
+
+  /// The modes no itinerary may ride; sent as `modes.transit.exclude`.
+  final List<TransitMode> excludedTransitModes;
   const PlanOptions({
     required this.origin,
     required this.destination,
@@ -439,6 +445,7 @@ class PlanOptions {
     this.searchWindowMinutes,
     this.wheelchairAccessible = false,
     this.reliability,
+    this.excludedTransitModes = const [],
   });
 }
 
@@ -455,6 +462,7 @@ class _PlanRequest {
   final int searchWindowMinutes;
   final bool wheelchairAccessible;
   final Reliability? reliability;
+  final List<TransitMode> excludedTransitModes;
   const _PlanRequest({
     required this.origin,
     required this.destination,
@@ -466,6 +474,7 @@ class _PlanRequest {
     required this.searchWindowMinutes,
     required this.wheelchairAccessible,
     this.reliability,
+    required this.excludedTransitModes,
   });
 }
 
@@ -503,7 +512,7 @@ class SpiderRouting {
 
   /// Plans a trip. Returns the first window of itineraries.
   Future<SpiderResult<Route>> plan(PlanOptions options) async {
-    final invalid = _invalidVia(options.via);
+    final invalid = _invalidVia(options.via) ?? _invalidModes(options);
     if (invalid != null) return Failure(invalid);
     return _page(_makeRequest(options));
   }
@@ -524,11 +533,15 @@ class SpiderRouting {
   /// maximum) within [timeRangeSeconds] (default 24 h) of [startTime] (default now). A [timeRangeSeconds] that
   /// isn't above 0 and at most 24 h fails with [SpiderErrorCode.badRequest] (field `timeRange`) without a
   /// request. [reliability] is the level [Departure.typicalDelay] is given at; null leaves it null.
+  /// [excludedModes] leaves out every departure of those modes before [numberOfDepartures] counts, so the board
+  /// (and each later one paged by [startTime]) still holds up to [numberOfDepartures] departures of the other
+  /// modes; empty leaves out nothing, and [TransitMode.walk] and [TransitMode.unknown] are ignored.
   Future<SpiderResult<List<Departure>>> departures(String stopId,
       {int numberOfDepartures = _defaultNumberOfDepartures,
       DateTime? startTime,
       int timeRangeSeconds = _maxTimeRangeSeconds,
-      Reliability? reliability}) async {
+      Reliability? reliability,
+      List<TransitMode> excludedModes = const []}) async {
     if (timeRangeSeconds <= 0 || timeRangeSeconds > _maxTimeRangeSeconds) {
       return Failure(invalidInput('timeRange'));
     }
@@ -541,6 +554,7 @@ class SpiderRouting {
             : (startTime.millisecondsSinceEpoch / 1000).floor(),
         timeRange: timeRangeSeconds,
         reliability: _reliabilityInput(reliability),
+        excludeModes: _wireModes(excludedModes),
       ).toJson();
       final departures = await _transport.postJson(
           '/routing/v1/departures', body, _decodeDepartures);
@@ -659,7 +673,7 @@ class SpiderRouting {
   ) async* {
     final invalid = maxWindowMinutes < _minStreamWindowMinutes
         ? invalidInput('maxWindow')
-        : _invalidVia(options.via);
+        : _invalidVia(options.via) ?? _invalidModes(options);
     if (invalid != null) {
       yield PlanStreamFailure(invalid);
       return;
@@ -676,7 +690,8 @@ class SpiderRouting {
         origin: _locationToInput(request.origin),
         destination: _locationToInput(request.destination),
         via: request.via.isEmpty ? null : request.via.map(_viaToInput).toList(),
-        modes: _modesInput(request.allowedTransitModes),
+        modes: _modesInput(
+            request.allowedTransitModes, request.excludedTransitModes),
         preferences: _preferencesInput(request),
         targetResults: targetResults,
         maxWindow: 'PT${maxWindowMinutes}M',
@@ -719,6 +734,7 @@ class SpiderRouting {
           options.searchWindowMinutes ?? _defaultSearchWindowMinutes,
       wheelchairAccessible: options.wheelchairAccessible,
       reliability: options.reliability,
+      excludedTransitModes: options.excludedTransitModes,
     );
   }
 
@@ -742,7 +758,8 @@ class SpiderRouting {
       origin: _locationToInput(request.origin),
       destination: _locationToInput(request.destination),
       via: request.via.isEmpty ? null : request.via.map(_viaToInput).toList(),
-      modes: _modesInput(request.allowedTransitModes),
+      modes: _modesInput(
+          request.allowedTransitModes, request.excludedTransitModes),
       preferences: _preferencesInput(request),
       searchWindow: 'PT${request.searchWindowMinutes}M',
       reliability: _reliabilityInput(request.reliability),
@@ -878,15 +895,31 @@ wire.PlanViaLocationInput _viaToInput(ViaLocation via) {
   }
 }
 
-wire.PlanModesInput? _modesInput(List<TransitMode> modes) {
-  final transit = modes
+// The modes a filter sends, dropping WALK/UNKNOWN (no wire transit mode); null when none is left.
+List<wire.TransitMode>? _wireModes(List<TransitMode> modes) {
+  final wireModes = modes
       .where((m) => _wireTransitModes.contains(m.wire))
-      .map((m) => wire.PlanTransitModePreferenceInput(
-          mode: wire.TransitMode.fromWire(m.wire)))
+      .map((m) => wire.TransitMode.fromWire(m.wire))
       .toList();
-  if (transit.isEmpty) return null;
+  return wireModes.isEmpty ? null : wireModes;
+}
+
+// The API takes an allow-list or an exclude-list, never both.
+SpiderError? _invalidModes(PlanOptions options) =>
+    _wireModes(options.allowedTransitModes) != null &&
+            _wireModes(options.excludedTransitModes) != null
+        ? invalidInput('modes.transit', malformed: true)
+        : null;
+
+wire.PlanModesInput? _modesInput(
+    List<TransitMode> allowed, List<TransitMode> excluded) {
+  final transit = _wireModes(allowed)
+      ?.map((mode) => wire.PlanTransitModePreferenceInput(mode: mode))
+      .toList();
+  final exclude = _wireModes(excluded);
+  if (transit == null && exclude == null) return null;
   return wire.PlanModesInput(
-      transit: wire.PlanTransitModesInput(transit: transit));
+      transit: wire.PlanTransitModesInput(transit: transit, exclude: exclude));
 }
 
 wire.PlanPreferencesInput? _preferencesInput(_PlanRequest request) {
