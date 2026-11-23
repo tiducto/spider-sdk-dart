@@ -409,6 +409,92 @@ void main() {
           true);
     });
 
+    group('excluded transit modes', () {
+      PlanOptions modes(
+              {List<TransitMode> allowed = const [],
+              List<TransitMode> excluded = const []}) =>
+          PlanOptions(
+              origin: const Location.stop('A'),
+              destination: const Location.stop('B'),
+              allowedTransitModes: allowed,
+              excludedTransitModes: excluded);
+
+      test('plan sends them as modes.transit.exclude, without WALK/UNKNOWN',
+          () async {
+        final (client, mock) = makeClient((_) => resp(planBody));
+        await client.routing.plan(modes(excluded: const [
+          TransitMode.bus,
+          TransitMode.walk,
+          TransitMode.unknown,
+          TransitMode.rail
+        ]));
+        expect(bodyOf(mock.requests.single)['modes'], {
+          'transit': {
+            'exclude': ['BUS', 'RAIL']
+          }
+        });
+      });
+
+      test('plan omits modes when nothing real is excluded', () async {
+        for (final excluded in [
+          const <TransitMode>[],
+          const [TransitMode.walk, TransitMode.unknown],
+        ]) {
+          final (client, mock) = makeClient((_) => resp(planBody));
+          await client.routing.plan(modes(excluded: excluded));
+          expect(bodyOf(mock.requests.single).containsKey('modes'), isFalse,
+              reason: '$excluded');
+        }
+      });
+
+      test('an allow-list of only WALK beside an exclusion sends only exclude',
+          () async {
+        final (client, mock) = makeClient((_) => resp(planBody));
+        final result = await client.routing.plan(modes(
+            allowed: const [TransitMode.walk],
+            excluded: const [TransitMode.tram]));
+        expect(result, isA<Success<Route>>());
+        expect(bodyOf(mock.requests.single)['modes'], {
+          'transit': {
+            'exclude': ['TRAM']
+          }
+        });
+      });
+
+      test(
+          'plan rejects both lists as modes.transit is invalid without a '
+          'request', () async {
+        final (client, mock) = makeClient((_) => resp(planBody));
+        final result = await client.routing.plan(modes(
+            allowed: const [TransitMode.bus],
+            excluded: const [TransitMode.tram]));
+        final error = (result as Failure<Route>).error;
+        expect(error.code, SpiderErrorCode.badRequest);
+        expect(error.field, 'modes.transit');
+        expect(error.message, 'modes.transit is invalid');
+        expect(mock.requests, isEmpty);
+      });
+
+      test('planNext and planPrevious resend the exclusion', () async {
+        final both =
+            planJson(pageInfo: {'hasNextPage': true, 'hasPreviousPage': true});
+        final (client, mock) = makeClient((_) => resp(both));
+        final first = await client.routing
+            .plan(modes(excluded: const [TransitMode.tram]));
+        final route = (first as Success<Route>).value;
+        await client.routing.planNext(route);
+        await client.routing.planPrevious(route);
+        expect(mock.requests.map((r) => bodyOf(r)['modes']).toList(), [
+          for (var i = 0; i < 3; i++)
+            {
+              'transit': {
+                'exclude': ['TRAM']
+              }
+            }
+        ]);
+      });
+    });
+
     test('plan sends reliability only when set', () async {
       for (final (reliability, expected) in [
         (Reliability.standard, 'STANDARD'),
@@ -1017,6 +1103,27 @@ void main() {
       expect(req.headers['content-type'], 'application/json');
       expect(bodyOf(req),
           {'id': 'S', 'numberOfDepartures': 30, 'timeRange': 86400});
+    });
+
+    test('departures sends excludeModes only when a real mode is excluded',
+        () async {
+      final (client, mock) = makeClient((_) => resp(departuresJson(const [])));
+      await client.routing.departures('S');
+      await client.routing.departures('S',
+          excludedModes: const [TransitMode.walk, TransitMode.unknown]);
+      await client.routing.departures('S', excludedModes: const [
+        TransitMode.bus,
+        TransitMode.walk,
+        TransitMode.trolleybus
+      ]);
+      expect(bodyOf(mock.requests[0]).containsKey('excludeModes'), isFalse);
+      expect(bodyOf(mock.requests[1]).containsKey('excludeModes'), isFalse);
+      expect(bodyOf(mock.requests[2]), {
+        'id': 'S',
+        'numberOfDepartures': 30,
+        'timeRange': 86400,
+        'excludeModes': ['BUS', 'TROLLEYBUS'],
+      });
     });
 
     test('departures sends reliability only when set', () async {
@@ -2538,6 +2645,58 @@ void main() {
       final vars = bodyOf(mock.requests.single);
       expect(vars['before'], 'c-prev');
       expect(vars.containsKey('after'), false);
+    });
+
+    test('every plan stream call sends the exclusion', () async {
+      final (client, mock) = makeStreamClient(200, pageInfoFrame);
+      const options = PlanOptions(
+          origin: Location.stop('A'),
+          destination: Location.stop('B'),
+          excludedTransitModes: [TransitMode.tram, TransitMode.walk]);
+      await client.routing
+          .planStream(options, targetResults: 5, maxWindowMinutes: 120)
+          .toList();
+      await client.routing
+          .planStreamNext(options,
+              targetResults: 5, maxWindowMinutes: 120, after: 'c1')
+          .toList();
+      await client.routing
+          .planStreamPrevious(options,
+              targetResults: 5, maxWindowMinutes: 120, before: 'c0')
+          .toList();
+      expect(mock.requests.map((r) => bodyOf(r)['modes']).toList(), [
+        for (var i = 0; i < 3; i++)
+          {
+            'transit': {
+              'exclude': ['TRAM']
+            }
+          }
+      ]);
+    });
+
+    test('planStream rejects allowed and excluded modes without a request',
+        () async {
+      final (client, mock) = makeStreamClient(200, pageInfoFrame);
+      const options = PlanOptions(
+          origin: Location.stop('A'),
+          destination: Location.stop('B'),
+          allowedTransitModes: [TransitMode.bus],
+          excludedTransitModes: [TransitMode.tram]);
+      for (final stream in [
+        client.routing
+            .planStream(options, targetResults: 5, maxWindowMinutes: 120),
+        client.routing.planStreamNext(options,
+            targetResults: 5, maxWindowMinutes: 120, after: 'c1'),
+        client.routing.planStreamPrevious(options,
+            targetResults: 5, maxWindowMinutes: 120, before: 'c0'),
+      ]) {
+        final error =
+            ((await stream.toList()).single as PlanStreamFailure).error;
+        expect(error.code, SpiderErrorCode.badRequest);
+        expect(error.field, 'modes.transit');
+        expect(error.message, 'modes.transit is invalid');
+      }
+      expect(mock.requests, isEmpty);
     });
 
     test('planStreamNext and planStreamPrevious send the reliability',
