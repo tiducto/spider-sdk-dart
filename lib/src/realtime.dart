@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'enums.dart';
 import 'errors.dart';
+import 'polyline.dart';
 import 'result.dart';
 import 'service_date.dart';
 import 'transport.dart';
@@ -26,6 +27,10 @@ class LiveVehicle {
 
   /// The GTFS service date (`YYYY-MM-DD`) of the trip run the vehicle is on.
   final String serviceDate;
+
+  /// The start time of the trip run (GTFS `HH:MM:SS`, may exceed `24:00:00`), as the feed's GTFS-RT
+  /// `start_time` gives it; it tells apart the runs of a frequency-based trip. Null when the feed gives none.
+  final String? startTime;
   final String? routeId;
   final String? vehicleId;
   final String? label;
@@ -37,9 +42,23 @@ class LiveVehicle {
   final String? currentStatus;
   final OccupancyStatus? occupancy;
   final int? timestampEpochMs;
+
+  /// Whether a wheelchair user can board the vehicle reported for the trip, from GTFS-RT
+  /// `VehicleDescriptor.wheelchair_accessible`; null when the feed gives no value or `UNKNOWN`.
+  final WheelchairBoarding? wheelchairAccessible;
+
+  /// Whether the vehicle reported for the trip is air-conditioned; null when unknown.
+  final bool? airConditioning;
+
+  /// Whether the vehicle reported for the trip offers Wi-Fi; null when unknown.
+  final bool? wifi;
+
+  /// Whether the vehicle reported for the trip accepts card payment on board; null when unknown.
+  final bool? cardPayment;
   const LiveVehicle({
     required this.tripId,
     required this.serviceDate,
+    this.startTime,
     this.routeId,
     this.vehicleId,
     this.label,
@@ -51,10 +70,15 @@ class LiveVehicle {
     this.currentStatus,
     this.occupancy,
     this.timestampEpochMs,
+    this.wheelchairAccessible,
+    this.airConditioning,
+    this.wifi,
+    this.cardPayment,
   });
   Map<String, dynamic> toJson() => {
         'tripId': tripId,
         'serviceDate': serviceDate,
+        'startTime': startTime,
         'routeId': routeId,
         'vehicleId': vehicleId,
         'label': label,
@@ -66,6 +90,10 @@ class LiveVehicle {
         'currentStatus': currentStatus,
         'occupancy': occupancy?.wire,
         'timestampEpochMs': timestampEpochMs,
+        'wheelchairAccessible': wheelchairAccessible?.wire,
+        'airConditioning': airConditioning,
+        'wifi': wifi,
+        'cardPayment': cardPayment,
       };
 }
 
@@ -156,6 +184,160 @@ class TripDelays {
   Map<String, dynamic> toJson() => {
         'serviceDate': serviceDate,
         'delays': delays.map((d) => d.toJson()).toList(),
+        'missing': missing,
+        'freshness': freshness.toJson(),
+      };
+}
+
+/// An original stop time of a trip, by [stopSequence] and/or [stopId] as the feed gives it. Experimental, as
+/// GTFS-RT `StopSelector`. [stopId] is feed-prefixed (`<feedId>:<id>`).
+class StopSelector {
+  final int? stopSequence;
+  final String? stopId;
+  const StopSelector({this.stopSequence, this.stopId});
+  Map<String, dynamic> toJson() =>
+      {'stopSequence': stopSequence, 'stopId': stopId};
+}
+
+/// A stop a modified trip visits in place of the replaced span. Experimental, as GTFS-RT `ReplacementStop`.
+/// [stopId] is feed-prefixed (`<feedId>:<id>`); [name], [latitude] and [longitude] are set only when the feed
+/// defines the stop as a realtime `Stop` entity, otherwise the stop is a static one that stop search returns.
+class ReplacementStop {
+  final String? stopId;
+
+  /// Seconds from the arrival at the reference stop (the stop before [TripModification.startStop], or the
+  /// trip's first stop when the modification starts there) to the arrival here.
+  final int? travelTimeToStopSeconds;
+  final String? name;
+  final double? latitude;
+  final double? longitude;
+  const ReplacementStop(
+      {this.stopId,
+      this.travelTimeToStopSeconds,
+      this.name,
+      this.latitude,
+      this.longitude});
+  Map<String, dynamic> toJson() => {
+        'stopId': stopId,
+        'travelTimeToStopSeconds': travelTimeToStopSeconds,
+        'name': name,
+        'latitude': latitude,
+        'longitude': longitude,
+      };
+}
+
+/// A detour of a trip run: the span of its stop times from [startStop] to [endStop] replaced by
+/// [replacementStops]. Experimental, as GTFS-RT `TripModifications.Modification`: its shape may change in a
+/// later contract version. A member the feed doesn't set is null.
+class TripModification {
+  /// Feed-prefixed (`<feedId>:<id>`) id of the feed entity holding the trip modifications.
+  final String id;
+
+  /// GTFS times (`HH:MM:SS`) of the runs of a frequency-based trip the modification applies to; null when it
+  /// applies to every run of the trip on the service date.
+  final List<String>? startTimes;
+
+  /// The first original stop time replaced.
+  final StopSelector? startStop;
+
+  /// The last original stop time replaced, inclusive; null when no stop time is replaced.
+  final StopSelector? endStop;
+
+  /// The stops the trip now visits in place of the replaced span, in order; empty when the feed lists none.
+  final List<ReplacementStop> replacementStops;
+
+  /// Seconds added to every arrival and departure after the end of the modification; 0 when the feed doesn't
+  /// set it.
+  final int propagatedModificationDelaySeconds;
+
+  /// Feed-prefixed id of the [ServiceAlert] describing the modification, as [SpiderRealtime.alerts] returns it.
+  final String? alertId;
+
+  /// When the modification last changed, epoch milliseconds.
+  final int? lastModifiedEpochMs;
+
+  /// The modified trip's path, from the feed's realtime `Shape` entity; null when the feed has none for it.
+  final List<LatLon>? shape;
+  const TripModification({
+    required this.id,
+    this.startTimes,
+    this.startStop,
+    this.endStop,
+    this.replacementStops = const [],
+    this.propagatedModificationDelaySeconds = 0,
+    this.alertId,
+    this.lastModifiedEpochMs,
+    this.shape,
+  });
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'startTimes': startTimes,
+        'startStop': startStop?.toJson(),
+        'endStop': endStop?.toJson(),
+        'replacementStops': replacementStops.map((s) => s.toJson()).toList(),
+        'propagatedModificationDelaySeconds':
+            propagatedModificationDelaySeconds,
+        'alertId': alertId,
+        'lastModifiedEpochMs': lastModifiedEpochMs,
+        'shape': shape?.map((p) => p.toJson()).toList(),
+      };
+}
+
+/// The live update of one trip run: its schedule deviation (seconds, as in [TripDelay]) and the
+/// [modifications] (detours) that select it. A run that only modifications select has empty [stopTimeUpdates]
+/// and null [delaySeconds], [scheduleRelationship] and [routeId]. [tripId], [routeId] and each
+/// [StopTimeUpdate.stopId] are feed-prefixed (`<feedId>:<id>`).
+class TripUpdate {
+  final String tripId;
+
+  /// The start time of the trip run (GTFS `HH:MM:SS`, may exceed `24:00:00`), as the feed gives it; each run of
+  /// a frequency-based trip is its own [TripUpdate]. Null when the feed gives none.
+  final String? startTime;
+  final String? routeId;
+  final int? delaySeconds;
+  final String? scheduleRelationship;
+  final List<StopTimeUpdate> stopTimeUpdates;
+
+  /// The trip modifications that apply to this run, in feed order; their delays accumulate along the trip.
+  /// Empty when none applies. Experimental, as GTFS-RT `TripModifications`.
+  final List<TripModification> modifications;
+  const TripUpdate(
+      {required this.tripId,
+      this.startTime,
+      this.routeId,
+      this.delaySeconds,
+      this.scheduleRelationship,
+      this.stopTimeUpdates = const [],
+      this.modifications = const []});
+  Map<String, dynamic> toJson() => {
+        'tripId': tripId,
+        'startTime': startTime,
+        'routeId': routeId,
+        'delaySeconds': delaySeconds,
+        'scheduleRelationship': scheduleRelationship,
+        'stopTimeUpdates': stopTimeUpdates.map((s) => s.toJson()).toList(),
+        'modifications': modifications.map((m) => m.toJson()).toList(),
+      };
+}
+
+/// Live trip updates for one GTFS service date, one per trip run, and the [missing] trip ids with neither a live
+/// update nor a trip modification, exactly as requested. Look a trip's runs up with [updatesFor].
+class TripUpdates {
+  final String serviceDate;
+  final List<TripUpdate> tripUpdates;
+  final List<String> missing;
+  final FeedFreshness freshness;
+  const TripUpdates(
+      this.serviceDate, this.tripUpdates, this.missing, this.freshness);
+
+  /// The updates of [tripId]'s runs on [serviceDate], in order of [TripUpdate.startTime] (a run without one
+  /// first); empty when the feed reported none.
+  List<TripUpdate> updatesFor(String tripId) =>
+      tripUpdates.where((u) => u.tripId == tripId).toList();
+
+  Map<String, dynamic> toJson() => {
+        'serviceDate': serviceDate,
+        'tripUpdates': tripUpdates.map((u) => u.toJson()).toList(),
         'missing': missing,
         'freshness': freshness.toJson(),
       };
@@ -274,16 +456,21 @@ class SpiderRealtime {
 
   /// The live vehicle for a single trip run on GTFS [serviceDate] (`YYYY-MM-DD`) — pass the leg's or
   /// departure's `serviceDate`. A 404 is a normal "no vehicle currently reporting", not an error. A malformed
-  /// date fails with [SpiderErrorCode.badRequest] (field `serviceDate`) without a request.
+  /// date fails with [SpiderErrorCode.badRequest] (field `serviceDate`) without a request. [startTime] (GTFS
+  /// `H:MM:SS` or `HH:MM:SS`, a [LiveVehicle.startTime] or [TripUpdate.startTime]) picks the run of a
+  /// frequency-based trip the feed reports with that start time; null answers the run with the earliest one.
   Future<SpiderResult<LiveVehicleUpdate>> vehicleForTrip(
-      String tripId, String serviceDate) async {
+      String tripId, String serviceDate,
+      {String? startTime}) async {
     final invalidDate = invalidServiceDate(serviceDate);
     if (invalidDate != null) return Failure(invalidDate);
     try {
       final path =
           '/realtime/v1/vehicles/by-trip/${Uri.encodeComponent(tripId)}';
-      final resp =
-          await _transport.getRaw(path, query: {'serviceDate': serviceDate});
+      final resp = await _transport.getRaw(path, query: {
+        'serviceDate': serviceDate,
+        if (startTime != null) 'startTime': startTime,
+      });
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
         final failure = httpFailure('GET $path', resp.statusCode, resp.body);
         // A 404 means no vehicle is reporting, unless its body names a plan-limit refusal.
@@ -303,21 +490,46 @@ class SpiderRealtime {
     }
   }
 
+  /// Live trip updates for up to 50 feed-prefixed [tripIds] (`<feedId>:<id>`) running on one GTFS [serviceDate]
+  /// (`YYYY-MM-DD`) — pass a plan leg's, departure's or trip's `serviceDate` and its trip id through. One
+  /// [TripUpdate] per trip run, so a frequency-based trip may have several, each with its
+  /// [TripUpdate.startTime], and each carries the experimental [TripUpdate.modifications] (detours) that select
+  /// it. The ids are de-duplicated and sorted, so equal requests share a cached response. A malformed date, no
+  /// ids, a blank id or more than 50 distinct ids fails with [SpiderErrorCode.badRequest] (field `serviceDate`
+  /// or `tripIds`) without a request.
+  Future<SpiderResult<TripUpdates>> tripUpdates(
+      String serviceDate, List<String> tripIds) async {
+    final (ids, invalid) = _tripIdsQuery(serviceDate, tripIds);
+    if (invalid != null) return Failure(invalid);
+    try {
+      final json = await _transport.getJson(
+          '/realtime/v1/trip-updates', _identity,
+          query: {'serviceDate': serviceDate, 'tripIds': ids.join(',')});
+      return Success(TripUpdates(
+        json['serviceDate'] as String,
+        (json['tripUpdates'] as List<dynamic>)
+            .map((u) => _mapTripUpdate(u as Map<String, dynamic>))
+            .toList(),
+        (json['missing'] as List<dynamic>).map((e) => e as String).toList(),
+        _mapFreshness(json),
+      ));
+    } catch (e) {
+      return Failure(toSpiderError(e));
+    }
+  }
+
   /// Live delays for up to 50 feed-prefixed [tripIds] (`<feedId>:<id>`) running on one GTFS [serviceDate]
-  /// (`YYYY-MM-DD`) — pass a plan leg's, departure's or trip's `serviceDate` and its trip id through. The ids
-  /// are de-duplicated and sorted, so equal requests share a cached response. A malformed date, no ids, a
-  /// blank id or more than 50 distinct ids fails with [SpiderErrorCode.badRequest] (field `serviceDate` or
-  /// `tripIds`) without a request.
+  /// (`YYYY-MM-DD`) — pass a plan leg's, departure's or trip's `serviceDate` and its trip id through. A
+  /// frequency-based trip answers its run with the earliest start time. The ids are de-duplicated and sorted,
+  /// so equal requests share a cached response. A malformed date, no ids, a blank id or more than 50 distinct
+  /// ids fails with [SpiderErrorCode.badRequest] (field `serviceDate` or `tripIds`) without a request.
+  @Deprecated(
+      'Use tripUpdates, its successor: the API retires GET /realtime/v1/delays '
+      'with notice, no earlier than 2027-05-24.')
   Future<SpiderResult<TripDelays>> delays(
       String serviceDate, List<String> tripIds) async {
-    final invalidDate = invalidServiceDate(serviceDate);
-    if (invalidDate != null) return Failure(invalidDate);
-    if (tripIds.isEmpty) return Failure(missingInput('tripIds'));
-    if (tripIds.any((id) => id.trim().isEmpty)) {
-      return Failure(invalidInput('tripIds', malformed: true));
-    }
-    final ids = tripIds.toSet().toList()..sort();
-    if (ids.length > _maxTripIds) return Failure(invalidInput('tripIds'));
+    final (ids, invalid) = _tripIdsQuery(serviceDate, tripIds);
+    if (invalid != null) return Failure(invalid);
     try {
       final json = await _transport.getJson('/realtime/v1/delays', _identity,
           query: {'serviceDate': serviceDate, 'tripIds': ids.join(',')});
@@ -357,10 +569,19 @@ extension SpiderRealtimePolling on SpiderRealtime {
           () => vehicles(serviceDate, tripIds));
 
   Stream<SpiderResult<LiveVehicleUpdate>> pollVehicleForTrip(
-          String tripId, String serviceDate, {int? intervalMs}) =>
+          String tripId, String serviceDate,
+          {String? startTime, int? intervalMs}) =>
       _poll(intervalMs, (v) => jsonEncode(v.toJson()),
-          () => vehicleForTrip(tripId, serviceDate));
+          () => vehicleForTrip(tripId, serviceDate, startTime: startTime));
 
+  Stream<SpiderResult<TripUpdates>> pollTripUpdates(
+          String serviceDate, List<String> tripIds, {int? intervalMs}) =>
+      _poll(intervalMs, (v) => jsonEncode(v.toJson()),
+          () => tripUpdates(serviceDate, tripIds));
+
+  @Deprecated(
+      'Use pollTripUpdates, its successor: the API retires GET /realtime/v1/delays '
+      'with notice, no earlier than 2027-05-24.')
   Stream<SpiderResult<TripDelays>> pollDelays(
           String serviceDate, List<String> tripIds, {int? intervalMs}) =>
       _poll(intervalMs, (v) => jsonEncode(v.toJson()),
@@ -371,6 +592,19 @@ extension SpiderRealtimePolling on SpiderRealtime {
 }
 
 Map<String, dynamic> _identity(Map<String, dynamic> json) => json;
+
+(List<String>, SpiderError?) _tripIdsQuery(
+    String serviceDate, List<String> tripIds) {
+  final invalidDate = invalidServiceDate(serviceDate);
+  if (invalidDate != null) return (const [], invalidDate);
+  if (tripIds.isEmpty) return (const [], missingInput('tripIds'));
+  if (tripIds.any((id) => id.trim().isEmpty)) {
+    return (const [], invalidInput('tripIds', malformed: true));
+  }
+  final ids = tripIds.toSet().toList()..sort();
+  if (ids.length > _maxTripIds) return (const [], invalidInput('tripIds'));
+  return (ids, null);
+}
 
 Stream<SpiderResult<T>> _poll<T>(
   int? intervalMs,
@@ -404,6 +638,7 @@ FeedFreshness _mapFreshness(Map<String, dynamic> json) => FeedFreshness(
 LiveVehicle _mapVehicle(Map<String, dynamic> v) => LiveVehicle(
       tripId: v['tripId'] as String,
       serviceDate: v['serviceDate'] as String,
+      startTime: v['startTime'] as String?,
       routeId: v['routeId'] as String?,
       vehicleId: v['vehicleId'] as String?,
       label: v['label'] as String?,
@@ -415,6 +650,65 @@ LiveVehicle _mapVehicle(Map<String, dynamic> v) => LiveVehicle(
       currentStatus: v['currentStatus'] as String?,
       occupancy: OccupancyStatus.fromWire(v['occupancyStatus'] as String?),
       timestampEpochMs: _secondsToMs(v['timestamp']),
+      wheelchairAccessible:
+          _vehicleWheelchair(v['wheelchairAccessible'] as String?),
+      airConditioning: v['airConditioning'] as bool?,
+      wifi: v['wifi'] as bool?,
+      cardPayment: v['cardPayment'] as bool?,
+    );
+
+WheelchairBoarding? _vehicleWheelchair(String? value) => switch (value) {
+      null || 'UNKNOWN' => null,
+      'WHEELCHAIR_ACCESSIBLE' => WheelchairBoarding.possible,
+      'WHEELCHAIR_INACCESSIBLE' => WheelchairBoarding.notPossible,
+      _ => WheelchairBoarding.unknown,
+    };
+
+TripUpdate _mapTripUpdate(Map<String, dynamic> u) => TripUpdate(
+      tripId: u['tripId'] as String,
+      startTime: u['startTime'] as String?,
+      routeId: u['routeId'] as String?,
+      delaySeconds: (u['delaySeconds'] as num?)?.toInt(),
+      scheduleRelationship: u['scheduleRelationship'] as String?,
+      stopTimeUpdates: (u['stopTimeUpdates'] as List<dynamic>)
+          .map((s) => _mapStopTimeUpdate(s as Map<String, dynamic>))
+          .toList(),
+      modifications: (u['modifications'] as List<dynamic>? ?? const [])
+          .map((m) => _mapModification(m as Map<String, dynamic>))
+          .toList(),
+    );
+
+TripModification _mapModification(Map<String, dynamic> m) => TripModification(
+      id: m['id'] as String,
+      startTimes:
+          (m['startTimes'] as List<dynamic>?)?.map((e) => e as String).toList(),
+      startStop: _mapStopSelector(m['startStop']),
+      endStop: _mapStopSelector(m['endStop']),
+      replacementStops: (m['replacementStops'] as List<dynamic>? ?? const [])
+          .map((s) => _mapReplacementStop(s as Map<String, dynamic>))
+          .toList(),
+      propagatedModificationDelaySeconds:
+          (m['propagatedModificationDelay'] as num?)?.toInt() ?? 0,
+      alertId: m['alertId'] as String?,
+      lastModifiedEpochMs: _secondsToMs(m['lastModifiedTime']),
+      shape: m['shape'] == null
+          ? null
+          : decodePolyline(m['shape'] as String, factor: 1e5),
+    );
+
+StopSelector? _mapStopSelector(Object? s) => s is Map<String, dynamic>
+    ? StopSelector(
+        stopSequence: (s['stopSequence'] as num?)?.toInt(),
+        stopId: s['stopId'] as String?,
+      )
+    : null;
+
+ReplacementStop _mapReplacementStop(Map<String, dynamic> s) => ReplacementStop(
+      stopId: s['stopId'] as String?,
+      travelTimeToStopSeconds: (s['travelTimeToStop'] as num?)?.toInt(),
+      name: s['name'] as String?,
+      latitude: (s['latitude'] as num?)?.toDouble(),
+      longitude: (s['longitude'] as num?)?.toDouble(),
     );
 
 TripDelay _mapDelay(Map<String, dynamic> d) => TripDelay(

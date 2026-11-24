@@ -14,9 +14,9 @@ class LatLon {
   Map<String, dynamic> toJson() => {'lat': lat, 'lon': lon};
 }
 
-/// Decodes a Google-encoded polyline (precision 1e6) into points. Truncation-tolerant: a string that ends
-/// mid-group returns the points decoded so far rather than throwing.
-List<LatLon> decodePolyline(String encoded) {
+/// Decodes a Google-encoded polyline (precision [factor], 1e6 by default) into points. Truncation-tolerant: a
+/// string that ends mid-group returns the points decoded so far rather than throwing.
+List<LatLon> decodePolyline(String encoded, {double factor = 1e6}) {
   final points = <LatLon>[];
   final length = encoded.length;
   var index = 0;
@@ -44,7 +44,7 @@ List<LatLon> decodePolyline(String encoded) {
     final dLon = nextDelta();
     if (dLon == null) break;
     lon += dLon;
-    points.add(LatLon(lat / 1e6, lon / 1e6));
+    points.add(LatLon(lat / factor, lon / factor));
   }
   return points;
 }

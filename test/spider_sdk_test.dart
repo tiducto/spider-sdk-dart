@@ -1848,6 +1848,8 @@ void main() {
             c.realtime.vehicles('2026-07-15', ['1:T1']),
         ('GET', '/realtime/v1/vehicles/by-trip/1%3AT1'): (c) =>
             c.realtime.vehicleForTrip('1:T1', '2026-07-15'),
+        ('GET', '/realtime/v1/trip-updates'): (c) =>
+            c.realtime.tripUpdates('2026-07-15', ['1:T1']),
         ('GET', '/realtime/v1/delays'): (c) =>
             c.realtime.delays('2026-07-15', ['1:T1']),
         ('GET', '/realtime/v1/alerts'): (c) => c.realtime.alerts(),
@@ -1873,6 +1875,28 @@ void main() {
       expect(vehicle.stopId, '1:S1');
       expect(vehicle.latitude, 49.19);
       expect(vehicle.longitude, 16.6);
+    });
+
+    test('vehicles maps the run start time, accessibility and features',
+        () async {
+      const body =
+          '{"vehicles":[{"tripId":"1:T1","serviceDate":"2026-07-15","startTime":"25:10:00","latitude":49.1,"longitude":16.6,"wheelchairAccessible":"WHEELCHAIR_ACCESSIBLE","airConditioning":true,"wifi":false,"cardPayment":true},{"tripId":"1:T2","serviceDate":"2026-07-15","latitude":49.1,"longitude":16.6,"wheelchairAccessible":"WHEELCHAIR_INACCESSIBLE"},{"tripId":"1:T3","serviceDate":"2026-07-15","latitude":49.1,"longitude":16.6,"wheelchairAccessible":"UNKNOWN"},{"tripId":"1:T4","serviceDate":"2026-07-15","latitude":49.1,"longitude":16.6,"wheelchairAccessible":"SOMETHING_NEW"}],"missing":[]}';
+      final (client, _) = makeClient((_) => resp(body));
+      final result = await client.realtime
+          .vehicles('2026-07-15', ['1:T1', '1:T2', '1:T3', '1:T4']);
+      final vehicles = (result as Success<VehiclePositions>).value.vehicles;
+      final full = vehicles[0];
+      expect(full.startTime, '25:10:00');
+      expect(full.wheelchairAccessible, WheelchairBoarding.possible);
+      expect((full.airConditioning, full.wifi, full.cardPayment),
+          (true, false, true));
+      expect(vehicles[1].wheelchairAccessible, WheelchairBoarding.notPossible);
+      expect(vehicles[2].wheelchairAccessible, isNull);
+      expect(vehicles[3].wheelchairAccessible, WheelchairBoarding.unknown);
+      final bare = vehicles[1];
+      expect(bare.startTime, isNull);
+      expect((bare.airConditioning, bare.wifi, bare.cardPayment),
+          (null, null, null));
     });
 
     test('vehicles with no trip ids is an empty success without a request',
@@ -1931,6 +1955,20 @@ void main() {
       final req = mock.requests.single;
       expect(req.uri.path, '/realtime/v1/vehicles/by-trip/1%3AT1');
       expect(req.uri.queryParameters, {'serviceDate': '2026-07-14'});
+    });
+
+    test('vehicleForTrip and its poll send the run start time when set',
+        () async {
+      final (client, mock) = makeClient((_) => resp('{}'));
+      await client.realtime
+          .vehicleForTrip('1:T1', '2026-07-14', startTime: '8:10:00');
+      await client.realtime
+          .pollVehicleForTrip('1:T1', '2026-07-14', startTime: '08:20:00')
+          .first;
+      expect(mock.requests.map((r) => r.uri.queryParameters), [
+        {'serviceDate': '2026-07-14', 'startTime': '8:10:00'},
+        {'serviceDate': '2026-07-14', 'startTime': '08:20:00'},
+      ]);
     });
 
     test(
@@ -2028,6 +2066,171 @@ void main() {
         expect(error.message, message);
         expect(mock.requests, isEmpty, reason: message);
       }
+    });
+
+    test('tripUpdates GETs one service date and maps every run', () async {
+      final body = jsonEncode({
+        'serviceDate': '2026-07-15',
+        'tripUpdates': [
+          {
+            'tripId': '1:T1',
+            'startTime': '08:10:00',
+            'routeId': '1:R1',
+            'delaySeconds': 120,
+            'scheduleRelationship': 'SCHEDULED',
+            'stopTimeUpdates': [
+              {'stopId': '1:S1', 'stopSequence': 3, 'arrivalDelay': 120}
+            ],
+          },
+          {
+            'tripId': '1:T1',
+            'startTime': '08:20:00',
+            'stopTimeUpdates': [],
+            'modifications': [
+              {
+                'id': '1:M1',
+                'startTimes': ['08:20:00'],
+                'startStop': {'stopSequence': 4, 'stopId': '1:S4'},
+                'endStop': {'stopSequence': 6},
+                'replacementStops': [
+                  {'stopId': '1:S9', 'travelTimeToStop': 180},
+                  {
+                    'stopId': '1:RT1',
+                    'travelTimeToStop': 300,
+                    'name': 'Detour stop',
+                    'latitude': 49.2,
+                    'longitude': 16.6
+                  },
+                ],
+                'propagatedModificationDelay': 90,
+                'alertId': '1:A1',
+                'lastModifiedTime': 1700000000,
+                'shape': '_p~iF~ps|U_ulLnnqC_mqNvxq`@',
+              },
+            ],
+          },
+        ],
+        'missing': ['1:T2'],
+        'feedTimestamp': 1700000000,
+        'staleSeconds': 2,
+      });
+      final (client, mock) = makeClient((_) => resp(body));
+      final result =
+          await client.realtime.tripUpdates('2026-07-15', ['1:T2', '1:T1']);
+      final updates = (result as Success<TripUpdates>).value;
+
+      final req = mock.requests.single;
+      expect(req.method, 'GET');
+      expect(req.uri.path, '/realtime/v1/trip-updates');
+      expect(req.uri.queryParameters,
+          {'serviceDate': '2026-07-15', 'tripIds': '1:T1,1:T2'});
+
+      expect(updates.serviceDate, '2026-07-15');
+      expect(updates.missing, ['1:T2']);
+      expect(updates.freshness.feedTimestampEpochMs, 1700000000 * 1000);
+      expect(updates.freshness.staleSeconds, 2);
+      final runs = updates.updatesFor('1:T1');
+      expect(runs.map((u) => u.startTime), ['08:10:00', '08:20:00']);
+      expect(updates.updatesFor('T1'), isEmpty);
+
+      final live = runs[0];
+      expect(live.routeId, '1:R1');
+      expect(live.delaySeconds, 120);
+      expect(live.scheduleRelationship, 'SCHEDULED');
+      expect(live.stopTimeUpdates.single.stopId, '1:S1');
+      expect(live.modifications, isEmpty);
+
+      final detoured = runs[1];
+      expect(detoured.stopTimeUpdates, isEmpty);
+      expect(detoured.routeId, isNull);
+      expect(detoured.delaySeconds, isNull);
+      expect(detoured.scheduleRelationship, isNull);
+      final m = detoured.modifications.single;
+      expect(m.id, '1:M1');
+      expect(m.startTimes, ['08:20:00']);
+      expect((m.startStop?.stopSequence, m.startStop?.stopId), (4, '1:S4'));
+      expect((m.endStop?.stopSequence, m.endStop?.stopId), (6, null));
+      expect(m.replacementStops.map((s) => s.stopId), ['1:S9', '1:RT1']);
+      expect(m.replacementStops[0].travelTimeToStopSeconds, 180);
+      expect(m.replacementStops[0].name, isNull);
+      expect(m.replacementStops[0].latitude, isNull);
+      final realtimeStop = m.replacementStops[1];
+      expect((realtimeStop.name, realtimeStop.latitude, realtimeStop.longitude),
+          ('Detour stop', 49.2, 16.6));
+      expect(m.propagatedModificationDelaySeconds, 90);
+      expect(m.alertId, '1:A1');
+      expect(m.lastModifiedEpochMs, 1700000000 * 1000);
+      expect(m.shape, const [
+        LatLon(38.5, -120.2),
+        LatLon(40.7, -120.95),
+        LatLon(43.252, -126.453),
+      ]);
+    });
+
+    test('a tripUpdates modification without optional members', () async {
+      final body = jsonEncode({
+        'serviceDate': '2026-07-15',
+        'tripUpdates': [
+          {
+            'tripId': '1:T1',
+            'stopTimeUpdates': [],
+            'modifications': [
+              {
+                'id': '1:M1',
+                'replacementStops': [],
+                'propagatedModificationDelay': 0
+              },
+            ],
+          },
+        ],
+        'missing': [],
+      });
+      final (client, _) = makeClient((_) => resp(body));
+      final result = await client.realtime.tripUpdates('2026-07-15', ['1:T1']);
+      final update = (result as Success<TripUpdates>).value.tripUpdates.single;
+      expect(update.startTime, isNull);
+      final m = update.modifications.single;
+      expect(m.startTimes, isNull);
+      expect(m.startStop, isNull);
+      expect(m.endStop, isNull);
+      expect(m.replacementStops, isEmpty);
+      expect(m.propagatedModificationDelaySeconds, 0);
+      expect(m.alertId, isNull);
+      expect(m.lastModifiedEpochMs, isNull);
+      expect(m.shape, isNull);
+    });
+
+    test('tripUpdates rejects fixed limits without a request', () async {
+      final cases = <(String, List<String>, String, String)>[
+        ('2026-07-15', const [], 'tripIds', 'tripIds is required'),
+        ('2026-07-15', const ['1:T1', ' '], 'tripIds', 'tripIds is invalid'),
+        (
+          '2026-07-15',
+          List.generate(51, (i) => '1:T$i'),
+          'tripIds',
+          'tripIds is out of range'
+        ),
+        ('20260715', const ['1:T1'], 'serviceDate', 'serviceDate is invalid'),
+      ];
+      for (final (date, ids, field, message) in cases) {
+        final (client, mock) = makeClient((_) => resp('{}'));
+        final result = await client.realtime.tripUpdates(date, ids);
+        final error = (result as Failure<TripUpdates>).error;
+        expect(error.code, SpiderErrorCode.badRequest, reason: message);
+        expect(error.field, field, reason: message);
+        expect(error.message, message);
+        expect(mock.requests, isEmpty, reason: message);
+      }
+    });
+
+    test('pollTripUpdates sends the de-duplicated, sorted ids', () async {
+      final (client, mock) = makeClient((_) => resp(
+          '{"serviceDate":"2026-07-15","tripUpdates":[],"missing":["1:A","1:B"]}'));
+      final first = await client.realtime
+          .pollTripUpdates('2026-07-15', ['1:B', '1:A', '1:B']).first;
+      expect(first, isA<Success<TripUpdates>>());
+      expect(mock.requests.single.uri.queryParameters,
+          {'serviceDate': '2026-07-15', 'tripIds': '1:A,1:B'});
     });
 
     test('delays counts distinct ids against the limit of 50', () async {
