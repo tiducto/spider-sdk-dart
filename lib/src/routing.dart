@@ -570,15 +570,19 @@ class SpiderRouting {
 
   /// A single trip run's stops, times, and geometry. [serviceDate] (`YYYY-MM-DD`, a [Leg.serviceDate] or
   /// [Departure.serviceDate]) picks the run; a malformed date fails with [SpiderErrorCode.badRequest] without
-  /// sending a request. [reliability] is the level [TripStop.typicalDelay] is given at; null leaves it null.
+  /// sending a request. [startTime] (GTFS `H:MM:SS` or `HH:MM:SS`, the realtime API's
+  /// [LiveVehicle.startTime] or [TripUpdate.startTime]) picks the run of a frequency-based trip by its start
+  /// time; null answers the trip's first run on [serviceDate], and a time no run starts at is an unknown trip.
+  /// [reliability] is the level [TripStop.typicalDelay] is given at; null leaves it null.
   Future<SpiderResult<TripDetails>> trip(String tripId, String serviceDate,
-      {Reliability? reliability}) async {
+      {String? startTime, Reliability? reliability}) async {
     final invalid = invalidServiceDate(serviceDate);
     if (invalid != null) return Failure(invalid);
     try {
       final body = wire.TripRequest(
         id: tripId,
         serviceDate: serviceDate,
+        startTime: startTime,
         reliability: _reliabilityInput(reliability),
       ).toJson();
       final trip = await _transport.postJson(
@@ -597,10 +601,12 @@ class SpiderRouting {
   /// reliability level; null when the trip, the stop position or its history is unknown. History only, so live
   /// realtime never changes them: they are present for a live trip whose [TripStop.typicalDelay] is null. For a
   /// trip without live realtime they equal [trip]'s [TripStop.typicalDelay] at that level wherever that is not
-  /// null; a level with no shift is zero. A malformed [serviceDate] fails with [SpiderErrorCode.badRequest]
+  /// null; a level with no shift is zero. [startTime] picks the run of a frequency-based trip as in [trip]; a
+  /// time no run starts at answers null. A malformed [serviceDate] fails with [SpiderErrorCode.badRequest]
   /// without sending a request.
   Future<SpiderResult<EstimatedDelays?>> estimatedDelays(
-      String tripId, String serviceDate, int stopPosition) async {
+      String tripId, String serviceDate, int stopPosition,
+      {String? startTime}) async {
     final invalid = invalidServiceDate(serviceDate);
     if (invalid != null) return Failure(invalid);
     try {
@@ -610,6 +616,7 @@ class SpiderRouting {
             'tripId': tripId,
             'serviceDate': serviceDate,
             'stopPosition': '$stopPosition',
+            if (startTime != null) 'startTime': startTime,
           }));
     } catch (e) {
       return Failure(toSpiderError(e));

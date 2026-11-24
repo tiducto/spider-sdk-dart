@@ -1194,6 +1194,13 @@ void main() {
           {'id': 'T1', 'serviceDate': '2026-08-21', 'reliability': 'SAFE'});
     });
 
+    test('trip posts the run start time only when set', () async {
+      final (client, mock) = makeClient((_) => resp(tripJson(const [])));
+      await client.routing.trip('T1', '2026-08-21', startTime: '8:10:00');
+      expect(bodyOf(mock.requests.single),
+          {'id': 'T1', 'serviceDate': '2026-08-21', 'startTime': '8:10:00'});
+    });
+
     test('trip carries the requested service date', () async {
       final (client, _) = makeClient((_) => resp(tripJson(const [])));
       final trip = ((await client.routing.trip('T1', '2026-08-20'))
@@ -1391,6 +1398,19 @@ void main() {
           {'tripId': '1:T1', 'serviceDate': '2026-08-21', 'stopPosition': '4'});
       expect(req.headers['apikey'], 'secret-key');
       expect(req.headers['x-spider-contract-version'], contractVersion);
+    });
+
+    test('estimatedDelays sends the run start time only when set', () async {
+      final (client, mock) =
+          makeClient((_) => resp(jsonEncode({'estimatedDelays': null})));
+      await client.routing
+          .estimatedDelays('1:T1', '2026-08-21', 4, startTime: '25:10:00');
+      expect(mock.requests.single.uri.queryParameters, {
+        'tripId': '1:T1',
+        'serviceDate': '2026-08-21',
+        'stopPosition': '4',
+        'startTime': '25:10:00',
+      });
     });
 
     test('estimatedDelays maps entries by level, not position', () async {
