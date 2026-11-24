@@ -1,5 +1,46 @@
 # Changelog
 
+## 1.10.0 - 2026-11-24
+
+Targets Spider API contract `1.10`.
+
+### Added
+
+- **`realtime.tripUpdates(serviceDate, tripIds)`** and **`pollTripUpdates`**: the successor of `delays`, on
+  `GET /realtime/v1/trip-updates`. One `TripUpdate` per trip run, so a frequency-based trip may have several, each
+  with its `startTime`; `TripUpdates.updatesFor(tripId)` lists a trip's runs. Same limits and validation as
+  `delays`.
+- **`TripUpdate.modifications`** (experimental, as GTFS-RT `TripModifications`): the detours that apply to the
+  run, each a `TripModification` with the replaced span (`startStop` / `endStop`, `StopSelector`s), the
+  `replacementStops` (`ReplacementStop`, with `name` and position for a stop the feed defines in realtime),
+  `propagatedModificationDelaySeconds`, `alertId`, `lastModifiedEpochMs`, `startTimes` and the detour `shape`.
+  A run only modifications select has empty `stopTimeUpdates`. Its shape may change in a later contract version.
+- **`LiveVehicle.startTime`**: the run of the trip the vehicle is on (GTFS `HH:MM:SS`), which tells apart the
+  runs of a frequency-based trip.
+- **`LiveVehicle.wheelchairAccessible`** (`WheelchairBoarding`; null when the feed gives no value or `UNKNOWN`)
+  and **`airConditioning`**, **`wifi`**, **`cardPayment`** (null when unknown): what the vehicle reported for the
+  trip offers.
+- **`vehicleForTrip(…, startTime:)`**, **`trip(…, startTime:)`** and **`estimatedDelays(…, startTime:)`**: pick
+  the run of a frequency-based trip by its start time, the same value as `LiveVehicle.startTime` and
+  `TripUpdate.startTime`. Null or empty sends nothing and answers the earliest (first) run, as before.
+
+- **`departures(…, excludedModes:)`**: the board leaves out every departure of those modes. The API drops them
+  before it counts `numberOfDepartures`, so the board, and each later one paged by `startTime`, still holds up to
+  `numberOfDepartures` departures of the other modes. Sent as `excludeModes`.
+- **`PlanOptions.excludedTransitModes`**: the modes no itinerary may ride, every other mode staying usable,
+  including one the API adds later. Used by `plan`, `planStream`, `planStreamNext` and `planStreamPrevious`, and
+  kept on the `Route` so `planNext` / `planPrevious` resend it. Sent as `modes.transit.exclude`.
+  `allowedTransitModes` stays; passing both, each non-empty, fails with `badRequest` for `modes.transit`
+  (`modes.transit is invalid`) without a request, as the API answers it.
+- In both, empty means no filter, and `TransitMode.walk` and `TransitMode.unknown` are ignored, as in
+  `allowedTransitModes`.
+
+### Deprecated
+
+- **`realtime.delays`** and **`pollDelays`**: use `tripUpdates` / `pollTripUpdates`. They keep working; the API
+  retires `GET /realtime/v1/delays` with notice, no earlier than 2027-05-24. For a frequency-based trip they
+  answer the run with the earliest start time.
+
 ## 1.9.0
 
 Targets Spider API contract `1.9`.

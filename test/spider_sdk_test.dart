@@ -409,6 +409,92 @@ void main() {
           true);
     });
 
+    group('excluded transit modes', () {
+      PlanOptions modes(
+              {List<TransitMode> allowed = const [],
+              List<TransitMode> excluded = const []}) =>
+          PlanOptions(
+              origin: const Location.stop('A'),
+              destination: const Location.stop('B'),
+              allowedTransitModes: allowed,
+              excludedTransitModes: excluded);
+
+      test('plan sends them as modes.transit.exclude, without WALK/UNKNOWN',
+          () async {
+        final (client, mock) = makeClient((_) => resp(planBody));
+        await client.routing.plan(modes(excluded: const [
+          TransitMode.bus,
+          TransitMode.walk,
+          TransitMode.unknown,
+          TransitMode.rail
+        ]));
+        expect(bodyOf(mock.requests.single)['modes'], {
+          'transit': {
+            'exclude': ['BUS', 'RAIL']
+          }
+        });
+      });
+
+      test('plan omits modes when nothing real is excluded', () async {
+        for (final excluded in [
+          const <TransitMode>[],
+          const [TransitMode.walk, TransitMode.unknown],
+        ]) {
+          final (client, mock) = makeClient((_) => resp(planBody));
+          await client.routing.plan(modes(excluded: excluded));
+          expect(bodyOf(mock.requests.single).containsKey('modes'), isFalse,
+              reason: '$excluded');
+        }
+      });
+
+      test('an allow-list of only WALK beside an exclusion sends only exclude',
+          () async {
+        final (client, mock) = makeClient((_) => resp(planBody));
+        final result = await client.routing.plan(modes(
+            allowed: const [TransitMode.walk],
+            excluded: const [TransitMode.tram]));
+        expect(result, isA<Success<Route>>());
+        expect(bodyOf(mock.requests.single)['modes'], {
+          'transit': {
+            'exclude': ['TRAM']
+          }
+        });
+      });
+
+      test(
+          'plan rejects both lists as modes.transit is invalid without a '
+          'request', () async {
+        final (client, mock) = makeClient((_) => resp(planBody));
+        final result = await client.routing.plan(modes(
+            allowed: const [TransitMode.bus],
+            excluded: const [TransitMode.tram]));
+        final error = (result as Failure<Route>).error;
+        expect(error.code, SpiderErrorCode.badRequest);
+        expect(error.field, 'modes.transit');
+        expect(error.message, 'modes.transit is invalid');
+        expect(mock.requests, isEmpty);
+      });
+
+      test('planNext and planPrevious resend the exclusion', () async {
+        final both =
+            planJson(pageInfo: {'hasNextPage': true, 'hasPreviousPage': true});
+        final (client, mock) = makeClient((_) => resp(both));
+        final first = await client.routing
+            .plan(modes(excluded: const [TransitMode.tram]));
+        final route = (first as Success<Route>).value;
+        await client.routing.planNext(route);
+        await client.routing.planPrevious(route);
+        expect(mock.requests.map((r) => bodyOf(r)['modes']).toList(), [
+          for (var i = 0; i < 3; i++)
+            {
+              'transit': {
+                'exclude': ['TRAM']
+              }
+            }
+        ]);
+      });
+    });
+
     test('plan sends reliability only when set', () async {
       for (final (reliability, expected) in [
         (Reliability.standard, 'STANDARD'),
@@ -1019,6 +1105,27 @@ void main() {
           {'id': 'S', 'numberOfDepartures': 30, 'timeRange': 86400});
     });
 
+    test('departures sends excludeModes only when a real mode is excluded',
+        () async {
+      final (client, mock) = makeClient((_) => resp(departuresJson(const [])));
+      await client.routing.departures('S');
+      await client.routing.departures('S',
+          excludedModes: const [TransitMode.walk, TransitMode.unknown]);
+      await client.routing.departures('S', excludedModes: const [
+        TransitMode.bus,
+        TransitMode.walk,
+        TransitMode.trolleybus
+      ]);
+      expect(bodyOf(mock.requests[0]).containsKey('excludeModes'), isFalse);
+      expect(bodyOf(mock.requests[1]).containsKey('excludeModes'), isFalse);
+      expect(bodyOf(mock.requests[2]), {
+        'id': 'S',
+        'numberOfDepartures': 30,
+        'timeRange': 86400,
+        'excludeModes': ['BUS', 'TROLLEYBUS'],
+      });
+    });
+
     test('departures sends reliability only when set', () async {
       final (client, mock) = makeClient((_) => resp(departuresJson(const [])));
       await client.routing.departures('S');
@@ -1085,6 +1192,16 @@ void main() {
           .trip('T1', '2026-08-21', reliability: Reliability.safe);
       expect(bodyOf(mock.requests[1]),
           {'id': 'T1', 'serviceDate': '2026-08-21', 'reliability': 'SAFE'});
+    });
+
+    test('trip posts the run start time only when set', () async {
+      final (client, mock) = makeClient((_) => resp(tripJson(const [])));
+      await client.routing.trip('T1', '2026-08-21', startTime: '8:10:00');
+      await client.routing.trip('T1', '2026-08-21', startTime: '');
+      expect(mock.requests.map(bodyOf), [
+        {'id': 'T1', 'serviceDate': '2026-08-21', 'startTime': '8:10:00'},
+        {'id': 'T1', 'serviceDate': '2026-08-21'},
+      ]);
     });
 
     test('trip carries the requested service date', () async {
@@ -1284,6 +1401,24 @@ void main() {
           {'tripId': '1:T1', 'serviceDate': '2026-08-21', 'stopPosition': '4'});
       expect(req.headers['apikey'], 'secret-key');
       expect(req.headers['x-spider-contract-version'], contractVersion);
+    });
+
+    test('estimatedDelays sends the run start time only when set', () async {
+      final (client, mock) =
+          makeClient((_) => resp(jsonEncode({'estimatedDelays': null})));
+      await client.routing
+          .estimatedDelays('1:T1', '2026-08-21', 4, startTime: '25:10:00');
+      await client.routing
+          .estimatedDelays('1:T1', '2026-08-21', 4, startTime: '');
+      expect(mock.requests.map((r) => r.uri.queryParameters), [
+        {
+          'tripId': '1:T1',
+          'serviceDate': '2026-08-21',
+          'stopPosition': '4',
+          'startTime': '25:10:00',
+        },
+        {'tripId': '1:T1', 'serviceDate': '2026-08-21', 'stopPosition': '4'},
+      ]);
     });
 
     test('estimatedDelays maps entries by level, not position', () async {
@@ -1741,6 +1876,8 @@ void main() {
             c.realtime.vehicles('2026-07-15', ['1:T1']),
         ('GET', '/realtime/v1/vehicles/by-trip/1%3AT1'): (c) =>
             c.realtime.vehicleForTrip('1:T1', '2026-07-15'),
+        ('GET', '/realtime/v1/trip-updates'): (c) =>
+            c.realtime.tripUpdates('2026-07-15', ['1:T1']),
         ('GET', '/realtime/v1/delays'): (c) =>
             c.realtime.delays('2026-07-15', ['1:T1']),
         ('GET', '/realtime/v1/alerts'): (c) => c.realtime.alerts(),
@@ -1766,6 +1903,28 @@ void main() {
       expect(vehicle.stopId, '1:S1');
       expect(vehicle.latitude, 49.19);
       expect(vehicle.longitude, 16.6);
+    });
+
+    test('vehicles maps the run start time, accessibility and features',
+        () async {
+      const body =
+          '{"vehicles":[{"tripId":"1:T1","serviceDate":"2026-07-15","startTime":"25:10:00","latitude":49.1,"longitude":16.6,"wheelchairAccessible":"WHEELCHAIR_ACCESSIBLE","airConditioning":true,"wifi":false,"cardPayment":true},{"tripId":"1:T2","serviceDate":"2026-07-15","latitude":49.1,"longitude":16.6,"wheelchairAccessible":"WHEELCHAIR_INACCESSIBLE"},{"tripId":"1:T3","serviceDate":"2026-07-15","latitude":49.1,"longitude":16.6,"wheelchairAccessible":"UNKNOWN"},{"tripId":"1:T4","serviceDate":"2026-07-15","latitude":49.1,"longitude":16.6,"wheelchairAccessible":"SOMETHING_NEW"}],"missing":[]}';
+      final (client, _) = makeClient((_) => resp(body));
+      final result = await client.realtime
+          .vehicles('2026-07-15', ['1:T1', '1:T2', '1:T3', '1:T4']);
+      final vehicles = (result as Success<VehiclePositions>).value.vehicles;
+      final full = vehicles[0];
+      expect(full.startTime, '25:10:00');
+      expect(full.wheelchairAccessible, WheelchairBoarding.possible);
+      expect((full.airConditioning, full.wifi, full.cardPayment),
+          (true, false, true));
+      expect(vehicles[1].wheelchairAccessible, WheelchairBoarding.notPossible);
+      expect(vehicles[2].wheelchairAccessible, isNull);
+      expect(vehicles[3].wheelchairAccessible, WheelchairBoarding.unknown);
+      final bare = vehicles[1];
+      expect(bare.startTime, isNull);
+      expect((bare.airConditioning, bare.wifi, bare.cardPayment),
+          (null, null, null));
     });
 
     test('vehicles with no trip ids is an empty success without a request',
@@ -1824,6 +1983,26 @@ void main() {
       final req = mock.requests.single;
       expect(req.uri.path, '/realtime/v1/vehicles/by-trip/1%3AT1');
       expect(req.uri.queryParameters, {'serviceDate': '2026-07-14'});
+    });
+
+    test('vehicleForTrip and its poll send the run start time when set',
+        () async {
+      final (client, mock) = makeClient((_) => resp('{}'));
+      await client.realtime
+          .vehicleForTrip('1:T1', '2026-07-14', startTime: '8:10:00');
+      await client.realtime
+          .pollVehicleForTrip('1:T1', '2026-07-14', startTime: '08:20:00')
+          .first;
+      await client.realtime.vehicleForTrip('1:T1', '2026-07-14', startTime: '');
+      await client.realtime
+          .pollVehicleForTrip('1:T1', '2026-07-14', startTime: '')
+          .first;
+      expect(mock.requests.map((r) => r.uri.queryParameters), [
+        {'serviceDate': '2026-07-14', 'startTime': '8:10:00'},
+        {'serviceDate': '2026-07-14', 'startTime': '08:20:00'},
+        {'serviceDate': '2026-07-14'},
+        {'serviceDate': '2026-07-14'},
+      ]);
     });
 
     test(
@@ -1921,6 +2100,171 @@ void main() {
         expect(error.message, message);
         expect(mock.requests, isEmpty, reason: message);
       }
+    });
+
+    test('tripUpdates GETs one service date and maps every run', () async {
+      final body = jsonEncode({
+        'serviceDate': '2026-07-15',
+        'tripUpdates': [
+          {
+            'tripId': '1:T1',
+            'startTime': '08:10:00',
+            'routeId': '1:R1',
+            'delaySeconds': 120,
+            'scheduleRelationship': 'SCHEDULED',
+            'stopTimeUpdates': [
+              {'stopId': '1:S1', 'stopSequence': 3, 'arrivalDelay': 120}
+            ],
+          },
+          {
+            'tripId': '1:T1',
+            'startTime': '08:20:00',
+            'stopTimeUpdates': [],
+            'modifications': [
+              {
+                'id': '1:M1',
+                'startTimes': ['08:20:00'],
+                'startStop': {'stopSequence': 4, 'stopId': '1:S4'},
+                'endStop': {'stopSequence': 6},
+                'replacementStops': [
+                  {'stopId': '1:S9', 'travelTimeToStop': 180},
+                  {
+                    'stopId': '1:RT1',
+                    'travelTimeToStop': 300,
+                    'name': 'Detour stop',
+                    'latitude': 49.2,
+                    'longitude': 16.6
+                  },
+                ],
+                'propagatedModificationDelay': 90,
+                'alertId': '1:A1',
+                'lastModifiedTime': 1700000000,
+                'shape': '_p~iF~ps|U_ulLnnqC_mqNvxq`@',
+              },
+            ],
+          },
+        ],
+        'missing': ['1:T2'],
+        'feedTimestamp': 1700000000,
+        'staleSeconds': 2,
+      });
+      final (client, mock) = makeClient((_) => resp(body));
+      final result =
+          await client.realtime.tripUpdates('2026-07-15', ['1:T2', '1:T1']);
+      final updates = (result as Success<TripUpdates>).value;
+
+      final req = mock.requests.single;
+      expect(req.method, 'GET');
+      expect(req.uri.path, '/realtime/v1/trip-updates');
+      expect(req.uri.queryParameters,
+          {'serviceDate': '2026-07-15', 'tripIds': '1:T1,1:T2'});
+
+      expect(updates.serviceDate, '2026-07-15');
+      expect(updates.missing, ['1:T2']);
+      expect(updates.freshness.feedTimestampEpochMs, 1700000000 * 1000);
+      expect(updates.freshness.staleSeconds, 2);
+      final runs = updates.updatesFor('1:T1');
+      expect(runs.map((u) => u.startTime), ['08:10:00', '08:20:00']);
+      expect(updates.updatesFor('T1'), isEmpty);
+
+      final live = runs[0];
+      expect(live.routeId, '1:R1');
+      expect(live.delaySeconds, 120);
+      expect(live.scheduleRelationship, 'SCHEDULED');
+      expect(live.stopTimeUpdates.single.stopId, '1:S1');
+      expect(live.modifications, isEmpty);
+
+      final detoured = runs[1];
+      expect(detoured.stopTimeUpdates, isEmpty);
+      expect(detoured.routeId, isNull);
+      expect(detoured.delaySeconds, isNull);
+      expect(detoured.scheduleRelationship, isNull);
+      final m = detoured.modifications.single;
+      expect(m.id, '1:M1');
+      expect(m.startTimes, ['08:20:00']);
+      expect((m.startStop?.stopSequence, m.startStop?.stopId), (4, '1:S4'));
+      expect((m.endStop?.stopSequence, m.endStop?.stopId), (6, null));
+      expect(m.replacementStops.map((s) => s.stopId), ['1:S9', '1:RT1']);
+      expect(m.replacementStops[0].travelTimeToStopSeconds, 180);
+      expect(m.replacementStops[0].name, isNull);
+      expect(m.replacementStops[0].latitude, isNull);
+      final realtimeStop = m.replacementStops[1];
+      expect((realtimeStop.name, realtimeStop.latitude, realtimeStop.longitude),
+          ('Detour stop', 49.2, 16.6));
+      expect(m.propagatedModificationDelaySeconds, 90);
+      expect(m.alertId, '1:A1');
+      expect(m.lastModifiedEpochMs, 1700000000 * 1000);
+      expect(m.shape, const [
+        LatLon(38.5, -120.2),
+        LatLon(40.7, -120.95),
+        LatLon(43.252, -126.453),
+      ]);
+    });
+
+    test('a tripUpdates modification without optional members', () async {
+      final body = jsonEncode({
+        'serviceDate': '2026-07-15',
+        'tripUpdates': [
+          {
+            'tripId': '1:T1',
+            'stopTimeUpdates': [],
+            'modifications': [
+              {
+                'id': '1:M1',
+                'replacementStops': [],
+                'propagatedModificationDelay': 0
+              },
+            ],
+          },
+        ],
+        'missing': [],
+      });
+      final (client, _) = makeClient((_) => resp(body));
+      final result = await client.realtime.tripUpdates('2026-07-15', ['1:T1']);
+      final update = (result as Success<TripUpdates>).value.tripUpdates.single;
+      expect(update.startTime, isNull);
+      final m = update.modifications.single;
+      expect(m.startTimes, isNull);
+      expect(m.startStop, isNull);
+      expect(m.endStop, isNull);
+      expect(m.replacementStops, isEmpty);
+      expect(m.propagatedModificationDelaySeconds, 0);
+      expect(m.alertId, isNull);
+      expect(m.lastModifiedEpochMs, isNull);
+      expect(m.shape, isNull);
+    });
+
+    test('tripUpdates rejects fixed limits without a request', () async {
+      final cases = <(String, List<String>, String, String)>[
+        ('2026-07-15', const [], 'tripIds', 'tripIds is required'),
+        ('2026-07-15', const ['1:T1', ' '], 'tripIds', 'tripIds is invalid'),
+        (
+          '2026-07-15',
+          List.generate(51, (i) => '1:T$i'),
+          'tripIds',
+          'tripIds is out of range'
+        ),
+        ('20260715', const ['1:T1'], 'serviceDate', 'serviceDate is invalid'),
+      ];
+      for (final (date, ids, field, message) in cases) {
+        final (client, mock) = makeClient((_) => resp('{}'));
+        final result = await client.realtime.tripUpdates(date, ids);
+        final error = (result as Failure<TripUpdates>).error;
+        expect(error.code, SpiderErrorCode.badRequest, reason: message);
+        expect(error.field, field, reason: message);
+        expect(error.message, message);
+        expect(mock.requests, isEmpty, reason: message);
+      }
+    });
+
+    test('pollTripUpdates sends the de-duplicated, sorted ids', () async {
+      final (client, mock) = makeClient((_) => resp(
+          '{"serviceDate":"2026-07-15","tripUpdates":[],"missing":["1:A","1:B"]}'));
+      final first = await client.realtime
+          .pollTripUpdates('2026-07-15', ['1:B', '1:A', '1:B']).first;
+      expect(first, isA<Success<TripUpdates>>());
+      expect(mock.requests.single.uri.queryParameters,
+          {'serviceDate': '2026-07-15', 'tripIds': '1:A,1:B'});
     });
 
     test('delays counts distinct ids against the limit of 50', () async {
@@ -2538,6 +2882,58 @@ void main() {
       final vars = bodyOf(mock.requests.single);
       expect(vars['before'], 'c-prev');
       expect(vars.containsKey('after'), false);
+    });
+
+    test('every plan stream call sends the exclusion', () async {
+      final (client, mock) = makeStreamClient(200, pageInfoFrame);
+      const options = PlanOptions(
+          origin: Location.stop('A'),
+          destination: Location.stop('B'),
+          excludedTransitModes: [TransitMode.tram, TransitMode.walk]);
+      await client.routing
+          .planStream(options, targetResults: 5, maxWindowMinutes: 120)
+          .toList();
+      await client.routing
+          .planStreamNext(options,
+              targetResults: 5, maxWindowMinutes: 120, after: 'c1')
+          .toList();
+      await client.routing
+          .planStreamPrevious(options,
+              targetResults: 5, maxWindowMinutes: 120, before: 'c0')
+          .toList();
+      expect(mock.requests.map((r) => bodyOf(r)['modes']).toList(), [
+        for (var i = 0; i < 3; i++)
+          {
+            'transit': {
+              'exclude': ['TRAM']
+            }
+          }
+      ]);
+    });
+
+    test('planStream rejects allowed and excluded modes without a request',
+        () async {
+      final (client, mock) = makeStreamClient(200, pageInfoFrame);
+      const options = PlanOptions(
+          origin: Location.stop('A'),
+          destination: Location.stop('B'),
+          allowedTransitModes: [TransitMode.bus],
+          excludedTransitModes: [TransitMode.tram]);
+      for (final stream in [
+        client.routing
+            .planStream(options, targetResults: 5, maxWindowMinutes: 120),
+        client.routing.planStreamNext(options,
+            targetResults: 5, maxWindowMinutes: 120, after: 'c1'),
+        client.routing.planStreamPrevious(options,
+            targetResults: 5, maxWindowMinutes: 120, before: 'c0'),
+      ]) {
+        final error =
+            ((await stream.toList()).single as PlanStreamFailure).error;
+        expect(error.code, SpiderErrorCode.badRequest);
+        expect(error.field, 'modes.transit');
+        expect(error.message, 'modes.transit is invalid');
+      }
+      expect(mock.requests, isEmpty);
     });
 
     test('planStreamNext and planStreamPrevious send the reliability',
