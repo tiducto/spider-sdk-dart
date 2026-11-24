@@ -26,13 +26,13 @@ SpiderClient setupWithRetry() {
   return client;
 }
 
-/// A hand-rolled poll loop: refresh delays roughly every 15 seconds. Delays are scoped to the GTFS service
-/// date the trips run on (pass the plan leg's `serviceDate`).
+/// A hand-rolled poll loop: refresh trip updates roughly every 15 seconds. Trip updates are scoped to the GTFS
+/// service date the trips run on (pass the plan leg's `serviceDate`).
 Future<void> poll(
     SpiderClient client, String serviceDate, List<String> tripIds) async {
   // [START poll]
   while (true) {
-    final result = await client.realtime.delays(serviceDate, tripIds);
+    final result = await client.realtime.tripUpdates(serviceDate, tripIds);
     switch (result) {
       case Success(:final value):
         _updateBoard(value);
@@ -101,18 +101,18 @@ Future<void> vehicleForTrip(
 }
 
 /// Live schedule deviation for feed-prefixed trip ids (e.g. `1:39822`) running on one GTFS service date
-/// (`YYYY-MM-DD`).
+/// (`YYYY-MM-DD`), one update per trip run.
 Future<void> delays(
     SpiderClient client, String serviceDate, List<String> tripIds) async {
   // [START delays]
-  final result = await client.realtime.delays(serviceDate, tripIds);
+  final result = await client.realtime.tripUpdates(serviceDate, tripIds);
 
   if (result case Success(:final value)) {
-    for (final delay in value.delays) {
-      final seconds = delay.delaySeconds;
+    for (final update in value.tripUpdates) {
+      final seconds = update.delaySeconds;
       if (seconds == null) continue;
       final minutes = seconds ~/ 60;
-      print('${delay.tripId}: ${minutes >= 0 ? '+' : ''}$minutes min');
+      print('${update.tripId}: ${minutes >= 0 ? '+' : ''}$minutes min');
     }
   }
   // [END delays]
@@ -132,8 +132,8 @@ Future<void> alerts(SpiderClient client) async {
 }
 
 // Stand-in app hooks so the examples above read cleanly.
-void _updateBoard(TripDelays delays) =>
-    print('board: ${delays.delays.length} trips');
+void _updateBoard(TripUpdates updates) =>
+    print('board: ${updates.tripUpdates.length} trip runs');
 
 void _placeMarker(LiveVehicle vehicle) => print('marker for ${vehicle.tripId}');
 
