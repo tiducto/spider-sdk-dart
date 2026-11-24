@@ -1057,6 +1057,9 @@ class Leg {
   final bool interlineWithPreviousLeg;
   final Geometry legGeometry;
 
+  /// The vehicle running the leg's trip run, as the realtime trip update names it. A Spider extension: OTP 2.10 has no vehicle on a leg. Null on a walk leg and until a vehicle is matched to the run.
+  final TripVehicle? vehicle;
+
   const Leg({
     required this.mode,
     required this.start,
@@ -1076,6 +1079,7 @@ class Leg {
     required this.dropoffType,
     required this.interlineWithPreviousLeg,
     required this.legGeometry,
+    required this.vehicle,
   });
 
   factory Leg.fromJson(Map<String, dynamic> json) => Leg(
@@ -1102,6 +1106,9 @@ class Leg {
         interlineWithPreviousLeg: json['interlineWithPreviousLeg'] as bool,
         legGeometry:
             Geometry.fromJson(json['legGeometry'] as Map<String, dynamic>),
+        vehicle: json['vehicle'] == null
+            ? null
+            : TripVehicle.fromJson(json['vehicle'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
@@ -1124,6 +1131,7 @@ class Leg {
         'dropoffType': dropoffType.toJson(),
         'interlineWithPreviousLeg': interlineWithPreviousLeg,
         'legGeometry': legGeometry.toJson(),
+        'vehicle': vehicle == null ? null : vehicle!.toJson(),
       };
 }
 
@@ -1296,6 +1304,55 @@ class Trip {
   Map<String, dynamic> toJson() => {
         'gtfsId': gtfsId,
         'bikesAllowed': bikesAllowed.toJson(),
+      };
+}
+
+/// The vehicle running a trip run, as the realtime trip update names it (GTFS-RT `TripUpdate.vehicle`), with its features. A Spider extension: OTP 2.10 has no vehicle on a leg, a departure or a trip. Its `wheelchairAccessible` is the vehicle's realtime access, separate from a trip's `wheelchairAccessible` (`StopDeparturesTrip`, `TripTimetable`), which stays the timetable's.
+class TripVehicle {
+  /// GTFS-RT `VehicleDescriptor.id`, feed-prefixed (`<feedId>:<id>`) as realtime `Vehicle.vehicleId`, so it names the same vehicle there; null when the feed gives none.
+  final String? id;
+
+  /// The vehicle's user-visible label, as the producer gives it; null when it gives none.
+  final String? label;
+
+  /// GTFS-RT `VehicleDescriptor.wheelchair_accessible`, mapped as OTP 2.10's `GtfsRealtimeMapper.mapWheelchairAccessible` maps it: `WHEELCHAIR_ACCESSIBLE` is `POSSIBLE`, `WHEELCHAIR_INACCESSIBLE` `NOT_POSSIBLE` and `UNKNOWN` `NO_INFORMATION`. Unset (`NO_VALUE`), which OTP maps to nothing, is `NO_INFORMATION` too.
+  final WheelchairBoarding wheelchairAccessible;
+
+  /// Whether the vehicle is air-conditioned; null when unknown.
+  final bool? airConditioning;
+
+  /// Whether the vehicle offers Wi-Fi; null when unknown.
+  final bool? wifi;
+
+  /// Whether the vehicle accepts card payment on board; null when unknown.
+  final bool? cardPayment;
+
+  const TripVehicle({
+    required this.id,
+    required this.label,
+    required this.wheelchairAccessible,
+    required this.airConditioning,
+    required this.wifi,
+    required this.cardPayment,
+  });
+
+  factory TripVehicle.fromJson(Map<String, dynamic> json) => TripVehicle(
+        id: json['id'] as String?,
+        label: json['label'] as String?,
+        wheelchairAccessible:
+            WheelchairBoarding.fromWire(json['wheelchairAccessible'] as String),
+        airConditioning: json['airConditioning'] as bool?,
+        wifi: json['wifi'] as bool?,
+        cardPayment: json['cardPayment'] as bool?,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id == null ? null : id!,
+        'label': label == null ? null : label!,
+        'wheelchairAccessible': wheelchairAccessible.toJson(),
+        'airConditioning': airConditioning == null ? null : airConditioning!,
+        'wifi': wifi == null ? null : wifi!,
+        'cardPayment': cardPayment == null ? null : cardPayment!,
       };
 }
 
@@ -1650,6 +1707,9 @@ class StopDeparturesStoptime {
   final StopDeparturesStop stop;
   final StopDeparturesTrip trip;
 
+  /// The vehicle running the departure's trip run, as the realtime trip update names it. A Spider extension: OTP 2.10 has no vehicle on a departure. Null until a vehicle is matched to the run. Its `wheelchairAccessible` is the vehicle's realtime access, separate from `trip.wheelchairAccessible`, which stays the timetable's.
+  final TripVehicle? vehicle;
+
   const StopDeparturesStoptime({
     required this.serviceDay,
     required this.serviceDate,
@@ -1664,6 +1724,7 @@ class StopDeparturesStoptime {
     required this.stopPosition,
     required this.stop,
     required this.trip,
+    required this.vehicle,
   });
 
   factory StopDeparturesStoptime.fromJson(Map<String, dynamic> json) =>
@@ -1681,6 +1742,9 @@ class StopDeparturesStoptime {
         stopPosition: (json['stopPosition'] as num?)?.toInt(),
         stop: StopDeparturesStop.fromJson(json['stop'] as Map<String, dynamic>),
         trip: StopDeparturesTrip.fromJson(json['trip'] as Map<String, dynamic>),
+        vehicle: json['vehicle'] == null
+            ? null
+            : TripVehicle.fromJson(json['vehicle'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
@@ -1697,6 +1761,7 @@ class StopDeparturesStoptime {
         'stopPosition': stopPosition == null ? null : stopPosition!,
         'stop': stop.toJson(),
         'trip': trip.toJson(),
+        'vehicle': vehicle == null ? null : vehicle!.toJson(),
       };
 }
 
@@ -1835,6 +1900,9 @@ class TripTimetable {
   /// The trip's path; null when the feed has no shapes.
   final TripGeometry? tripGeometry;
 
+  /// The vehicle running the trip run answered (the requested `serviceDate`, and `startTime` for a frequency-based trip), as the realtime trip update names it. A Spider extension: OTP 2.10 has no vehicle on a trip. Null until a vehicle is matched to the run. Its `wheelchairAccessible` is the vehicle's realtime access, separate from this trip's `wheelchairAccessible`, which stays the timetable's.
+  final TripVehicle? vehicle;
+
   const TripTimetable({
     required this.gtfsId,
     required this.directionId,
@@ -1844,6 +1912,7 @@ class TripTimetable {
     required this.route,
     required this.stoptimesForDate,
     required this.tripGeometry,
+    required this.vehicle,
   });
 
   factory TripTimetable.fromJson(Map<String, dynamic> json) => TripTimetable(
@@ -1861,6 +1930,9 @@ class TripTimetable {
             ? null
             : TripGeometry.fromJson(
                 json['tripGeometry'] as Map<String, dynamic>),
+        vehicle: json['vehicle'] == null
+            ? null
+            : TripVehicle.fromJson(json['vehicle'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
@@ -1872,6 +1944,7 @@ class TripTimetable {
         'route': route.toJson(),
         'stoptimesForDate': stoptimesForDate.map((e) => e.toJson()).toList(),
         'tripGeometry': tripGeometry == null ? null : tripGeometry!.toJson(),
+        'vehicle': vehicle == null ? null : vehicle!.toJson(),
       };
 }
 
