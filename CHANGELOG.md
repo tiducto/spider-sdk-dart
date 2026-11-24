@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.11.0
+
+Targets Spider API contract `1.11`.
+
+### Added
+
+- **`TripVehicle`**: the vehicle running a trip run, one type wherever the SDK reads a run: `id` (feed-prefixed,
+  the same string as `LiveVehicle.vehicleId`), `label`, `wheelchairAccessible` (`WheelchairBoarding`),
+  `airConditioning`, `wifi` and `cardPayment`. Each is null when the feed doesn't report it; an unknown
+  wheelchair access is null, as on `LiveVehicle`.
+- **`TripUpdate.vehicle`**, **`Leg.vehicle`** (batch plan and plan stream), **`Departure.vehicle`** and
+  **`TripDetails.vehicle`**: the run's `TripVehicle`, so a departure board or an itinerary can show the vehicle's
+  features without a realtime call. Null on a walk leg and until a vehicle is matched to the run. Its
+  `wheelchairAccessible` is the vehicle's realtime access, apart from the timetable's
+  `Departure.wheelchairAccessible` / `TripDetails.wheelchairAccessible`.
+
 ## 1.10.0 - 2026-11-24
 
 Targets Spider API contract `1.10`.
