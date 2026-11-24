@@ -35,3 +35,4 @@ export 'src/transport.dart'
         SpiderHttpResponse,
         SpiderHttpStreamedResponse,
         DefaultSpiderHttpClient;
+export 'src/trip_vehicle.dart';
