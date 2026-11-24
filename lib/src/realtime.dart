@@ -5,6 +5,7 @@ import 'polyline.dart';
 import 'result.dart';
 import 'service_date.dart';
 import 'transport.dart';
+import 'trip_vehicle.dart';
 
 // MARK: public realtime models (toJson is used by the poll* streams to de-duplicate consecutive results)
 
@@ -301,6 +302,9 @@ class TripUpdate {
   /// The trip modifications that apply to this run, in feed order; their delays accumulate along the trip.
   /// Empty when none applies. Experimental, as GTFS-RT `TripModifications`.
   final List<TripModification> modifications;
+
+  /// The vehicle the update names for this run, with its features; null when the feed names none.
+  final TripVehicle? vehicle;
   const TripUpdate(
       {required this.tripId,
       this.startTime,
@@ -308,7 +312,8 @@ class TripUpdate {
       this.delaySeconds,
       this.scheduleRelationship,
       this.stopTimeUpdates = const [],
-      this.modifications = const []});
+      this.modifications = const [],
+      this.vehicle});
   Map<String, dynamic> toJson() => {
         'tripId': tripId,
         'startTime': startTime,
@@ -317,6 +322,7 @@ class TripUpdate {
         'scheduleRelationship': scheduleRelationship,
         'stopTimeUpdates': stopTimeUpdates.map((s) => s.toJson()).toList(),
         'modifications': modifications.map((m) => m.toJson()).toList(),
+        'vehicle': vehicle?.toJson(),
       };
 }
 
@@ -677,7 +683,20 @@ TripUpdate _mapTripUpdate(Map<String, dynamic> u) => TripUpdate(
       modifications: (u['modifications'] as List<dynamic>? ?? const [])
           .map((m) => _mapModification(m as Map<String, dynamic>))
           .toList(),
+      vehicle: _mapTripVehicle(u['vehicle']),
     );
+
+TripVehicle? _mapTripVehicle(Object? v) => v is Map<String, dynamic>
+    ? TripVehicle(
+        id: v['id'] as String?,
+        label: v['label'] as String?,
+        wheelchairAccessible:
+            _vehicleWheelchair(v['wheelchairAccessible'] as String?),
+        airConditioning: v['airConditioning'] as bool?,
+        wifi: v['wifi'] as bool?,
+        cardPayment: v['cardPayment'] as bool?,
+      )
+    : null;
 
 TripModification _mapModification(Map<String, dynamic> m) => TripModification(
       id: m['id'] as String,

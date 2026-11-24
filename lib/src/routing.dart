@@ -9,6 +9,7 @@ import 'polyline.dart';
 import 'result.dart';
 import 'service_date.dart';
 import 'transport.dart';
+import 'trip_vehicle.dart';
 
 // MARK: public routing models
 
@@ -89,6 +90,10 @@ class Leg {
   final WheelchairBoarding? fromWheelchair;
   final WheelchairBoarding? toWheelchair;
   final List<LatLon> geometry;
+
+  /// The vehicle running the leg's trip run, as the realtime trip update names it; null on a walk leg and
+  /// until a vehicle is matched to the run.
+  final TripVehicle? vehicle;
   const Leg({
     this.mode,
     required this.startScheduled,
@@ -128,6 +133,7 @@ class Leg {
     this.fromWheelchair,
     this.toWheelchair,
     this.geometry = const [],
+    this.vehicle,
   });
 }
 
@@ -256,6 +262,11 @@ class Departure {
   /// [SpiderRouting.trip] and to the realtime delays lookup. An after-midnight departure can carry the
   /// previous day's date.
   final String serviceDate;
+
+  /// The vehicle running the departure's trip run, as the realtime trip update names it; null until a vehicle
+  /// is matched to the run. Its [TripVehicle.wheelchairAccessible] is the vehicle's realtime access, separate
+  /// from [wheelchairAccessible], the timetable's.
+  final TripVehicle? vehicle;
   const Departure({
     required this.scheduledTimeEpochMs,
     required this.realtimeTimeEpochMs,
@@ -277,6 +288,7 @@ class Departure {
     this.pickupType = PickupDropoffType.scheduled,
     this.dropoffType = PickupDropoffType.scheduled,
     required this.serviceDate,
+    this.vehicle,
   });
 }
 
@@ -366,6 +378,11 @@ class TripDetails {
   final String serviceDate;
   final List<TripStop> stops;
   final List<LatLon> geometry;
+
+  /// The vehicle running this trip run, as the realtime trip update names it; null until a vehicle is matched
+  /// to the run. Its [TripVehicle.wheelchairAccessible] is the vehicle's realtime access, separate from
+  /// [wheelchairAccessible], the timetable's.
+  final TripVehicle? vehicle;
   const TripDetails({
     required this.gtfsId,
     required this.routeGtfsId,
@@ -381,6 +398,7 @@ class TripDetails {
     required this.serviceDate,
     required this.stops,
     required this.geometry,
+    this.vehicle,
   });
 }
 
@@ -1055,8 +1073,21 @@ Leg _mapLeg(wire.Leg w) {
         WheelchairBoarding.fromWire(fromStop?.wheelchairBoarding.wire),
     toWheelchair: WheelchairBoarding.fromWire(toStop?.wheelchairBoarding.wire),
     geometry: decodePolyline(w.legGeometry.points),
+    vehicle: _mapTripVehicle(w.vehicle),
   );
 }
+
+TripVehicle? _mapTripVehicle(wire.TripVehicle? w) => w == null
+    ? null
+    : TripVehicle(
+        id: w.id,
+        label: w.label,
+        wheelchairAccessible:
+            WheelchairBoarding.fromWire(w.wheelchairAccessible.wire),
+        airConditioning: w.airConditioning,
+        wifi: w.wifi,
+        cardPayment: w.cardPayment,
+      );
 
 // Parses an ISO-8601 duration ("PT60S", "PT1M30S", optionally signed) or a bare seconds count into a
 // [Duration]. Mirrors the Kotlin SDK's durationFromWire: ISO first, then a numeric-seconds fallback; an
@@ -1121,6 +1152,7 @@ List<Departure> _mapDepartures(wire.DepartureBoard stop) => [
           pickupType: PickupDropoffType.fromWire(st.pickupType.wire),
           dropoffType: PickupDropoffType.fromWire(st.dropoffType.wire),
           serviceDate: st.serviceDate,
+          vehicle: _mapTripVehicle(st.vehicle),
         ),
     ];
 
@@ -1167,5 +1199,6 @@ TripDetails _mapTrip(wire.TripTimetable w, String serviceDate) {
         ),
     ],
     geometry: geometry == null ? const [] : decodePolyline(geometry.points),
+    vehicle: _mapTripVehicle(w.vehicle),
   );
 }
