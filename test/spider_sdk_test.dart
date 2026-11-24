@@ -1197,8 +1197,11 @@ void main() {
     test('trip posts the run start time only when set', () async {
       final (client, mock) = makeClient((_) => resp(tripJson(const [])));
       await client.routing.trip('T1', '2026-08-21', startTime: '8:10:00');
-      expect(bodyOf(mock.requests.single),
-          {'id': 'T1', 'serviceDate': '2026-08-21', 'startTime': '8:10:00'});
+      await client.routing.trip('T1', '2026-08-21', startTime: '');
+      expect(mock.requests.map(bodyOf), [
+        {'id': 'T1', 'serviceDate': '2026-08-21', 'startTime': '8:10:00'},
+        {'id': 'T1', 'serviceDate': '2026-08-21'},
+      ]);
     });
 
     test('trip carries the requested service date', () async {
@@ -1405,12 +1408,17 @@ void main() {
           makeClient((_) => resp(jsonEncode({'estimatedDelays': null})));
       await client.routing
           .estimatedDelays('1:T1', '2026-08-21', 4, startTime: '25:10:00');
-      expect(mock.requests.single.uri.queryParameters, {
-        'tripId': '1:T1',
-        'serviceDate': '2026-08-21',
-        'stopPosition': '4',
-        'startTime': '25:10:00',
-      });
+      await client.routing
+          .estimatedDelays('1:T1', '2026-08-21', 4, startTime: '');
+      expect(mock.requests.map((r) => r.uri.queryParameters), [
+        {
+          'tripId': '1:T1',
+          'serviceDate': '2026-08-21',
+          'stopPosition': '4',
+          'startTime': '25:10:00',
+        },
+        {'tripId': '1:T1', 'serviceDate': '2026-08-21', 'stopPosition': '4'},
+      ]);
     });
 
     test('estimatedDelays maps entries by level, not position', () async {
@@ -1985,9 +1993,15 @@ void main() {
       await client.realtime
           .pollVehicleForTrip('1:T1', '2026-07-14', startTime: '08:20:00')
           .first;
+      await client.realtime.vehicleForTrip('1:T1', '2026-07-14', startTime: '');
+      await client.realtime
+          .pollVehicleForTrip('1:T1', '2026-07-14', startTime: '')
+          .first;
       expect(mock.requests.map((r) => r.uri.queryParameters), [
         {'serviceDate': '2026-07-14', 'startTime': '8:10:00'},
         {'serviceDate': '2026-07-14', 'startTime': '08:20:00'},
+        {'serviceDate': '2026-07-14'},
+        {'serviceDate': '2026-07-14'},
       ]);
     });
 

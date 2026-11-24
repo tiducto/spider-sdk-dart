@@ -22,7 +22,7 @@ Targets Spider API contract `1.10`.
   trip offers.
 - **`vehicleForTrip(…, startTime:)`**, **`trip(…, startTime:)`** and **`estimatedDelays(…, startTime:)`**: pick
   the run of a frequency-based trip by its start time, the same value as `LiveVehicle.startTime` and
-  `TripUpdate.startTime`. Null answers the earliest (first) run, as before.
+  `TripUpdate.startTime`. Null or empty sends nothing and answers the earliest (first) run, as before.
 
 - **`departures(…, excludedModes:)`**: the board leaves out every departure of those modes. The API drops them
   before it counts `numberOfDepartures`, so the board, and each later one paged by `startTime`, still holds up to

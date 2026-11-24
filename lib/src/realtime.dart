@@ -458,7 +458,8 @@ class SpiderRealtime {
   /// departure's `serviceDate`. A 404 is a normal "no vehicle currently reporting", not an error. A malformed
   /// date fails with [SpiderErrorCode.badRequest] (field `serviceDate`) without a request. [startTime] (GTFS
   /// `H:MM:SS` or `HH:MM:SS`, a [LiveVehicle.startTime] or [TripUpdate.startTime]) picks the run of a
-  /// frequency-based trip the feed reports with that start time; null answers the run with the earliest one.
+  /// frequency-based trip the feed reports with that start time; null or empty answers the run with the earliest
+  /// one.
   Future<SpiderResult<LiveVehicleUpdate>> vehicleForTrip(
       String tripId, String serviceDate,
       {String? startTime}) async {
@@ -469,7 +470,7 @@ class SpiderRealtime {
           '/realtime/v1/vehicles/by-trip/${Uri.encodeComponent(tripId)}';
       final resp = await _transport.getRaw(path, query: {
         'serviceDate': serviceDate,
-        if (startTime != null) 'startTime': startTime,
+        if (startTime != null && startTime.isNotEmpty) 'startTime': startTime,
       });
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
         final failure = httpFailure('GET $path', resp.statusCode, resp.body);

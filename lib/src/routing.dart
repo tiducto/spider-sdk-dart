@@ -572,7 +572,8 @@ class SpiderRouting {
   /// [Departure.serviceDate]) picks the run; a malformed date fails with [SpiderErrorCode.badRequest] without
   /// sending a request. [startTime] (GTFS `H:MM:SS` or `HH:MM:SS`, the realtime API's
   /// [LiveVehicle.startTime] or [TripUpdate.startTime]) picks the run of a frequency-based trip by its start
-  /// time; null answers the trip's first run on [serviceDate], and a time no run starts at is an unknown trip.
+  /// time; null or empty answers the trip's first run on [serviceDate], and a time no run starts at is an
+  /// unknown trip.
   /// [reliability] is the level [TripStop.typicalDelay] is given at; null leaves it null.
   Future<SpiderResult<TripDetails>> trip(String tripId, String serviceDate,
       {String? startTime, Reliability? reliability}) async {
@@ -582,7 +583,7 @@ class SpiderRouting {
       final body = wire.TripRequest(
         id: tripId,
         serviceDate: serviceDate,
-        startTime: startTime,
+        startTime: startTime == null || startTime.isEmpty ? null : startTime,
         reliability: _reliabilityInput(reliability),
       ).toJson();
       final trip = await _transport.postJson(
@@ -616,7 +617,8 @@ class SpiderRouting {
             'tripId': tripId,
             'serviceDate': serviceDate,
             'stopPosition': '$stopPosition',
-            if (startTime != null) 'startTime': startTime,
+            if (startTime != null && startTime.isNotEmpty)
+              'startTime': startTime,
           }));
     } catch (e) {
       return Failure(toSpiderError(e));
