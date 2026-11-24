@@ -106,6 +106,7 @@ Json legJson([Json o = const {}]) => {
       'dropoffType': 'SCHEDULED',
       'interlineWithPreviousLeg': false,
       'legGeometry': {'points': '_izlhA~rlgdF'},
+      'vehicle': null,
       ...o,
     };
 
@@ -169,6 +170,7 @@ Json stoptimeJson(String tripId, [Json o = const {}]) => {
         'wheelchairAccessible': 'NO_INFORMATION',
         'route': routeJson('1:R12', {'mode': 'BUS'}),
       },
+      'vehicle': null,
       ...o,
     };
 
@@ -220,6 +222,7 @@ String tripJson(List<Json> stoptimes, [Json o = const {}]) => jsonEncode({
         'route': routeJson('1:R12', {'mode': 'BUS'}),
         'stoptimesForDate': stoptimes,
         'tripGeometry': null,
+        'vehicle': null,
         ...o,
       }
     });
@@ -2278,6 +2281,188 @@ void main() {
       expect(result, isA<Success<TripDelays>>());
       expect(mock.requests.single.uri.queryParameters['tripIds']!.split(','),
           hasLength(50));
+    });
+  });
+
+  group('trip vehicle', () {
+    const vehicleJson = {
+      'id': '1:V7',
+      'label': '7123',
+      'wheelchairAccessible': 'POSSIBLE',
+      'airConditioning': true,
+      'wifi': false,
+      'cardPayment': null,
+    };
+
+    void expectFullVehicle(TripVehicle? v) {
+      expect(v, isNotNull);
+      expect(v!.id, '1:V7');
+      expect(v.label, '7123');
+      expect(v.wheelchairAccessible, WheelchairBoarding.possible);
+      expect(v.airConditioning, true);
+      expect(v.wifi, false);
+      expect(v.cardPayment, isNull);
+    }
+
+    test('a plan leg maps its vehicle, and a null vehicle is null', () async {
+      final body = planJson(itineraries: [
+        itineraryJson([
+          legJson({'vehicle': vehicleJson}),
+          legJson({'mode': 'WALK', 'route': null, 'trip': null}),
+        ])
+      ]);
+      final (client, _) = makeClient((_) => resp(body));
+      final route =
+          (await client.routing.plan(stopsAB) as Success<Route>).value;
+      final legs = route.edges.single.itinerary.legs;
+      expectFullVehicle(legs[0].vehicle);
+      expect(legs[1].vehicle, isNull);
+    });
+
+    test('a plan-stream leg maps its vehicle', () {
+      final event = parsePlanStreamRecord(
+          'chunk',
+          chunkJson([
+            itineraryJson([
+              legJson({'vehicle': vehicleJson})
+            ])
+          ])) as PlanStreamResult;
+      expectFullVehicle(event.itineraries.single.legs.single.vehicle);
+    });
+
+    test('NO_INFORMATION wheelchair access is null', () async {
+      final body = planJson(itineraries: [
+        itineraryJson([
+          legJson({
+            'vehicle': {
+              'id': null,
+              'label': null,
+              'wheelchairAccessible': 'NO_INFORMATION',
+              'airConditioning': null,
+              'wifi': null,
+              'cardPayment': null,
+            }
+          }),
+          legJson({
+            'vehicle': {
+              ...vehicleJson,
+              'wheelchairAccessible': 'NOT_POSSIBLE',
+            }
+          }),
+        ])
+      ]);
+      final (client, _) = makeClient((_) => resp(body));
+      final route =
+          (await client.routing.plan(stopsAB) as Success<Route>).value;
+      final legs = route.edges.single.itinerary.legs;
+      final v = legs[0].vehicle!;
+      expect(v.id, isNull);
+      expect(v.label, isNull);
+      expect(v.wheelchairAccessible, isNull);
+      expect(v.airConditioning, isNull);
+      expect(v.wifi, isNull);
+      expect(v.cardPayment, isNull);
+      expect(legs[1].vehicle!.wheelchairAccessible,
+          WheelchairBoarding.notPossible);
+    });
+
+    test('a departure maps its vehicle, apart from the trip\'s access',
+        () async {
+      final body = departuresJson([
+        stoptimeJson('1:T1', {'vehicle': vehicleJson}),
+        stoptimeJson('1:T2'),
+      ]);
+      final (client, _) = makeClient((_) => resp(body));
+      final departures =
+          (await client.routing.departures('S') as Success<List<Departure>>)
+              .value;
+      expectFullVehicle(departures[0].vehicle);
+      expect(departures[0].wheelchairAccessible, isNull);
+      expect(departures[1].vehicle, isNull);
+    });
+
+    test('a trip maps its vehicle, and a null vehicle is null', () async {
+      final (client, _) =
+          makeClient((_) => resp(tripJson(const [], {'vehicle': vehicleJson})));
+      final trip = (await client.routing.trip('T1', '2026-08-21')
+              as Success<TripDetails>)
+          .value;
+      expectFullVehicle(trip.vehicle);
+
+      final (client2, _) = makeClient((_) => resp(tripJson(const [])));
+      final bare = (await client2.routing.trip('T1', '2026-08-21')
+              as Success<TripDetails>)
+          .value;
+      expect(bare.vehicle, isNull);
+    });
+
+    test('a trip update maps a present, partial and absent vehicle', () async {
+      final body = jsonEncode({
+        'serviceDate': '2026-07-15',
+        'tripUpdates': [
+          {
+            'tripId': '1:T1',
+            'stopTimeUpdates': [],
+            'vehicle': {
+              'id': '1:V7',
+              'label': '7123',
+              'wheelchairAccessible': 'WHEELCHAIR_ACCESSIBLE',
+              'airConditioning': true,
+              'wifi': false,
+              'cardPayment': true,
+            },
+          },
+          {
+            'tripId': '1:T2',
+            'stopTimeUpdates': [],
+            'vehicle': {'id': '1:V8', 'wheelchairAccessible': 'UNKNOWN'},
+          },
+          {
+            'tripId': '1:T3',
+            'stopTimeUpdates': [],
+            'vehicle': {'wheelchairAccessible': 'WHEELCHAIR_INACCESSIBLE'},
+          },
+          {'tripId': '1:T4', 'stopTimeUpdates': []},
+        ],
+        'missing': [],
+      });
+      final (client, _) = makeClient((_) => resp(body));
+      final updates = (await client.realtime
+                  .tripUpdates('2026-07-15', ['1:T1', '1:T2', '1:T3', '1:T4'])
+              as Success<TripUpdates>)
+          .value
+          .tripUpdates;
+
+      final full = updates[0].vehicle!;
+      expect(full.id, '1:V7');
+      expect(full.label, '7123');
+      expect(full.wheelchairAccessible, WheelchairBoarding.possible);
+      expect(full.airConditioning, true);
+      expect(full.wifi, false);
+      expect(full.cardPayment, true);
+      expect(updates[0].toJson()['vehicle'], {
+        'id': '1:V7',
+        'label': '7123',
+        'wheelchairAccessible': 'POSSIBLE',
+        'airConditioning': true,
+        'wifi': false,
+        'cardPayment': true,
+      });
+
+      final partial = updates[1].vehicle!;
+      expect(partial.id, '1:V8');
+      expect(partial.label, isNull);
+      expect(partial.wheelchairAccessible, isNull);
+      expect(partial.airConditioning, isNull);
+      expect(partial.wifi, isNull);
+      expect(partial.cardPayment, isNull);
+
+      expect(updates[2].vehicle!.id, isNull);
+      expect(updates[2].vehicle!.wheelchairAccessible,
+          WheelchairBoarding.notPossible);
+
+      expect(updates[3].vehicle, isNull);
+      expect(updates[3].toJson()['vehicle'], isNull);
     });
   });
 
