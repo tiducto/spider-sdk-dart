@@ -3716,4 +3716,362 @@ void main() {
       expect(body['targetResults'], 5);
     });
   });
+
+  group('mode reluctance', () {
+    final pages =
+        planJson(pageInfo: {'hasNextPage': true, 'hasPreviousPage': true});
+
+    Future<Json> planBodyWith(PlanOptions options) async {
+      final (client, mock) = makeClient((_) => resp(pages));
+      await client.routing.plan(options);
+      return bodyOf(mock.requests.single);
+    }
+
+    PlanOptions withReluctance(Map<TransitMode, double>? reluctance,
+            {List<TransitMode> allowed = const [],
+            List<TransitMode> excluded = const []}) =>
+        PlanOptions(
+            origin: const Location.stop('A'),
+            destination: const Location.stop('B'),
+            departAt: DateTime.utc(2026, 10, 7, 6),
+            allowedTransitModes: allowed,
+            excludedTransitModes: excluded,
+            preferences: RoutePreferences(modeReluctance: reluctance));
+
+    test('costs go beside exclude in TransitMode declaration order', () async {
+      final body = await planBodyWith(withReluctance(
+          {TransitMode.tram: 0.5, TransitMode.bus: 2.0},
+          excluded: const [TransitMode.rail]));
+      expect(body['modes'], {
+        'transit': {
+          'exclude': ['RAIL'],
+          'costs': [
+            {'mode': 'BUS', 'reluctance': 2.0},
+            {'mode': 'TRAM', 'reluctance': 0.5},
+          ]
+        }
+      });
+      expect(body.containsKey('preferences'), isFalse);
+    });
+
+    test('costs alone, dropping non-transit modes', () async {
+      final body = await planBodyWith(withReluctance({
+        TransitMode.trolleybus: 3.0,
+        TransitMode.walk: 2.0,
+        TransitMode.unknown: 2.0,
+        TransitMode.airplane: 0.1,
+      }));
+      expect(body['modes'], {
+        'transit': {
+          'costs': [
+            {'mode': 'AIRPLANE', 'reluctance': 0.1},
+            {'mode': 'TROLLEYBUS', 'reluctance': 3.0},
+          ]
+        }
+      });
+    });
+
+    test(
+        'with an allow-list each allowed mode carries its own reluctance and '
+        'no costs are sent', () async {
+      final body = await planBodyWith(withReluctance(
+          {TransitMode.bus: 2.0, TransitMode.ferry: 4.0},
+          allowed: const [TransitMode.tram, TransitMode.bus]));
+      expect(body['modes'], {
+        'transit': {
+          'transit': [
+            {'mode': 'TRAM'},
+            {
+              'mode': 'BUS',
+              'cost': {'reluctance': 2.0}
+            },
+          ]
+        }
+      });
+    });
+
+    test('a null or empty map sends no costs', () async {
+      final bare = await planBodyWith(PlanOptions(
+          origin: const Location.stop('A'),
+          destination: const Location.stop('B'),
+          departAt: DateTime.utc(2026, 10, 7, 6)));
+      expect(await planBodyWith(withReluctance(null)), bare);
+      expect(await planBodyWith(withReluctance(const {})), bare);
+      expect(bare.containsKey('modes'), isFalse);
+      expect(
+          (await planBodyWith(withReluctance(const {},
+              excluded: const [TransitMode.bus])))['modes'],
+          {
+            'transit': {
+              'exclude': ['BUS']
+            }
+          });
+      expect(
+          (await planBodyWith(withReluctance(const {TransitMode.walk: 2.0})))
+              .containsKey('modes'),
+          isFalse);
+    });
+
+    test('a reluctance out of range fails without a request', () async {
+      final cases = [
+        (
+          withReluctance({TransitMode.bus: 0.09}),
+          'modes.transit.costs.reluctance'
+        ),
+        (
+          withReluctance({TransitMode.bus: 100001}),
+          'modes.transit.costs.reluctance'
+        ),
+        (
+          withReluctance({TransitMode.bus: double.nan}),
+          'modes.transit.costs.reluctance'
+        ),
+        (
+          withReluctance({TransitMode.bus: double.infinity}),
+          'modes.transit.costs.reluctance'
+        ),
+        (
+          withReluctance({TransitMode.bus: 0},
+              allowed: const [TransitMode.bus]),
+          'modes.transit.transit.cost.reluctance'
+        ),
+      ];
+      for (final (options, field) in cases) {
+        final (client, mock) = makeClient((_) => resp(pages));
+        final (streamClient, streamMock) = makeStreamClient(200, pageInfoFrame);
+        final plan = await client.routing.plan(options);
+        final streamed = await streamClient.routing
+            .planStream(options, targetResults: 5, maxWindowMinutes: 120)
+            .toList();
+        for (final error in [
+          (plan as Failure<Route>).error,
+          (streamed.single as PlanStreamFailure).error,
+        ]) {
+          expect(error.code, SpiderErrorCode.badRequest, reason: field);
+          expect(error.field, field);
+          expect(error.message, '$field is out of range');
+        }
+        expect(mock.requests, isEmpty);
+        expect(streamMock.requests, isEmpty);
+      }
+      final (client, mock) = makeClient((_) => resp(pages));
+      expect(
+          await client.routing.plan(
+              withReluctance({TransitMode.bus: 0.1, TransitMode.tram: 100000})),
+          isA<Success<Route>>());
+      expect(mock.requests, hasLength(1));
+    });
+
+    test('reluctance reaches every plan call and continuation', () async {
+      final (client, mock) = makeClient((_) => resp(pages));
+      final (streamClient, streamMock) = makeStreamClient(200, pageInfoFrame);
+      final options = withReluctance({TransitMode.tram: 0.5});
+      final first =
+          (await client.routing.plan(options) as Success<Route>).value;
+      await client.routing.planNext(first);
+      await client.routing.planPrevious(first, numberOfItineraries: 2);
+      await streamClient.routing
+          .planStream(options, targetResults: 5, maxWindowMinutes: 120)
+          .toList();
+      final (nextClient, nextMock) = makeStreamClient(200, pageInfoFrame);
+      await nextClient.routing
+          .planStreamNext(options,
+              targetResults: 5, maxWindowMinutes: 120, after: 'c1')
+          .toList();
+      final (previousClient, previousMock) =
+          makeStreamClient(200, pageInfoFrame);
+      await previousClient.routing
+          .planStreamPrevious(options,
+              targetResults: 5, maxWindowMinutes: 120, before: 'c0')
+          .toList();
+      final bodies = [
+        ...mock.requests.map(bodyOf),
+        bodyOf(streamMock.requests.single),
+        bodyOf(nextMock.requests.single),
+        bodyOf(previousMock.requests.single),
+      ];
+      expect(bodies, hasLength(6));
+      for (final body in bodies) {
+        expect(body['modes'], {
+          'transit': {
+            'costs': [
+              {'mode': 'TRAM', 'reluctance': 0.5}
+            ]
+          }
+        });
+      }
+    });
+  });
+
+  group('parent stations', () {
+    const station = {'gtfsId': '1:ST', 'name': 'Central'};
+
+    test('a leg maps the parent station of each end, null without one',
+        () async {
+      final body = planJson(itineraries: [
+        itineraryJson([
+          legJson({
+            'from': {
+              'name': 'A',
+              'stop': stopJson('1:ST-P1', {'parentStation': station}),
+              'stopPosition': null
+            },
+            'to': {
+              'name': 'B',
+              'stop': stopJson('1:S2', {'parentStation': null}),
+              'stopPosition': null
+            },
+          }),
+          legJson({
+            'mode': 'WALK',
+            'from': {'name': 'B', 'stop': null, 'stopPosition': null},
+            'to': {'name': 'C', 'stop': null, 'stopPosition': null},
+          }),
+        ])
+      ]);
+      final (client, _) = makeClient((_) => resp(body));
+      final legs = (await client.routing.plan(stopsAB) as Success<Route>)
+          .value
+          .edges
+          .single
+          .itinerary
+          .legs;
+      expect(legs[0].fromParentStation,
+          const ParentStation(gtfsId: '1:ST', name: 'Central'));
+      expect(legs[0].fromParentStation!.gtfsId, '1:ST');
+      expect(legs[0].fromParentStation!.name, 'Central');
+      expect(legs[0].toParentStation, isNull);
+      expect(legs[1].fromParentStation, isNull);
+      expect(legs[1].toParentStation, isNull);
+
+      final stream = parsePlanStreamRecord(
+          'chunk',
+          chunkJson([
+            itineraryJson([
+              legJson({
+                'to': {
+                  'name': 'B',
+                  'stop': stopJson('1:ST-P2', {'parentStation': station}),
+                  'stopPosition': null
+                },
+              })
+            ])
+          ])) as PlanStreamResult;
+      final streamed = stream.itineraries.single.legs.single;
+      expect(streamed.toParentStation,
+          const ParentStation(gtfsId: '1:ST', name: 'Central'));
+      expect(streamed.fromParentStation, isNull);
+    });
+
+    test('a trip stop maps its parent station, null without one', () async {
+      final (client, _) = makeClient((_) => resp(tripJson([
+            tripStoptimeJson('1:ST-P1', const {}, {'parentStation': station}),
+            tripStoptimeJson('1:S2', const {}, {'parentStation': null}),
+            tripStoptimeJson('1:S3'),
+          ])));
+      final stops = (await client.routing.trip('1:T1', '2026-08-21')
+              as Success<TripDetails>)
+          .value
+          .stops;
+      expect(stops.map((s) => s.parentStation).toList(), [
+        const ParentStation(gtfsId: '1:ST', name: 'Central'),
+        null,
+        null,
+      ]);
+    });
+
+    test('stopDepartures for a stop carries the stop and its station',
+        () async {
+      final body = departuresJson([
+        stoptimeJson('1:T1'),
+        stoptimeJson('1:T2', {'scheduledDeparture': 36600}),
+      ], {
+        'gtfsId': '1:ST-P1',
+        'name': 'Central',
+        'wheelchairBoarding': 'POSSIBLE',
+        'parentStation': station,
+      });
+      final (client, mock) = makeClient((_) => resp(body));
+      final result = await client.routing.stopDepartures('1:ST-P1',
+          numberOfDepartures: 5,
+          startTime:
+              DateTime.fromMillisecondsSinceEpoch(1791612000000, isUtc: true),
+          timeRangeSeconds: 3600,
+          reliability: Reliability.safe,
+          excludedModes: const [TransitMode.tram]);
+      final stop = (result as Success<StopDepartures>).value;
+      expect(stop.gtfsId, '1:ST-P1');
+      expect(stop.name, 'Central');
+      expect(stop.wheelchairBoarding, WheelchairBoarding.possible);
+      expect(stop.parentStation,
+          const ParentStation(gtfsId: '1:ST', name: 'Central'));
+      expect(
+          stop.departures.map((d) => d.tripGtfsId).toList(), ['1:T1', '1:T2']);
+
+      final (departuresClient, departuresMock) = makeClient((_) => resp(body));
+      await departuresClient.routing.departures('1:ST-P1',
+          numberOfDepartures: 5,
+          startTime:
+              DateTime.fromMillisecondsSinceEpoch(1791612000000, isUtc: true),
+          timeRangeSeconds: 3600,
+          reliability: Reliability.safe,
+          excludedModes: const [TransitMode.tram]);
+      expect(mock.requests.single.uri, departuresMock.requests.single.uri);
+      expect(
+          bodyOf(mock.requests.single), bodyOf(departuresMock.requests.single));
+    });
+
+    test('stopDepartures for a station has no station or wheelchair boarding',
+        () async {
+      final body = departuresJson([stoptimeJson('1:T1')],
+          {'wheelchairBoarding': null, 'parentStation': null});
+      final (client, _) = makeClient((_) => resp(body));
+      final stop = (await client.routing.stopDepartures('1:ST')
+              as Success<StopDepartures>)
+          .value;
+      expect(stop.gtfsId, '1:ST');
+      expect(stop.wheelchairBoarding, isNull);
+      expect(stop.parentStation, isNull);
+      expect(stop.departures.single.stopGtfsId, '1:ST-P1');
+    });
+
+    test('departures still returns the same list', () async {
+      final body = departuresJson([
+        stoptimeJson('1:T1', {'realtimeDeparture': 36060, 'realtime': true}),
+        stoptimeJson('1:T2'),
+      ], {
+        'parentStation': station
+      });
+      final (client, _) = makeClient((_) => resp(body));
+      final departures = (await client.routing.departures('1:ST-P1')
+              as Success<List<Departure>>)
+          .value;
+      final stop = (await client.routing.stopDepartures('1:ST-P1')
+              as Success<StopDepartures>)
+          .value;
+      expect(departures.map((d) => (d.tripGtfsId, d.realtimeTimeEpochMs)),
+          stop.departures.map((d) => (d.tripGtfsId, d.realtimeTimeEpochMs)));
+      expect(departures.first.isRealtime, isTrue);
+    });
+
+    test(
+        'an unknown id is notFound for both calls, and a bad range sends nothing',
+        () async {
+      final (client, mock) = makeClient((_) => resp('{"stop":null}'));
+      final stop = await client.routing.stopDepartures('1:NOPE');
+      final list = await client.routing.departures('1:NOPE');
+      for (final error in [
+        (stop as Failure<StopDepartures>).error,
+        (list as Failure<List<Departure>>).error,
+      ]) {
+        expect(error.code, SpiderErrorCode.notFound);
+        expect(error.message, contains('1:NOPE'));
+      }
+      expect(mock.requests, hasLength(2));
+      final ranged =
+          await client.routing.stopDepartures('S', timeRangeSeconds: 0);
+      expect((ranged as Failure<StopDepartures>).error.field, 'timeRange');
+      expect(mock.requests, hasLength(2));
+    });
+  });
 }
