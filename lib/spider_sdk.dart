@@ -25,7 +25,8 @@ export 'src/routing.dart'
         TripStop,
         TripDetails,
         EstimatedDelays,
-        PlanOptions;
+        PlanOptions,
+        RoutePreferences;
 export 'src/stops.dart'
     show SpiderStops, Stop, StopFilter, GeoPoint, GeoBoundingBox;
 export 'src/transport.dart'

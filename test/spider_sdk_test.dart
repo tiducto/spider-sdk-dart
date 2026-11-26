@@ -3323,4 +3323,397 @@ void main() {
           SpiderErrorCode.unauthorized);
     });
   });
+
+  group('route preferences', () {
+    final pages =
+        planJson(pageInfo: {'hasNextPage': true, 'hasPreviousPage': true});
+
+    Future<Json> planBodyWith(PlanOptions options) async {
+      final (client, mock) = makeClient((_) => resp(pages));
+      await client.routing.plan(options);
+      return bodyOf(mock.requests.single);
+    }
+
+    PlanOptions withPreferences(RoutePreferences? preferences,
+            {int? maxTransfers, bool wheelchairAccessible = false}) =>
+        PlanOptions(
+            origin: const Location.stop('A'),
+            destination: const Location.stop('B'),
+            departAt: DateTime.utc(2026, 10, 7, 6),
+            maxTransfers: maxTransfers,
+            wheelchairAccessible: wheelchairAccessible,
+            preferences: preferences);
+
+    test('no preferences and empty preferences send exactly today\'s body',
+        () async {
+      final bare = await planBodyWith(
+          withPreferences(null, maxTransfers: 1, wheelchairAccessible: true));
+      for (final preferences in [
+        const RoutePreferences(),
+        const RoutePreferences(excludedRoutes: [], excludedAgencies: []),
+      ]) {
+        expect(
+            await planBodyWith(withPreferences(preferences,
+                maxTransfers: 1, wheelchairAccessible: true)),
+            bare);
+      }
+      expect(
+          (await planBodyWith(withPreferences(const RoutePreferences())))
+              .containsKey('preferences'),
+          isFalse);
+    });
+
+    test('every preference lands at its contract path beside the others',
+        () async {
+      final (client, mock) = makeClient((_) => resp(pages));
+      final (streamClient, streamMock) = makeStreamClient(200, pageInfoFrame);
+      final options = withPreferences(
+          const RoutePreferences(
+            walkSpeed: 1.2,
+            walkReluctance: 4.5,
+            boardCost: 600,
+            transferCost: 300,
+            transferSlack: Duration(minutes: 2),
+            waitReluctance: 0.5,
+            boardSlack: Duration(seconds: 30),
+            alightSlack: Duration(hours: 1),
+            excludedRoutes: ['1:L4', '1:L9'],
+            excludedAgencies: ['1:DPMB'],
+          ),
+          maxTransfers: 2,
+          wheelchairAccessible: true);
+      await client.routing.plan(options);
+      await streamClient.routing
+          .planStream(options, targetResults: 5, maxWindowMinutes: 120)
+          .toList();
+      const expected = {
+        'street': {
+          'walk': {'speed': 1.2, 'reluctance': 4.5, 'boardCost': 600}
+        },
+        'transit': {
+          'transfer': {'cost': 300, 'slack': 'PT2M', 'maximumTransfers': 3},
+          'board': {'waitReluctance': 0.5, 'slack': 'PT30S'},
+          'alight': {'slack': 'PT1H'},
+          'filters': [
+            {
+              'exclude': [
+                {
+                  'routes': ['1:L4', '1:L9']
+                },
+                {
+                  'agencies': ['1:DPMB']
+                }
+              ]
+            }
+          ]
+        },
+        'accessibility': {
+          'wheelchair': {'enabled': true}
+        }
+      };
+      expect(bodyOf(mock.requests.single)['preferences'], expected);
+      expect(bodyOf(streamMock.requests.single)['preferences'], expected);
+    });
+
+    test('a single preference sends only its own branch', () async {
+      Future<Object?> preferencesOf(RoutePreferences preferences) async =>
+          (await planBodyWith(withPreferences(preferences)))['preferences'];
+
+      expect(
+          await preferencesOf(
+              const RoutePreferences(transferSlack: Duration.zero)),
+          {
+            'transit': {
+              'transfer': {'slack': 'PT0S'}
+            }
+          });
+      expect(await preferencesOf(const RoutePreferences(walkSpeed: 0.1)), {
+        'street': {
+          'walk': {'speed': 0.1}
+        }
+      });
+      expect(
+          await preferencesOf(const RoutePreferences(
+              excludedRoutes: [], excludedAgencies: ['1:A'])),
+          {
+            'transit': {
+              'filters': [
+                {
+                  'exclude': [
+                    {
+                      'agencies': ['1:A']
+                    }
+                  ]
+                }
+              ]
+            }
+          });
+    });
+
+    test('slacks go out as ISO-8601 durations', () async {
+      for (final (slack, iso) in [
+        (Duration.zero, 'PT0S'),
+        (const Duration(seconds: 45), 'PT45S'),
+        (const Duration(minutes: 1, seconds: 30), 'PT1M30S'),
+        (const Duration(minutes: 5), 'PT5M'),
+        (const Duration(milliseconds: 1500), 'PT1.5S'),
+        (const Duration(hours: 1), 'PT1H'),
+      ]) {
+        final preferences = (await planBodyWith(withPreferences(
+            RoutePreferences(boardSlack: slack))))['preferences'] as Map;
+        expect(((preferences['transit'] as Map)['board'] as Map)['slack'], iso,
+            reason: '$slack');
+      }
+    });
+
+    test('a preference out of its range fails with its path without a request',
+        () async {
+      final outOfRange = [
+        (
+          const RoutePreferences(walkSpeed: 0.09),
+          'preferences.street.walk.speed'
+        ),
+        (
+          const RoutePreferences(walkSpeed: double.infinity),
+          'preferences.street.walk.speed'
+        ),
+        (
+          const RoutePreferences(walkSpeed: double.nan),
+          'preferences.street.walk.speed'
+        ),
+        (
+          const RoutePreferences(walkReluctance: 100001),
+          'preferences.street.walk.reluctance'
+        ),
+        (
+          const RoutePreferences(boardCost: -1),
+          'preferences.street.walk.boardCost'
+        ),
+        (
+          const RoutePreferences(transferCost: 1000001),
+          'preferences.transit.transfer.cost'
+        ),
+        (
+          const RoutePreferences(transferSlack: Duration(seconds: -1)),
+          'preferences.transit.transfer.slack'
+        ),
+        (
+          const RoutePreferences(waitReluctance: 0),
+          'preferences.transit.board.waitReluctance'
+        ),
+        (
+          const RoutePreferences(boardSlack: Duration(minutes: 61)),
+          'preferences.transit.board.slack'
+        ),
+        (
+          const RoutePreferences(alightSlack: Duration(hours: 1, seconds: 1)),
+          'preferences.transit.alight.slack'
+        ),
+      ];
+      for (final (preferences, field) in outOfRange) {
+        final (client, mock) = makeClient((_) => resp(pages));
+        final (streamClient, streamMock) = makeStreamClient(200, pageInfoFrame);
+        final options = withPreferences(preferences);
+        final plan = await client.routing.plan(options);
+        final streamed = await streamClient.routing
+            .planStream(options, targetResults: 5, maxWindowMinutes: 120)
+            .toList();
+        for (final error in [
+          (plan as Failure<Route>).error,
+          (streamed.single as PlanStreamFailure).error,
+        ]) {
+          expect(error.code, SpiderErrorCode.badRequest, reason: field);
+          expect(error.field, field);
+          expect(error.message, '$field is out of range');
+        }
+        expect(mock.requests, isEmpty);
+        expect(streamMock.requests, isEmpty);
+      }
+    });
+
+    test('the bounds themselves are accepted', () async {
+      final (client, mock) = makeClient((_) => resp(pages));
+      final result = await client.routing.plan(withPreferences(
+          const RoutePreferences(
+              walkSpeed: 0.1,
+              walkReluctance: 100000,
+              boardCost: 0,
+              transferCost: 1000000,
+              transferSlack: Duration.zero,
+              waitReluctance: 0.1,
+              boardSlack: Duration(hours: 1),
+              alightSlack: Duration(hours: 1))));
+      expect(result, isA<Success<Route>>());
+      expect(mock.requests, hasLength(1));
+    });
+
+    test('preferences and transitOnly reach every plan call and continuation',
+        () async {
+      final (client, mock) = makeClient((_) => resp(pages));
+      final (streamClient, streamMock) = makeStreamClient(200, pageInfoFrame);
+      final options = PlanOptions(
+          origin: const Location.stop('A'),
+          destination: const Location.stop('B'),
+          transitOnly: true,
+          preferences: const RoutePreferences(
+              walkSpeed: 1.0,
+              transferSlack: Duration(minutes: 3),
+              excludedRoutes: ['1:L4']));
+      final first =
+          (await client.routing.plan(options) as Success<Route>).value;
+      await client.routing.planNext(first);
+      await client.routing.planPrevious(first);
+      await client.routing.plan(stopsAB);
+      await streamClient.routing
+          .planStream(options, targetResults: 5, maxWindowMinutes: 120)
+          .toList();
+      await streamClient.routing
+          .planStreamNext(options,
+              targetResults: 5, maxWindowMinutes: 120, after: 'c1')
+          .toList();
+      await streamClient.routing
+          .planStreamPrevious(options,
+              targetResults: 5, maxWindowMinutes: 120, before: 'c0')
+          .toList();
+      final bodies = [...mock.requests, ...streamMock.requests].map(bodyOf);
+      const preferences = {
+        'street': {
+          'walk': {'speed': 1.0}
+        },
+        'transit': {
+          'transfer': {'slack': 'PT3M'},
+          'filters': [
+            {
+              'exclude': [
+                {
+                  'routes': ['1:L4']
+                }
+              ]
+            }
+          ]
+        }
+      };
+      expect(bodies.map((b) => b['preferences']).toList(), [
+        preferences,
+        preferences,
+        preferences,
+        null,
+        preferences,
+        preferences,
+        preferences
+      ]);
+      expect(bodies.map((b) => b['modes']).toList(), [
+        for (var i = 0; i < 3; i++) {'transitOnly': true},
+        null,
+        for (var i = 0; i < 3; i++) {'transitOnly': true},
+      ]);
+    });
+
+    test(
+        'transitOnly sends modes.transitOnly beside a mode filter, nothing when false',
+        () async {
+      PlanOptions modes(
+              {bool transitOnly = false,
+              List<TransitMode> excluded = const [],
+              List<TransitMode> allowed = const []}) =>
+          PlanOptions(
+              origin: const Location.stop('A'),
+              destination: const Location.stop('B'),
+              departAt: DateTime.utc(2026, 10, 7, 6),
+              transitOnly: transitOnly,
+              allowedTransitModes: allowed,
+              excludedTransitModes: excluded);
+
+      expect((await planBodyWith(modes(transitOnly: true)))['modes'],
+          {'transitOnly': true});
+      expect(
+          (await planBodyWith(modes(
+              transitOnly: true, excluded: const [TransitMode.tram])))['modes'],
+          {
+            'transitOnly': true,
+            'transit': {
+              'exclude': ['TRAM']
+            }
+          });
+      expect(
+          (await planBodyWith(modes(
+              transitOnly: true, allowed: const [TransitMode.bus])))['modes'],
+          {
+            'transitOnly': true,
+            'transit': {
+              'transit': [
+                {'mode': 'BUS'}
+              ]
+            }
+          });
+      expect((await planBodyWith(modes())).containsKey('modes'), isFalse);
+      expect(await planBodyWith(modes(transitOnly: false)),
+          await planBodyWith(modes()));
+    });
+
+    test(
+        'numberOfItineraries is first, first after a cursor and last before one',
+        () async {
+      final (client, mock) = makeClient((_) => resp(pages));
+      const sized = PlanOptions(
+          origin: Location.stop('A'),
+          destination: Location.stop('B'),
+          numberOfItineraries: 3);
+      final route = (await client.routing.plan(sized) as Success<Route>).value;
+      await client.routing.planNext(route);
+      await client.routing.planPrevious(route);
+      final next = (await client.routing.planNext(route, numberOfItineraries: 1)
+              as Success<Route>)
+          .value;
+      await client.routing.planPrevious(route, numberOfItineraries: 2);
+      await client.routing.planNext(next);
+      await client.routing.planPrevious(next);
+      final unsized =
+          (await client.routing.plan(stopsAB) as Success<Route>).value;
+      await client.routing.planNext(unsized);
+      await client.routing.planPrevious(unsized);
+      final bodies = mock.requests.map(bodyOf).toList();
+      expect(bodies.map((b) => (b['first'], b['last'])).toList(), [
+        (3, null),
+        (3, null),
+        (null, 3),
+        (1, null),
+        (null, 2),
+        (1, null),
+        (null, 1),
+        (null, null),
+        (null, null),
+        (null, null),
+      ]);
+      expect(bodies.map((b) => (b['after'], b['before'])).toList(), [
+        (null, null),
+        ('c1', null),
+        (null, 'c0'),
+        ('c1', null),
+        (null, 'c0'),
+        ('c1', null),
+        (null, 'c0'),
+        (null, null),
+        ('c1', null),
+        (null, 'c0'),
+      ]);
+    });
+
+    test('the stream ignores numberOfItineraries', () async {
+      final (client, mock) = makeStreamClient(200, pageInfoFrame);
+      await client.routing
+          .planStream(
+              const PlanOptions(
+                  origin: Location.stop('A'),
+                  destination: Location.stop('B'),
+                  numberOfItineraries: 3),
+              targetResults: 5,
+              maxWindowMinutes: 120)
+          .toList();
+      final body = bodyOf(mock.requests.single);
+      expect(body.containsKey('first'), isFalse);
+      expect(body.containsKey('last'), isFalse);
+      expect(body['targetResults'], 5);
+    });
+  });
 }
