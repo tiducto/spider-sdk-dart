@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+Targets Spider API contract `1.13`.
+
+### Changed
+
+- **`RoutePreferences`** and **`RoutePreferences.modeReluctance`** check contract 1.13's narrower ranges, which the
+  API already enforces: a walking speed from 0.3 to 5 (it had no maximum), a walk, wait or mode reluctance from 1
+  to 100 (was 0.1 to 100000), so a mode's reluctance of 1 rides it as any other and only above 1 avoids it, and a
+  board or transfer cost from 0 to 86400 (was 0 to 1000000). A value outside them fails with `badRequest` for its
+  contract path (`preferences.transit.transfer.cost is out of range`) without a request, instead of reaching the
+  API for the same 400.
+
 ## 1.12.0
 
 Targets Spider API contract `1.12`.
