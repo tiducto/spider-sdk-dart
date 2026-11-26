@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.12.0
 
 Targets Spider API contract `1.12`.
 
