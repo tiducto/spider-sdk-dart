@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased
+
+Targets Spider API contract `1.11`.
+
+### Added
+
+- **`RoutePreferences`** and **`PlanOptions.preferences`**: the contract's routing preferences the SDK didn't
+  expose. `walkSpeed`, `walkReluctance` and `boardCost` are sent under `preferences.street.walk`, `transferCost`
+  and `transferSlack` under `preferences.transit.transfer` (beside `maximumTransfers` from `maxTransfers`),
+  `waitReluctance` and `boardSlack` under `preferences.transit.board`, `alightSlack` under
+  `preferences.transit.alight`, and `excludedRoutes` / `excludedAgencies` (feed-prefixed ids) as one
+  `preferences.transit.filters` exclusion. Slacks are `Duration`s, sent as ISO-8601. Used by `plan`, `planStream`,
+  `planStreamNext` and `planStreamPrevious`, and kept on the `Route` so `planNext` / `planPrevious` resend them.
+- Each member left out keeps the environment's default, and empty exclusions exclude nothing, so
+  `RoutePreferences()` sends the same body as no preferences. A value outside the contract's fixed range (a walking
+  speed under 0.1, a multiplier outside 0.1 to 100000, a cost outside 0 to 1000000, a slack outside zero to 1 hour)
+  fails with `badRequest` for its contract path (`preferences.transit.board.slack is out of range`) without a
+  request.
+- **`PlanOptions.transitOnly`** (default false): leaves out every itinerary without a transit leg, such as walking
+  the whole way. Sent as `modes.transitOnly` only when true, beside `allowedTransitModes` or
+  `excludedTransitModes`, on every plan call; `planNext` / `planPrevious` resend it. The contract's `directOnly`
+  stays unexposed.
+- **`PlanOptions.numberOfItineraries`**: the most itineraries a `plan` page holds, from 1 up to the environment's
+  itinerary limit, rejected and never clamped by the API; null means the limit. Sent as `first` on the first page
+  and after a cursor, as `last` before one. **`planNext(route, numberOfItineraries:)`** and **`planPrevious(…)`**
+  size that page instead; null keeps the size `route` was asked with, and later pages keep the new one.
+  `planStream` sizes itself by `targetResults` and ignores it, as it does `searchWindowMinutes`.
+
 ## 1.11.0
 
 Targets Spider API contract `1.11`.
