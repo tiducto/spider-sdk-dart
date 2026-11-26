@@ -3374,7 +3374,7 @@ void main() {
             boardCost: 600,
             transferCost: 300,
             transferSlack: Duration(minutes: 2),
-            waitReluctance: 0.5,
+            waitReluctance: 1.5,
             boardSlack: Duration(seconds: 30),
             alightSlack: Duration(hours: 1),
             excludedRoutes: ['1:L4', '1:L9'],
@@ -3392,7 +3392,7 @@ void main() {
         },
         'transit': {
           'transfer': {'cost': 300, 'slack': 'PT2M', 'maximumTransfers': 3},
-          'board': {'waitReluctance': 0.5, 'slack': 'PT30S'},
+          'board': {'waitReluctance': 1.5, 'slack': 'PT30S'},
           'alight': {'slack': 'PT1H'},
           'filters': [
             {
@@ -3427,9 +3427,9 @@ void main() {
               'transfer': {'slack': 'PT0S'}
             }
           });
-      expect(await preferencesOf(const RoutePreferences(walkSpeed: 0.1)), {
+      expect(await preferencesOf(const RoutePreferences(walkSpeed: 0.3)), {
         'street': {
-          'walk': {'speed': 0.1}
+          'walk': {'speed': 0.3}
         }
       });
       expect(
@@ -3470,7 +3470,11 @@ void main() {
         () async {
       final outOfRange = [
         (
-          const RoutePreferences(walkSpeed: 0.09),
+          const RoutePreferences(walkSpeed: 0.29),
+          'preferences.street.walk.speed'
+        ),
+        (
+          const RoutePreferences(walkSpeed: 5.01),
           'preferences.street.walk.speed'
         ),
         (
@@ -3482,7 +3486,11 @@ void main() {
           'preferences.street.walk.speed'
         ),
         (
-          const RoutePreferences(walkReluctance: 100001),
+          const RoutePreferences(walkReluctance: 0.99),
+          'preferences.street.walk.reluctance'
+        ),
+        (
+          const RoutePreferences(walkReluctance: 100.01),
           'preferences.street.walk.reluctance'
         ),
         (
@@ -3490,7 +3498,7 @@ void main() {
           'preferences.street.walk.boardCost'
         ),
         (
-          const RoutePreferences(transferCost: 1000001),
+          const RoutePreferences(transferCost: 86401),
           'preferences.transit.transfer.cost'
         ),
         (
@@ -3498,7 +3506,11 @@ void main() {
           'preferences.transit.transfer.slack'
         ),
         (
-          const RoutePreferences(waitReluctance: 0),
+          const RoutePreferences(waitReluctance: 0.99),
+          'preferences.transit.board.waitReluctance'
+        ),
+        (
+          const RoutePreferences(waitReluctance: 100.01),
           'preferences.transit.board.waitReluctance'
         ),
         (
@@ -3532,19 +3544,28 @@ void main() {
     });
 
     test('the bounds themselves are accepted', () async {
-      final (client, mock) = makeClient((_) => resp(pages));
-      final result = await client.routing.plan(withPreferences(
-          const RoutePreferences(
-              walkSpeed: 0.1,
-              walkReluctance: 100000,
-              boardCost: 0,
-              transferCost: 1000000,
-              transferSlack: Duration.zero,
-              waitReluctance: 0.1,
-              boardSlack: Duration(hours: 1),
-              alightSlack: Duration(hours: 1))));
-      expect(result, isA<Success<Route>>());
-      expect(mock.requests, hasLength(1));
+      for (final preferences in const [
+        RoutePreferences(
+            walkSpeed: 0.3,
+            walkReluctance: 100,
+            boardCost: 86400,
+            transferCost: 0,
+            transferSlack: Duration.zero,
+            waitReluctance: 1,
+            boardSlack: Duration(hours: 1),
+            alightSlack: Duration(hours: 1)),
+        RoutePreferences(
+            walkSpeed: 5,
+            walkReluctance: 1,
+            boardCost: 0,
+            transferCost: 86400,
+            waitReluctance: 100),
+      ]) {
+        final (client, mock) = makeClient((_) => resp(pages));
+        final result = await client.routing.plan(withPreferences(preferences));
+        expect(result, isA<Success<Route>>());
+        expect(mock.requests, hasLength(1));
+      }
     });
 
     test('preferences and transitOnly reach every plan call and continuation',
@@ -3740,14 +3761,14 @@ void main() {
 
     test('costs go beside exclude in TransitMode declaration order', () async {
       final body = await planBodyWith(withReluctance(
-          {TransitMode.tram: 0.5, TransitMode.bus: 2.0},
+          {TransitMode.tram: 1.5, TransitMode.bus: 2.0},
           excluded: const [TransitMode.rail]));
       expect(body['modes'], {
         'transit': {
           'exclude': ['RAIL'],
           'costs': [
             {'mode': 'BUS', 'reluctance': 2.0},
-            {'mode': 'TRAM', 'reluctance': 0.5},
+            {'mode': 'TRAM', 'reluctance': 1.5},
           ]
         }
       });
@@ -3759,12 +3780,12 @@ void main() {
         TransitMode.trolleybus: 3.0,
         TransitMode.walk: 2.0,
         TransitMode.unknown: 2.0,
-        TransitMode.airplane: 0.1,
+        TransitMode.airplane: 1.0,
       }));
       expect(body['modes'], {
         'transit': {
           'costs': [
-            {'mode': 'AIRPLANE', 'reluctance': 0.1},
+            {'mode': 'AIRPLANE', 'reluctance': 1.0},
             {'mode': 'TROLLEYBUS', 'reluctance': 3.0},
           ]
         }
@@ -3815,11 +3836,11 @@ void main() {
     test('a reluctance out of range fails without a request', () async {
       final cases = [
         (
-          withReluctance({TransitMode.bus: 0.09}),
+          withReluctance({TransitMode.bus: 0.99}),
           'modes.transit.costs.reluctance'
         ),
         (
-          withReluctance({TransitMode.bus: 100001}),
+          withReluctance({TransitMode.bus: 100.01}),
           'modes.transit.costs.reluctance'
         ),
         (
@@ -3857,7 +3878,7 @@ void main() {
       final (client, mock) = makeClient((_) => resp(pages));
       expect(
           await client.routing.plan(
-              withReluctance({TransitMode.bus: 0.1, TransitMode.tram: 100000})),
+              withReluctance({TransitMode.bus: 1, TransitMode.tram: 100})),
           isA<Success<Route>>());
       expect(mock.requests, hasLength(1));
     });
@@ -3865,7 +3886,7 @@ void main() {
     test('reluctance reaches every plan call and continuation', () async {
       final (client, mock) = makeClient((_) => resp(pages));
       final (streamClient, streamMock) = makeStreamClient(200, pageInfoFrame);
-      final options = withReluctance({TransitMode.tram: 0.5});
+      final options = withReluctance({TransitMode.tram: 1.5});
       final first =
           (await client.routing.plan(options) as Success<Route>).value;
       await client.routing.planNext(first);
@@ -3895,7 +3916,7 @@ void main() {
         expect(body['modes'], {
           'transit': {
             'costs': [
-              {'mode': 'TRAM', 'reluctance': 0.5}
+              {'mode': 'TRAM', 'reluctance': 1.5}
             ]
           }
         });

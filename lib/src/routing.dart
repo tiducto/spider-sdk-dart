@@ -533,11 +533,11 @@ class PlanOptions {
 /// `<path> is out of range`) without a request; the API never clamps one. The API rounds the multipliers and
 /// the walking speed to its own steps.
 ///
-/// [walkSpeed] is the walking speed on flat ground in metres per second, at least 0.1. [walkReluctance] is how
-/// much worse walking is than riding for the same time, a multiplier from 0.1 to 100000: above the default it
+/// [walkSpeed] is the walking speed on flat ground in metres per second, from 0.3 to 5. [walkReluctance] is how
+/// much worse walking is than riding for the same time, a multiplier from 1 to 100: above the default it
 /// walks less. [boardCost] is a generalized cost added for each boarding and [transferCost] one added for each
-/// transfer, each from 0 to 1000000: higher favours fewer rides. [waitReluctance] is how much worse waiting at a
-/// stop is than riding for the same time, from 0.1 to 100000: above the default it rather walks on than waits.
+/// transfer, each from 0 to 86400: higher favours fewer rides. [waitReluctance] is how much worse waiting at a
+/// stop is than riding for the same time, from 1 to 100: above the default it rather walks on than waits.
 ///
 /// [transferSlack] is the least time between alighting one vehicle and boarding the next, on top of the walk
 /// between the stops; [boardSlack] the least time at the stop before boarding; [alightSlack] the least time
@@ -547,8 +547,8 @@ class PlanOptions {
 /// (`<feedId>:<id>`; a route id as [Leg.routeGtfsId] and [Departure.routeGtfsId] give it). An id the
 /// environment's feed doesn't know excludes nothing, and empty excludes nothing.
 ///
-/// [modeReluctance] is a multiplier on the time spent riding each listed mode, from 0.1 to 100000: above 1
-/// avoids the mode, below 1 favours it, and an unlisted mode keeps 1. It restricts no mode, and a mode
+/// [modeReluctance] is a multiplier on the time spent riding each listed mode, from 1 to 100: 1 rides it as
+/// any other mode, above 1 avoids it, and an unlisted mode keeps 1. It restricts no mode, and a mode
 /// [PlanOptions.excludedTransitModes] names stays excluded. Without [PlanOptions.allowedTransitModes] it is
 /// sent as `modes.transit.costs` in [TransitMode] declaration order; with them, each allowed mode's reluctance
 /// goes on its own `modes.transit.transit[].cost.reluctance` and the reluctance of a mode not allowed is
@@ -641,9 +641,11 @@ const _maxTimeRangeSeconds = 24 * 60 * 60;
 const _minStreamWindowMinutes = 2 * 60;
 const _maxViaStopIds = 10;
 const _maxViaWaitSeconds = 60 * 60;
-const _minMultiplier = 0.1;
-const _maxMultiplier = 100000.0;
-const _maxCost = 1000000;
+const _minMultiplier = 1.0;
+const _maxMultiplier = 100.0;
+const _minWalkSpeed = 0.3;
+const _maxWalkSpeed = 5.0;
+const _maxCost = 86400;
 const _maxSlack = Duration(hours: 1);
 const _walkPreferences = 'preferences.street.walk';
 const _transitPreferences = 'preferences.transit';
@@ -1183,7 +1185,10 @@ SpiderError? _invalidPreferences(PlanOptions options) {
   bool slack(Duration value) => value >= Duration.zero && value <= _maxSlack;
   final checks = <(String, bool)>[
     if (preferences.walkSpeed case final speed?)
-      ('$_walkPreferences.speed', speed.isFinite && speed >= _minMultiplier),
+      (
+        '$_walkPreferences.speed',
+        speed >= _minWalkSpeed && speed <= _maxWalkSpeed
+      ),
     if (preferences.walkReluctance case final value?)
       ('$_walkPreferences.reluctance', multiplier(value)),
     if (preferences.boardCost case final value?)
