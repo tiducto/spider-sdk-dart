@@ -4,6 +4,7 @@ import 'contract/routing.dart' as wire;
 import 'enums.dart';
 import 'errors.dart';
 import 'location.dart';
+import 'parent_station.dart';
 import 'plan_stream_event.dart';
 import 'polyline.dart';
 import 'result.dart';
@@ -58,6 +59,12 @@ class Leg {
 
   /// The fare zone (GTFS `zone_id`) of the alighting stop.
   final String? toZoneId;
+
+  /// The station the boarding stop belongs to; null when it has none or the leg starts at no stop.
+  final ParentStation? fromParentStation;
+
+  /// The station the alighting stop belongs to; null when it has none or the leg ends at no stop.
+  final ParentStation? toParentStation;
   final String? routeGtfsId;
   final String? routeShortName;
   final String? routeLongName;
@@ -116,6 +123,8 @@ class Leg {
     this.toPlatformCode,
     this.fromZoneId,
     this.toZoneId,
+    this.fromParentStation,
+    this.toParentStation,
     this.routeGtfsId,
     this.routeShortName,
     this.routeLongName,
@@ -292,6 +301,31 @@ class Departure {
   });
 }
 
+/// The departures of [SpiderRouting.stopDepartures], with the stop or station they leave from.
+class StopDepartures {
+  /// The id the departures were asked for: a stop's, or a station's for all its stops.
+  final String gtfsId;
+  final String name;
+
+  /// Whether a wheelchair user can board at the stop; null for a station's departures and when the feed has
+  /// no information.
+  final WheelchairBoarding? wheelchairBoarding;
+
+  /// The station the stop belongs to, whose [ParentStation.gtfsId] asks for the whole station's departures.
+  /// Null for a station's departures and for a stop without a station.
+  final ParentStation? parentStation;
+
+  /// The departures, as [SpiderRouting.departures] returns them.
+  final List<Departure> departures;
+  const StopDepartures({
+    required this.gtfsId,
+    required this.name,
+    this.wheelchairBoarding,
+    this.parentStation,
+    required this.departures,
+  });
+}
+
 /// One stop on a trip's timetable.
 class TripStop {
   final String gtfsId;
@@ -314,6 +348,9 @@ class TripStop {
 
   /// The fare zone (GTFS `zone_id`), when the feed gives one.
   final String? zoneId;
+
+  /// The station the stop belongs to; null when it has none.
+  final ParentStation? parentStation;
 
   /// The stop's position in the trip: increasing along it, not necessarily from 0 or consecutive. A
   /// [Leg.fromStopPosition], [Leg.toStopPosition] or [Departure.stopPosition] equal to it names this stop, also
@@ -344,6 +381,7 @@ class TripStop {
     this.wheelchairBoarding,
     this.platformCode,
     this.zoneId,
+    this.parentStation,
     this.stopPosition,
     this.geometryIndex,
     this.pickupType,
@@ -508,6 +546,15 @@ class PlanOptions {
 /// [excludedRoutes] and [excludedAgencies] leave out every trip of those feed-prefixed route or agency ids
 /// (`<feedId>:<id>`; a route id as [Leg.routeGtfsId] and [Departure.routeGtfsId] give it). An id the
 /// environment's feed doesn't know excludes nothing, and empty excludes nothing.
+///
+/// [modeReluctance] is a multiplier on the time spent riding each listed mode, from 0.1 to 100000: above 1
+/// avoids the mode, below 1 favours it, and an unlisted mode keeps 1. It restricts no mode, and a mode
+/// [PlanOptions.excludedTransitModes] names stays excluded. Without [PlanOptions.allowedTransitModes] it is
+/// sent as `modes.transit.costs` in [TransitMode] declaration order; with them, each allowed mode's reluctance
+/// goes on its own `modes.transit.transit[].cost.reluctance` and the reluctance of a mode not allowed is
+/// dropped. [TransitMode.walk], [TransitMode.unknown] and the other non-transit modes are ignored. Null or
+/// empty sends nothing. A reluctance out of range fails with `modes.transit.costs.reluctance is out of range`,
+/// or `modes.transit.transit.cost.reluctance is out of range` with an allow-list, without a request.
 class RoutePreferences {
   final double? walkSpeed;
   final double? walkReluctance;
@@ -519,6 +566,7 @@ class RoutePreferences {
   final Duration? alightSlack;
   final List<String> excludedRoutes;
   final List<String> excludedAgencies;
+  final Map<TransitMode, double>? modeReluctance;
   const RoutePreferences({
     this.walkSpeed,
     this.walkReluctance,
@@ -530,6 +578,7 @@ class RoutePreferences {
     this.alightSlack,
     this.excludedRoutes = const [],
     this.excludedAgencies = const [],
+    this.modeReluctance,
   });
 }
 
@@ -629,7 +678,7 @@ class SpiderRouting {
   Future<SpiderResult<Route>> plan(PlanOptions options) async {
     final invalid = _invalidVia(options.via) ??
         _invalidModes(options) ??
-        _invalidPreferences(options.preferences);
+        _invalidPreferences(options);
     if (invalid != null) return Failure(invalid);
     return _page(_makeRequest(options));
   }
@@ -666,7 +715,29 @@ class SpiderRouting {
   /// [excludedModes] leaves out every departure of those modes before [numberOfDepartures] counts, so the board
   /// (and each later one paged by [startTime]) still holds up to [numberOfDepartures] departures of the other
   /// modes; empty leaves out nothing, and [TransitMode.walk] and [TransitMode.unknown] are ignored.
+  /// [stopDepartures] gives the same departures with the stop they leave from.
   Future<SpiderResult<List<Departure>>> departures(String stopId,
+      {int numberOfDepartures = _defaultNumberOfDepartures,
+      DateTime? startTime,
+      int timeRangeSeconds = _maxTimeRangeSeconds,
+      Reliability? reliability,
+      List<TransitMode> excludedModes = const []}) async {
+    final result = await stopDepartures(stopId,
+        numberOfDepartures: numberOfDepartures,
+        startTime: startTime,
+        timeRangeSeconds: timeRangeSeconds,
+        reliability: reliability,
+        excludedModes: excludedModes);
+    return switch (result) {
+      Success(:final value) => Success(value.departures),
+      Failure(:final error) => Failure(error),
+    };
+  }
+
+  /// The departures of [departures], with the stop or station they leave from: its name, its wheelchair
+  /// boarding and the station it belongs to. Takes the same parameters and fails the same way, an id that
+  /// resolves to no stop or station included ([SpiderErrorCode.notFound]).
+  Future<SpiderResult<StopDepartures>> stopDepartures(String stopId,
       {int numberOfDepartures = _defaultNumberOfDepartures,
       DateTime? startTime,
       int timeRangeSeconds = _maxTimeRangeSeconds,
@@ -687,7 +758,7 @@ class SpiderRouting {
         excludeModes: _wireModes(excludedModes),
       ).toJson();
       final departures = await _transport.postJson(
-          '/routing/v1/departures', body, _decodeDepartures);
+          '/routing/v1/departures', body, _decodeStopDepartures);
       if (departures == null) {
         throw TransportError(TransportErrorKind.noData,
             'routing returned no stop or station for id=$stopId');
@@ -816,7 +887,7 @@ class SpiderRouting {
         ? invalidInput('maxWindow')
         : _invalidVia(options.via) ??
             _invalidModes(options) ??
-            _invalidPreferences(options.preferences);
+            _invalidPreferences(options);
     if (invalid != null) {
       yield PlanStreamFailure(invalid);
       return;
@@ -950,9 +1021,18 @@ _PlanPage _decodePlanPage(Map<String, dynamic> json) {
   );
 }
 
-List<Departure>? _decodeDepartures(Map<String, dynamic> json) {
+StopDepartures? _decodeStopDepartures(Map<String, dynamic> json) {
   final stop = wire.DeparturesResponse.fromJson(json).stop;
-  return stop == null ? null : _mapDepartures(stop);
+  return stop == null
+      ? null
+      : StopDepartures(
+          gtfsId: stop.gtfsId,
+          name: stop.name,
+          wheelchairBoarding:
+              WheelchairBoarding.fromWire(stop.wheelchairBoarding?.wire),
+          parentStation: _mapParentStation(stop.parentStation),
+          departures: _mapDepartures(stop),
+        );
 }
 
 TripDetails? _decodeTrip(Map<String, dynamic> json, String serviceDate) {
@@ -1058,20 +1138,45 @@ SpiderError? _invalidModes(PlanOptions options) =>
         : null;
 
 wire.PlanModesInput? _modesInput(_PlanRequest request) {
-  final transit = _wireModes(request.allowedTransitModes)
-      ?.map((mode) => wire.PlanTransitModePreferenceInput(mode: mode))
-      .toList();
+  final reluctance = {
+    for (final MapEntry(:key, :value)
+        in request.preferences?.modeReluctance?.entries ??
+            const <MapEntry<TransitMode, double>>[])
+      if (_wireTransitModes.contains(key.wire)) key.wire: value,
+  };
+  final transit = _wireModes(request.allowedTransitModes)?.map((mode) {
+    final value = reluctance[mode.wire];
+    return wire.PlanTransitModePreferenceInput(
+        mode: mode,
+        cost: value == null
+            ? null
+            : wire.TransitModePreferenceCostInput(reluctance: value));
+  }).toList();
   final exclude = _wireModes(request.excludedTransitModes);
-  final transitModes = transit == null && exclude == null
+  final costs = transit != null || reluctance.isEmpty
       ? null
-      : wire.PlanTransitModesInput(transit: transit, exclude: exclude);
+      : [
+          for (final mode in TransitMode.values)
+            if (reluctance[mode.wire] case final value?)
+              wire.TransitModeCostInput(
+                  mode: wire.TransitMode.fromWire(mode.wire),
+                  reluctance: value),
+        ];
+  final transitModes = transit == null && exclude == null && costs == null
+      ? null
+      : wire.PlanTransitModesInput(
+          transit: transit, exclude: exclude, costs: costs);
   if (transitModes == null && !request.transitOnly) return null;
   return wire.PlanModesInput(
       transitOnly: request.transitOnly ? true : null, transit: transitModes);
 }
 
-SpiderError? _invalidPreferences(RoutePreferences? preferences) {
+SpiderError? _invalidPreferences(PlanOptions options) {
+  final preferences = options.preferences;
   if (preferences == null) return null;
+  final reluctanceField = _wireModes(options.allowedTransitModes) == null
+      ? 'modes.transit.costs.reluctance'
+      : 'modes.transit.transit.cost.reluctance';
   bool multiplier(double value) =>
       value >= _minMultiplier && value <= _maxMultiplier;
   bool cost(int value) => value >= 0 && value <= _maxCost;
@@ -1093,6 +1198,8 @@ SpiderError? _invalidPreferences(RoutePreferences? preferences) {
       ('$_transitPreferences.board.slack', slack(value)),
     if (preferences.alightSlack case final value?)
       ('$_transitPreferences.alight.slack', slack(value)),
+    for (final value in preferences.modeReluctance?.values ?? const <double>[])
+      (reluctanceField, multiplier(value)),
   ];
   for (final (field, valid) in checks) {
     if (!valid) return invalidInput(field);
@@ -1273,6 +1380,8 @@ Leg _mapLeg(wire.Leg w) {
     toPlatformCode: toStop?.platformCode,
     fromZoneId: fromStop?.zoneId,
     toZoneId: toStop?.zoneId,
+    fromParentStation: _mapParentStation(fromStop?.parentStation),
+    toParentStation: _mapParentStation(toStop?.parentStation),
     routeGtfsId: route?.gtfsId,
     routeShortName: route?.shortName,
     routeLongName: route?.longName,
@@ -1293,6 +1402,9 @@ Leg _mapLeg(wire.Leg w) {
     vehicle: _mapTripVehicle(w.vehicle),
   );
 }
+
+ParentStation? _mapParentStation(wire.ParentStation? w) =>
+    w == null ? null : ParentStation(gtfsId: w.gtfsId, name: w.name);
 
 TripVehicle? _mapTripVehicle(wire.TripVehicle? w) => w == null
     ? null
@@ -1409,6 +1521,7 @@ TripDetails _mapTrip(wire.TripTimetable w, String serviceDate) {
               WheelchairBoarding.fromWire(st.stop.wheelchairBoarding.wire),
           platformCode: st.stop.platformCode,
           zoneId: st.stop.zoneId,
+          parentStation: _mapParentStation(st.stop.parentStation),
           stopPosition: st.stopPosition,
           geometryIndex: st.geometryIndex,
           pickupType: _pickupDropoff(st.pickupType),

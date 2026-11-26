@@ -7,6 +7,7 @@ export 'src/client.dart'
 export 'src/enums.dart';
 export 'src/errors.dart' show SpiderError, SpiderErrorCode;
 export 'src/location.dart';
+export 'src/parent_station.dart';
 export 'src/plan_stream_event.dart';
 export 'src/polyline.dart' show LatLon;
 export 'src/places.dart' show SpiderPlaces, PlaceHit, PlaceType;
@@ -22,6 +23,7 @@ export 'src/routing.dart'
         RoutePageInfo,
         RoutingError,
         Departure,
+        StopDepartures,
         TripStop,
         TripDetails,
         EstimatedDelays,

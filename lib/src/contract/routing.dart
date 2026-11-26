@@ -182,22 +182,22 @@ class PlanStreamRequest {
 
 /// POST body for `/routing/v1/departures`. A key not listed here is a 400 `<key> is not allowed`, whatever its value, null included. Every bound is rejected, never clamped. `null` on an optional member means absent, and on a required member is a 400 `<path> is required`.
 class DeparturesRequest {
-  /// Feed-prefixed id (`<feedId>:<id>`) of a stop, for that platform's board, or of a station, for all its platforms. A bare or foreign-prefixed id resolves to nothing, and `stop` is null.
+  /// Feed-prefixed id (`<feedId>:<id>`) of a stop, for that stop's departures, or of a station, for the departures of all its stops. A bare or foreign-prefixed id resolves to nothing, and `stop` is null.
   final String id;
 
-  /// Most rows on the board: 1 up to the environment's limit; rejected, never clamped.
+  /// Most departures returned: 1 up to the environment's limit; rejected, never clamped.
   final int numberOfDepartures;
 
-  /// Seconds after `startTime` the board covers: 1 to 86400 (24 hours); rejected, never clamped.
+  /// Seconds after `startTime` the departures cover: 1 to 86400 (24 hours); rejected, never clamped.
   final int timeRange;
 
-  /// Unix seconds the board starts at, from 0 to 4102444799 (2099-12-31T23:59:59Z). Absent or 0 means now.
+  /// Unix seconds the departures start at, from 0 to 4102444799 (2099-12-31T23:59:59Z). Absent or 0 means now.
   final int? startTime;
 
   /// The level `typicalDelay` is given at; the times do not depend on it. Omitted or null, `typicalDelay` is null. A value outside `Reliability` is a 400 `reliability is invalid`.
   final Reliability? reliability;
 
-  /// Modes the board leaves out: a departure whose route's `mode` is listed gives no row. They are left out before `numberOfDepartures` counts, so the board holds up to `numberOfDepartures` rows of the other modes within `timeRange`. Absent or empty leaves out nothing. A value outside `TransitMode` is a 400 `excludeModes is invalid`.
+  /// Modes left out of the departures: a departure whose route's `mode` is listed gives no row. They are left out before `numberOfDepartures` counts, so the response holds up to `numberOfDepartures` rows of the other modes within `timeRange`. Absent or empty leaves out nothing. A value outside `TransitMode` is a 400 `excludeModes is invalid`.
   final List<TransitMode>? excludeModes;
 
   const DeparturesRequest({
@@ -501,7 +501,7 @@ class PlanModesInput {
       };
 }
 
-/// Transit modes the search may use: either the modes it may ride (`transit`) or the modes it leaves out (`exclude`). Both non-empty in one request is a 400 `modes.transit is invalid`.
+/// Transit modes the search may use: either the modes it may ride (`transit`, each with its own reluctance) or the modes it leaves out (`exclude`), with per-mode reluctances in `costs`. A non-empty `transit` with a non-empty `exclude` or `costs` is a 400 `modes.transit is invalid`.
 class PlanTransitModesInput {
   /// The modes an itinerary may ride, each with an optional reluctance. Absent or empty means every mode.
   final List<PlanTransitModePreferenceInput>? transit;
@@ -509,9 +509,13 @@ class PlanTransitModesInput {
   /// The modes no itinerary may ride; every other mode stays usable, including one `TransitMode` gains later. Absent or empty excludes nothing. A value outside `TransitMode` is a 400 `modes.transit.exclude is invalid`. Never with a non-empty `transit`.
   final List<TransitMode>? exclude;
 
+  /// A reluctance per listed mode that restricts no mode: the cost `transit[].cost.reluctance` gives, for a request that names its modes by `exclude` or names none. A Spider extension: OTP 2.10 takes a mode's reluctance only in its allow-list. A mode not listed keeps reluctance 1, and a listed mode that `exclude` names stays excluded. Absent or empty changes no cost. A mode listed twice is a 400 `modes.transit.costs is invalid`. Never with a non-empty `transit`, which carries its modes' reluctances itself.
+  final List<TransitModeCostInput>? costs;
+
   const PlanTransitModesInput({
     this.transit,
     this.exclude,
+    this.costs,
   });
 
   factory PlanTransitModesInput.fromJson(Map<String, dynamic> json) =>
@@ -523,6 +527,10 @@ class PlanTransitModesInput {
         exclude: (json['exclude'] as List<dynamic>?)
             ?.map((e) => TransitMode.fromWire(e as String))
             .toList(),
+        costs: (json['costs'] as List<dynamic>?)
+            ?.map(
+                (e) => TransitModeCostInput.fromJson(e as Map<String, dynamic>))
+            .toList(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -530,6 +538,31 @@ class PlanTransitModesInput {
           'transit': transit!.map((e) => e.toJson()).toList(),
         if (exclude != null)
           'exclude': exclude!.map((e) => e.toJson()).toList(),
+        if (costs != null) 'costs': costs!.map((e) => e.toJson()).toList(),
+      };
+}
+
+/// The reluctance of one transit mode, a Spider extension.
+class TransitModeCostInput {
+  final TransitMode mode;
+
+  /// Multiplier on the time spent riding this mode, from 0.1 to 100000: above 1 avoids the mode, below 1 favours it; rejected, never clamped.
+  final double reluctance;
+
+  const TransitModeCostInput({
+    required this.mode,
+    required this.reluctance,
+  });
+
+  factory TransitModeCostInput.fromJson(Map<String, dynamic> json) =>
+      TransitModeCostInput(
+        mode: TransitMode.fromWire(json['mode'] as String),
+        reluctance: (json['reluctance'] as num).toDouble(),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'mode': mode.toJson(),
+        'reluctance': reluctance,
       };
 }
 
@@ -1224,11 +1257,15 @@ class Stop {
   /// Null when the feed has none.
   final String? zoneId;
 
+  /// The station this stop belongs to, as OTP's `Stop.parentStation`; null when the stop has none.
+  final ParentStation? parentStation;
+
   const Stop({
     required this.gtfsId,
     required this.wheelchairBoarding,
     required this.platformCode,
     required this.zoneId,
+    required this.parentStation,
   });
 
   factory Stop.fromJson(Map<String, dynamic> json) => Stop(
@@ -1237,6 +1274,10 @@ class Stop {
             WheelchairBoarding.fromWire(json['wheelchairBoarding'] as String),
         platformCode: json['platformCode'] as String?,
         zoneId: json['zoneId'] as String?,
+        parentStation: json['parentStation'] == null
+            ? null
+            : ParentStation.fromJson(
+                json['parentStation'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
@@ -1244,6 +1285,28 @@ class Stop {
         'wheelchairBoarding': wheelchairBoarding.toJson(),
         'platformCode': platformCode == null ? null : platformCode!,
         'zoneId': zoneId == null ? null : zoneId!,
+        'parentStation': parentStation == null ? null : parentStation!.toJson(),
+      };
+}
+
+/// The station a stop belongs to (GTFS `parent_station`, a `location_type` 1 stop). Its `gtfsId` is a station id that plan's `stopLocationId` and departures' `id` accept.
+class ParentStation {
+  final String gtfsId;
+  final String name;
+
+  const ParentStation({
+    required this.gtfsId,
+    required this.name,
+  });
+
+  factory ParentStation.fromJson(Map<String, dynamic> json) => ParentStation(
+        gtfsId: json['gtfsId'] as String,
+        name: json['name'] as String,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'gtfsId': gtfsId,
+        'name': name,
       };
 }
 
@@ -1414,7 +1477,7 @@ class PlanPageInfo {
       };
 }
 
-/// Why the router declined the plan or found no transit route. `LOCATION_NOT_FOUND`: a stop id resolves to no stop or station (`inputField` `FROM`, `TO` or `VIA`), or a coordinate has no street near enough to link to (`FROM` or `TO`). `OUTSIDE_BOUNDS`: a coordinate lies outside the area the router covers (`FROM` or `TO`). `NO_STOPS_IN_RANGE`: no stop is in walking range of the origin (`FROM`) or the destination (`TO`). `NO_TRANSIT_CONNECTION`: the origin and the destination lie in parts of the transit network that no trip connects (`inputField` null). `WALKING_BETTER_THAN_TRANSIT`: the origin and destination are the same stop, a station and one of its own platforms, identical coordinates or coordinates that snap to the same street point, or every transit itinerary the search found was dropped as worse than walking (`inputField` null). `NO_TRANSIT_CONNECTION_IN_SEARCH_WINDOW`: the transit search ran but found no transit itinerary leaving inside the search window (`DATE_TIME`). `NO_DIRECT_MODE_CONNECTION`: a direct-only plan (`modes.directOnly`) found no walk (`inputField` null). `OUTSIDE_SERVICE_PERIOD`: the date is outside what the feed covers (`DATE_TIME`). New codes may be added.
+/// Why the router declined the plan or found no transit route. `LOCATION_NOT_FOUND`: a stop id resolves to no stop or station (`inputField` `FROM`, `TO` or `VIA`), or a coordinate has no street near enough to link to (`FROM` or `TO`). `OUTSIDE_BOUNDS`: a coordinate lies outside the area the router covers (`FROM` or `TO`). `NO_STOPS_IN_RANGE`: no stop is in walking range of the origin (`FROM`) or the destination (`TO`). `NO_TRANSIT_CONNECTION`: the origin and the destination lie in parts of the transit network that no trip connects (`inputField` null). `WALKING_BETTER_THAN_TRANSIT`: the origin and destination are the same stop, a station and one of its own stops, identical coordinates or coordinates that snap to the same street point, or every transit itinerary the search found was dropped as worse than walking (`inputField` null). `NO_TRANSIT_CONNECTION_IN_SEARCH_WINDOW`: the transit search ran but found no transit itinerary leaving inside the search window (`DATE_TIME`). `NO_DIRECT_MODE_CONNECTION`: a direct-only plan (`modes.directOnly`) found no walk (`inputField` null). `OUTSIDE_SERVICE_PERIOD`: the date is outside what the feed covers (`DATE_TIME`). New codes may be added.
 class RoutingError {
   final RoutingErrorCode code;
   final String description;
@@ -1612,7 +1675,7 @@ enum BikesAllowed {
   String toJson() => wire;
 }
 
-/// `stop` is the board, or null for an id that resolves to no stop or station.
+/// `stop` holds the departures, or is null for an id that resolves to no stop or station.
 class DeparturesResponse {
   final DepartureBoard? stop;
 
@@ -1632,19 +1695,23 @@ class DeparturesResponse {
       };
 }
 
-/// Departures board for one platform (a stop id) or a whole station (a station id), realtime merged in. A trip's final stop, a canceled departure and a departure that does not allow boarding give no row.
+/// Departures for one stop (a stop id) or a whole station (a station id), realtime merged in. A trip's final stop, a canceled departure and a departure that does not allow boarding give no row.
 class DepartureBoard {
   final String gtfsId;
   final String name;
 
-  /// Null on a station board.
+  /// Null for a station's departures.
   final WheelchairBoarding? wheelchairBoarding;
+
+  /// The station the stop belongs to, as OTP's `Stop.parentStation`; its `gtfsId` asks for the whole station's departures. Null for a station's departures and for a stop without one.
+  final ParentStation? parentStation;
   final List<StopDeparturesStoptime> stoptimesWithoutPatterns;
 
   const DepartureBoard({
     required this.gtfsId,
     required this.name,
     required this.wheelchairBoarding,
+    required this.parentStation,
     required this.stoptimesWithoutPatterns,
   });
 
@@ -1654,6 +1721,10 @@ class DepartureBoard {
         wheelchairBoarding: json['wheelchairBoarding'] == null
             ? null
             : WheelchairBoarding.fromWire(json['wheelchairBoarding'] as String),
+        parentStation: json['parentStation'] == null
+            ? null
+            : ParentStation.fromJson(
+                json['parentStation'] as Map<String, dynamic>),
         stoptimesWithoutPatterns:
             (json['stoptimesWithoutPatterns'] as List<dynamic>)
                 .map((e) =>
@@ -1666,6 +1737,7 @@ class DepartureBoard {
         'name': name,
         'wheelchairBoarding':
             wheelchairBoarding == null ? null : wheelchairBoarding!.toJson(),
+        'parentStation': parentStation == null ? null : parentStation!.toJson(),
         'stoptimesWithoutPatterns':
             stoptimesWithoutPatterns.map((e) => e.toJson()).toList(),
       };
@@ -1691,7 +1763,7 @@ class StopDeparturesStoptime {
   /// Seconds of delay at the requested `reliability`: that level's percentile of the trip's recorded delay at this stop on the service date's day type, from the environment's realtime history. Never below 0. At each level, no trip arrives at a stop, delay applied, before an earlier trip of the same pattern does. Null when `reliability` is omitted, when the trip has live realtime, a canceled trip included, or when there is no history.
   final int? typicalDelay;
 
-  /// How a rider boards here. Never `NONE`: the board leaves out departures nobody can board.
+  /// How a rider boards here. Never `NONE`: departures nobody can board are left out.
   final PickupDropoffType pickupType;
 
   /// How a rider alights here.
@@ -1703,7 +1775,7 @@ class StopDeparturesStoptime {
   /// The position in the trip of this departure, as the trip's `stopPosition`.
   final int? stopPosition;
 
-  /// The platform or stand the departure leaves from, which tells a station's platforms apart.
+  /// The stop the departure leaves from, which tells a station's stops apart.
   final StopDeparturesStop stop;
   final StopDeparturesTrip trip;
 
@@ -2005,6 +2077,9 @@ class TripStop {
   /// Null when the feed has none.
   final String? zoneId;
 
+  /// The station this stop belongs to, as OTP's `Stop.parentStation`; null when the stop has none.
+  final ParentStation? parentStation;
+
   const TripStop({
     required this.gtfsId,
     required this.name,
@@ -2013,6 +2088,7 @@ class TripStop {
     required this.wheelchairBoarding,
     required this.platformCode,
     required this.zoneId,
+    required this.parentStation,
   });
 
   factory TripStop.fromJson(Map<String, dynamic> json) => TripStop(
@@ -2024,6 +2100,10 @@ class TripStop {
             WheelchairBoarding.fromWire(json['wheelchairBoarding'] as String),
         platformCode: json['platformCode'] as String?,
         zoneId: json['zoneId'] as String?,
+        parentStation: json['parentStation'] == null
+            ? null
+            : ParentStation.fromJson(
+                json['parentStation'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => {
@@ -2034,6 +2114,7 @@ class TripStop {
         'wheelchairBoarding': wheelchairBoarding.toJson(),
         'platformCode': platformCode == null ? null : platformCode!,
         'zoneId': zoneId == null ? null : zoneId!,
+        'parentStation': parentStation == null ? null : parentStation!.toJson(),
       };
 }
 

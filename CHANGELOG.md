@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.12.0
 
-Targets Spider API contract `1.11`.
+Targets Spider API contract `1.12`.
 
 ### Added
 
@@ -27,6 +27,22 @@ Targets Spider API contract `1.11`.
   and after a cursor, as `last` before one. **`planNext(route, numberOfItineraries:)`** and **`planPrevious(…)`**
   size that page instead; null keeps the size `route` was asked with, and later pages keep the new one.
   `planStream` sizes itself by `targetResults` and ignores it, as it does `searchWindowMinutes`.
+- **`RoutePreferences.modeReluctance`** (`Map<TransitMode, double>?`): a multiplier on the time spent riding
+  each listed mode, from 0.1 to 100000, that restricts no mode. Without `allowedTransitModes` it is sent as
+  contract 1.12's `modes.transit.costs`, in `TransitMode` declaration order and beside `exclude` when modes are
+  excluded (an excluded mode stays excluded). With `allowedTransitModes`, each allowed mode's reluctance goes on
+  its own `modes.transit.transit[].cost.reluctance`, a mode not allowed loses its reluctance, and `costs` is never
+  sent. Non-transit modes are ignored, and null or empty sends nothing. Resent by `planNext` / `planPrevious` and
+  every stream continuation. A reluctance outside the range, or not finite, fails with `badRequest`
+  (`modes.transit.costs.reluctance is out of range`, or `modes.transit.transit.cost.reluctance` with an
+  allow-list) without a request.
+- **`ParentStation`** (`gtfsId`, `name`): the station a stop belongs to, whose id plans and departures accept
+  for the whole station. **`Leg.fromParentStation`** / **`Leg.toParentStation`** (batch plan and plan stream)
+  and **`TripStop.parentStation`** carry it; null for a stop without a station and on a leg end at no stop.
+- **`routing.stopDepartures(…)`**: the same parameters and failures as `departures`, an unknown id included,
+  returning a **`StopDepartures`** with the stop's `gtfsId`, `name`, `wheelchairBoarding`, `parentStation` and
+  the `departures`. A station's departures have a null `parentStation` and `wheelchairBoarding`.
+  `departures(…)` keeps its signature and result.
 
 ## 1.11.0
 
